@@ -1,13 +1,14 @@
 # QC_and_Clustering Folder
 
-**Folder**: /broad/macosko/kimkathl/XDP/QC_and_Clustering 
+**Folder Path**: /broad/macosko/kimkathl/XDP/QC_and_Clustering 
 
 **Last updated: 4/22/25**
 
 This folder should have 1 notebook and 6 folders.
 
 ##Notebooks
-**map_my_cells_april2025.Rmd** [/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_april2025.Rmd]
+
+**map_my_cells_april2025.Rmd**
 This notebook has the code for how the 3 current seurat objects (XDP_Cohort_1_2, BICAN_recon, XDP_recon) were converted into .h5ad files and ran with mapmycells script using hmba dataset. Script and dataset links provided by Bennett.
 All 3 seurat objects were resaved with the new group, subclass, class identities. Also ran xdp cohort 1 and 2 neurons as a test. 
 
