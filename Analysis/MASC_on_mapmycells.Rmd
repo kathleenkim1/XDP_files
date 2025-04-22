@@ -1,0 +1,657 @@
+---
+title: "My Notebook"
+output: html_notebook
+---
+#Last updated: 4/14/25 - KK
+
+```{r}
+library(qs)
+library(Seurat)
+library(tidyverse)
+
+.sconline.MASCfn = function(
+    dataset, 
+    cluster, 
+    contrast, 
+    random_effects = NULL, 
+    fixed_effects = NULL,
+    verbose = TRUE, 
+    jackknife=F,
+    statistical.test="Wald") {
+  
+  
+  #Adapted from Fonseka et al. PMID: 30333237
+  
+  # Check inputs
+  require(lme4)
+  if (is.factor(dataset[[contrast]]) == FALSE & is.numeric(dataset[[contrast]]) == FALSE) {
+    stop("Specified contrast term should be coded as a factor or numeric in the dataset")
+  }
+  
+  match.arg(statistical.test,c("LRT","Wald"))
+  
+  
+  # Convert cluster assignments to string
+  cluster = as.character(cluster)
+  # Prepend design matrix generated from cluster assignments
+  designmat = model.matrix(~ cluster + 0, data.frame(cluster = cluster))
+  dataset = cbind(designmat, dataset)
+  # Create output list to hold results
+  res = vector(mode = "list", length = length(unique(cluster)))
+  names(res) = attributes(designmat)$dimnames[[2]]
+  
+  # Create model formulas
+  if (!is.null(fixed_effects) && !is.null(random_effects)) {
+    model_rhs = paste0(c(paste0(fixed_effects, collapse = " + "),
+                          paste0("(1|", random_effects, ")", collapse = " + ")),
+                        collapse = " + ")
+    if (verbose == TRUE & statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+    }
+  } else if (!is.null(fixed_effects) && is.null(random_effects)) {
+    model_rhs = paste0(fixed_effects, collapse = " + ")
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+      # For now, do not allow models without mixed effects terms
+      
+    }
+    stop("No random effects specified")
+  } else if (is.null(fixed_effects) && !is.null(random_effects)) {
+    model_rhs = paste0("(1|", random_effects, ")", collapse = " + ")
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+    }
+  } else {
+    model_rhs = "1" # only includes intercept
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+      
+    }
+    stop("No random or fixed effects specified")
+  }
+  
+  # Initialize list to store model objects for each cluster
+  cluster_models = vector(mode = "list",
+                           length = length(attributes(designmat)$dimnames[[2]]))
+  names(cluster_models) = attributes(designmat)$dimnames[[2]]
+  
+  # Run nested mixed-effects models for each cluster
+  for (i in seq_along(attributes(designmat)$dimnames[[2]])) {
+    test_cluster = attributes(designmat)$dimnames[[2]][i]
+    if (verbose == TRUE) {
+      message(paste("Creating logistic mixed models for", test_cluster))
+    }
+    null_fm = as.formula(paste0(c(paste0(test_cluster, " ~ 1 + "),
+                                   model_rhs), collapse = ""))
+    full_fm = as.formula(paste0(c(paste0(test_cluster, " ~ ", contrast, " + "),
+                                   model_rhs), collapse = ""))
+
+    if (verbose == TRUE) {
+      message(paste("Null model:", null_fm))
+      message(paste("Full model:", full_fm))
+    }
+    
+    # Run null and full mixed-effects models
+    full_model = lme4::glmer(formula = full_fm, data = dataset,
+                              family = binomial, nAGQ = 1, verbose = 0,
+                              control = glmerControl(optimizer = "bobyqa"))
+    
+    
+    # calculate confidence intervals for contrast term beta
+    if(is.factor(dataset[[contrast]])){
+      contrast_lvl2 = paste0(contrast, levels(dataset[[contrast]])[2])
+      
+    } else {
+      contrast_lvl2 = contrast
+    }
+    
+    contrast_ci = confint.merMod(full_model, method = "Wald",
+                                  parm = contrast_lvl2)
+    
+    
+    if(statistical.test=="Wald"){
+      pval=summary(full_model)
+      
+      pval=pval$coefficients[contrast_lvl2,4]
+    } else {
+      null_model = lme4::glmer(formula = null_fm, data = dataset,
+                                family = binomial, nAGQ = 1, verbose = 0,
+                                control = glmerControl(optimizer = "bobyqa"))
+      model_lrt = anova(null_model, full_model)
+      pval=model_lrt[["Pr(>Chisq)"]][2]
+    }
+    
+    # Save model objects to list
+    cluster_models[[i]]$confint = contrast_ci
+    cluster_models[[i]]$pval = pval
+    cluster_models[[i]]$full_model = full_model
+    
+    #jackknifing
+    jk_pvalvec=c()
+    jk_coefvec=c()
+    jk_stable=1
+    if(jackknife){
+      for(ibatch in unique(dataset[,random_effects])){
+        tmp_dataset=dataset[which(dataset[,random_effects]!=ibatch),]
+        
+        jk_full_model = tryCatch({lme4::glmer(formula = full_fm, data = tmp_dataset,
+                                               family = binomial, nAGQ = 1, verbose = 0,
+                                               control = glmerControl(optimizer = "bobyqa"))},error=function(e){return(F)})
+        
+        if(class(jk_full_model)!=class(T)){
+          jk_coefvec=c(jk_coefvec,fixef(jk_full_model)[[contrast_lvl2]])
+          if(statistical.test=="Wald"){
+            tmp_pval=summary(jk_full_model)
+            tmp_pval=tmp_pval$coefficients[contrast_lvl2,4]
+            jk_pvalvec=c(jk_pvalvec,tmp_pval)
+          } else {
+            jk_null_model = tryCatch({lme4::glmer(formula = null_fm, data = tmp_dataset,
+                                                   family = binomial, nAGQ = 1, verbose = 0,
+                                                   control = glmerControl(optimizer = "bobyqa"))},error=function(e) {return(F)})
+            
+            if(class(jk_null_model)!=class(T)){
+              jk_model_lrt = anova(jk_null_model, jk_full_model)
+              # calculate confidence intervals for contrast term beta
+              jk_pvalvec=c(jk_pvalvec,jk_model_lrt[["Pr(>Chisq)"]][2])
+            } else {
+              jk_stable=0
+            }
+          }
+          
+        } else {
+          jk_stable=0
+        }
+        
+      }
+    } else {
+      jk_pvalvec=(-1)
+      jk_coefvec=(-1)
+    }
+    
+    cluster_models[[i]]$jk_pval_median = median(jk_pvalvec)
+    cluster_models[[i]]$jk_pval_mean = mean(jk_pvalvec)
+    cluster_models[[i]]$jk_pval_max = max(jk_pvalvec)
+    
+    cluster_models[[i]]$jk_coef_median = median(jk_coefvec)
+    cluster_models[[i]]$jk_coef_mean = mean(jk_coefvec)
+    cluster_models[[i]]$jk_stable = jk_stable
+    cluster_models[[i]]$jk_coef_min = jk_coefvec[which(abs(jk_coefvec)==min(abs(jk_coefvec)))[1]]
+  }
+  
+  # Organize results into output dataframe
+  output = data.frame(cluster = attributes(designmat)$dimnames[[2]],
+                       size = colSums(designmat))
+  output$model.pvalue = sapply(cluster_models, function(x) x$pval)
+  output[[paste(contrast_lvl2, "OR", sep = ".")]] = sapply(cluster_models, function(x) exp(fixef(x$full)[[contrast_lvl2]]))
+  output[[paste(contrast_lvl2, "OR", "95pct.ci.lower", sep = ".")]] = sapply(cluster_models, function(x) exp(x$confint[contrast_lvl2, "2.5 %"]))
+  output[[paste(contrast_lvl2, "OR", "95pct.ci.upper", sep = ".")]] = sapply(cluster_models, function(x) exp(x$confint[contrast_lvl2, "97.5 %"]))
+  output[[paste(contrast_lvl2,"JK","Min", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_min==(-1)){-1} else{exp(x$jk_coef_min)}})
+  output[[paste(contrast_lvl2,"JK","Mean", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_mean==(-1)){-1} else {exp(x$jk_coef_mean)}})
+  output[[paste(contrast_lvl2,"JK","Median", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_median==(-1)){-1} else {exp(x$jk_coef_median)}})
+  output[[paste(contrast_lvl2,"JK","Max", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_max==(-1)){-1} else {x$jk_pval_max}})
+  output[[paste(contrast_lvl2,"JK","Mean", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_mean==(-1)){-1} else {x$jk_pval_mean}})
+  output[[paste(contrast_lvl2,"JK","Median", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_median==(-1)){-1} else {x$jk_pval_median}})
+  output[[paste(contrast_lvl2,"JK","Stable", sep = ".")]] = sapply(cluster_models, function(x) x$jk_stable)
+  
+  return(output)
+}
+```
+
+```{r}
+bican_recon = qread("/broad/macosko/kimkathl/bican_recon_apr2025_sct_mask.qs")
+bican_recon
+bican_recon@meta.data
+Idents(bican_recon) = "cell_class_annot"
+
+xdp_recon = qread("/broad/macosko/kimkathl/xdp_recon_apr2025_sct_mask.qs")
+xdp_recon
+xdp_recon@meta.data
+
+Idents(xdp_recon) = "new_final_cell_class"
+
+
+xdp_cohort1_2 = qread("/broad/macosko/kimkathl/XDP_Cohorts_1_2_full_032825.qs")
+xdp_cohort1_2
+xdp_cohort1_2@meta.data
+
+Idents(xdp_cohort1_2) = "final_cell_class_merged_harmony"
+```
+
+
+```{r}
+xdp_cohort1_2@meta.data
+DimPlot(xdp_cohort1_2, group.by = "Class_label_name", raster = F)
+```
+```{r}
+xdp_cohort1_2_meta = xdp_cohort1_2@meta.data
+xdp_cohort1_2_meta
+xdp_cohort1_2_meta[c("Class_label_name", "Subclass_label_name", "Group_label_name")] <- lapply(xdp_cohort1_2_meta[c("Class_label_name", "Subclass_label_name", "Group_label_name")], function(x) gsub("[-[:space:]]", "_", x))
+
+xdp_cohort1_2_meta
+```
+
+```{r}
+table(xdp_cohort1_2_meta$Group_label_name)
+table(xdp_cohort1_2_meta$donor_id, xdp_cohort1_2_meta$Group_label_name)
+
+
+```
+
+
+```{r}
+library(lme4)
+sobj = xdp_cohort1_2_meta
+sobj = subset(sobj, donor_id != "SCF_22_049CCF")
+#sobj = subset(sobj, Class_label_name != "BG_GABA_Glut")
+#sobj = subset(sobj, Subclass_label_name != "GP_GABA_Glut" &  Subclass_label_name != "TH_MEIS2_GABA" &  Subclass_label_name != "ImOligo")
+sobj = subset(sobj, Group_label_name != "GPi_Shell" &  Group_label_name != "ImOligo" &  Group_label_name != "NDB_SI_LHX8_GABA"  &  Group_label_name != "STR_SST_ADARB2_GABA"  &  Group_label_name != "TH_MEIS2_OTX2_GABA")
+
+sobj
+model_cols = c("donor_id", "library", "Cohort", "Condition", "Sex", "Age.of.Death", "Group_label_name") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$Group_label_name, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects=c("donor_id"), # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Cohort","Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+a = ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Cohort 1 + 2 (no CCF)") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Group Labels") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+
+ggsave(a, filename = "pic.png", width = 7, height = 10)
+```
+
+```{r}
+write.csv(masc_df, "group_masc.csv")
+#write.csv(masc_df, "subclass_masc.csv")
+```
+
+```{r}
+cells_per_donor = as.data.frame(table(xdp_cohort1_2_meta$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(xdp_cohort1_2_meta$Class_label_name, xdp_cohort1_2_meta$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df
+
+# Count the number of cells per donor
+donor_counts <- table(xdp_cohort1_2_meta$donor_id)
+
+# Convert to dataframe for sorting
+donor_df <- as.data.frame(donor_counts)
+colnames(donor_df) <- c("donor_id", "cell_count")
+
+# Identify controls (CM, CF) - ensuring it only checks ENDING
+controls <- donor_df[grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+cases <- donor_df[!grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+
+# Sort both groups by cell count in descending order
+controls <- controls[order(-controls$cell_count), ]
+cases <- cases[order(-cases$cell_count), ]
+
+# Combine ordered donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Print or use the ordered donor IDs
+print(ordered_donors)
+
+
+            
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = ordered_donors)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors") + ylab("Number of cells by Neuron Subclasses") + labs(fill = "Neuron Subclass")+ geom_vline(xintercept =  12.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors") + ylab("Neuron Subclass Proportion") + labs(fill = "Neuron Subclass")+ geom_vline(xintercept =  12.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+```
+
+
+
+```{r}
+class_labels = unique(xdp_cohort1_2_meta$Class_label_name)
+
+plot_1 = list()
+plot_2 = list()
+for (class_label in class_labels) {
+  
+xdp_cohort1_2_meta_subset = subset(xdp_cohort1_2_meta, subset =Class_label_name == class_label)
+cells_per_donor = as.data.frame(table(xdp_cohort1_2_meta_subset$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(xdp_cohort1_2_meta_subset$Subclass_label_name, xdp_cohort1_2_meta_subset$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df
+
+# Count the number of cells per donor
+donor_counts <- table(xdp_cohort1_2_meta$donor_id)
+
+# Convert to dataframe for sorting
+donor_df <- as.data.frame(donor_counts)
+colnames(donor_df) <- c("donor_id", "cell_count")
+
+# Identify controls (CM, CF) - ensuring it only checks ENDING
+controls <- donor_df[grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+cases <- donor_df[!grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+
+# Sort both groups by cell count in descending order
+controls <- controls[order(-controls$cell_count), ]
+cases <- cases[order(-cases$cell_count), ]
+
+# Combine ordered donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Print or use the ordered donor IDs
+print(ordered_donors)
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = ordered_donors)
+
+a = ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors") + ylab("Number of cells by Subclass") + labs(fill = "Subclass")+ geom_vline(xintercept =  12.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+b = ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors") + ylab("Subclass Proportion") + labs(fill = "Subclass")+ geom_vline(xintercept =  12.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+plot_1[[class_label]] = a
+plot_2[[class_label]] = b
+  
+}
+
+final_plot_1 <- plot_grid(plotlist = plot_1, ncol = 3)
+final_plot_2 <- plot_grid(plotlist = plot_2, ncol = 3)
+
+ggsave("final_plot_1.png", final_plot_1, width = 20, height = 10)
+ggsave("final_plot_2.png", final_plot_2, width = 20, height = 10)
+```
+
+
+
+```{r}
+class_labels = unique(xdp_cohort1_2_meta$Class_label_name)
+
+plot_1 = list()
+plot_2 = list()
+for (class_label in class_labels) {
+  
+xdp_cohort1_2_meta_subset = subset(xdp_cohort1_2_meta, subset =Class_label_name == class_label)
+cells_per_donor = as.data.frame(table(xdp_cohort1_2_meta_subset$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(xdp_cohort1_2_meta_subset$Group_label_name, xdp_cohort1_2_meta_subset$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df
+
+# Count the number of cells per donor
+donor_counts <- table(xdp_cohort1_2_meta$donor_id)
+
+# Convert to dataframe for sorting
+donor_df <- as.data.frame(donor_counts)
+colnames(donor_df) <- c("donor_id", "cell_count")
+
+# Identify controls (CM, CF) - ensuring it only checks ENDING
+controls <- donor_df[grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+cases <- donor_df[!grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+
+# Sort both groups by cell count in descending order
+controls <- controls[order(-controls$cell_count), ]
+cases <- cases[order(-cases$cell_count), ]
+
+# Combine ordered donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Print or use the ordered donor IDs
+print(ordered_donors)
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = ordered_donors)
+
+a = ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors") + ylab("Number of cells by Group") + labs(fill = "Group")+ geom_vline(xintercept =  12.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+b = ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors") + ylab("Group Proportion") + labs(fill = "Group")+ geom_vline(xintercept =  12.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+plot_1[[class_label]] = a
+plot_2[[class_label]] = b
+  
+}
+
+final_plot_1 <- plot_grid(plotlist = plot_1, ncol = 3)
+final_plot_2 <- plot_grid(plotlist = plot_2, ncol = 3)
+
+ggsave("final_plot_1.png", final_plot_1, width = 22, height = 13)
+ggsave("final_plot_2.png", final_plot_2, width = 22, height = 13)
+```
+
+
+
+```{r}
+everything_metadata = qread("/broad/macosko/kimkathl/everything_metadata_new_fixed_WM.qs")
+everything_metadata
+```
+
+```{r}
+everything_metadata_xdp = subset(everything_metadata, subset = Cohort != "Recon")
+everything_metadata_xdp
+```
+```{r}
+everything_metadata_xdp$WM_GM <- ifelse(
+  everything_metadata_xdp$ScoreWM > everything_metadata_xdp$ScoreGM, "White Matter", 
+  ifelse(everything_metadata_xdp$ScoreGM > everything_metadata_xdp$ScoreWM, "Gray Matter", "Uncertain")
+)
+everything_metadata_xdp
+
+table(everything_metadata_xdp$ALL_neuron_grouped_classes)
+```
+
+
+```{r}
+cells_per_donor = as.data.frame(table(everything_metadata_xdp$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(everything_metadata_xdp$WM_GM, everything_metadata_xdp$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df
+
+wm_astro_prop = cell_class_df %>% filter(Var1 == "White Matter")
+wm_astro_prop
+```
+
+```{r}
+cells_per_donor = as.data.frame(table(everything_metadata_xdp$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(everything_metadata_xdp$ALL_neuron_grouped_classes, everything_metadata_xdp$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df
+
+opc_prop = cell_class_df %>% filter(Var1 == "opc")
+opc_prop
+
+spn_matrix_prop = cell_class_df %>% filter(Var1 == "SPN_matrix")
+spn_matrix_prop
+```
+
+```{r}
+wm_astro_prop = select(wm_astro_prop, c("Var2", "cell_proportions"))
+wm_astro_prop$wm_astro_proportion =wm_astro_prop$cell_proportions
+wm_astro_prop$cell_proportions = NULL
+
+opc_prop= select(opc_prop, c("Var2", "cell_proportions"))
+opc_prop$opc_proportion =opc_prop$cell_proportions
+opc_prop$cell_proportions = NULL
+
+spn_matrix_prop= select(spn_matrix_prop, c("Var2", "cell_proportions"))
+spn_matrix_prop$SPN_matrix_proportion =spn_matrix_prop$cell_proportions
+spn_matrix_prop$cell_proportions = NULL
+
+wm_astro_prop
+opc_prop
+spn_matrix_prop
+```
+```{r}
+merged_proportions = merge(wm_astro_prop,opc_prop, by = "Var2")
+merged_proportions= merge(merged_proportions,spn_matrix_prop, by = "Var2")
+merged_proportions
+merged_proportions$donor_id = merged_proportions$Var2
+merged_proportions$Var2 = NULL
+
+merged_proportions$Condition <- everything_metadata_xdp$Condition[match(merged_proportions$donor_id, everything_metadata_xdp$donor_id)]
+merged_proportions$Cohort <- everything_metadata_xdp$Cohort[match(merged_proportions$donor_id, everything_metadata_xdp$donor_id)]
+merged_proportions
+```
+
+
+```{r}
+library(ggpmisc)
+
+ggplot(merged_proportions, aes(x = wm_astro_proportion, y = opc_proportion, color = Condition, shape = Cohort)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", aes(group = 1), color = "black") + 
+  stat_poly_eq(aes(x = wm_astro_proportion, y = opc_proportion, 
+                   label = paste(..rr.label..)), 
+               formula = y ~ x, parse = TRUE, 
+               label.x = 0.1, label.y = 0.9, 
+               color = "black") +
+  facet_wrap(~ Cohort) + 
+  labs(title = "WM Astrocyte vs OPC Proportions", 
+       x = "WM Astrocyte Proportion", 
+       y = "OPC Proportion")
+
+```
+
+
+```{r}
+merged_proportions_co1 = subset(merged_proportions, subset = Cohort == "Cohort_1")
+cor.test(merged_proportions_co1$wm_astro_proportion, merged_proportions_co1$opc_proportion, method = "spearman")
+
+merged_proportions_co2 = subset(merged_proportions, subset = Cohort == "Cohort_2")
+cor.test(merged_proportions_co2$wm_astro_proportion, merged_proportions_co2$opc_proportion, method = "spearman")
+```
+
+```{r}
+library(ggpmisc)
+
+ggplot(merged_proportions, aes(x = wm_astro_proportion, y = SPN_matrix_proportion, color = Condition, shape = Cohort)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", aes(group = 1), color = "black") + 
+  stat_poly_eq(aes(x = wm_astro_proportion, y = SPN_matrix_proportion, 
+                   label = paste(..rr.label..)), 
+               formula = y ~ x, parse = TRUE, 
+               label.x = 0.1, label.y = 0.9, 
+               color = "black") +
+  facet_wrap(~ Cohort) + 
+  labs(title = "WM Astrocyte vs SPN Matrix Proportions", 
+       x = "WM Astrocyte Proportion", 
+       y = "SPN Matrix Proportion")
+
+```
+
+
+```{r}
+merged_proportions_co1 = subset(merged_proportions, subset = Cohort == "Cohort_1")
+cor.test(merged_proportions_co1$wm_astro_proportion, merged_proportions_co1$SPN_matrix_proportion, method = "spearman")
+
+merged_proportions_co2 = subset(merged_proportions, subset = Cohort == "Cohort_2")
+cor.test(merged_proportions_co2$wm_astro_proportion, merged_proportions_co2$SPN_matrix_proportion, method = "spearman")
+```
+```{r}
+library(ggpmisc)
+
+ggplot(merged_proportions, aes(x = opc_proportion, y = SPN_matrix_proportion, color = Condition, shape = Cohort)) + 
+  geom_point() + 
+  geom_smooth(method = "lm", aes(group = 1), color = "black") + 
+  stat_poly_eq(aes(x = wm_astro_proportion, y = opc_proportion, 
+                   label = paste(..rr.label..)), 
+               formula = y ~ x, parse = TRUE, 
+               label.x = 0.1, label.y = 0.9, 
+               color = "black") +
+  facet_wrap(~ Cohort) 
+
+```
+
+
+```{r}
+merged_proportions_co1 = subset(merged_proportions, subset = Cohort == "Cohort_1")
+cor.test(merged_proportions_co1$opc_proportion, merged_proportions_co1$SPN_matrix_proportion, method = "spearman")
+
+merged_proportions_co2 = subset(merged_proportions, subset = Cohort == "Cohort_2")
+cor.test(merged_proportions_co2$opc_proportion, merged_proportions_co2$SPN_matrix_proportion, method = "spearman")
+```

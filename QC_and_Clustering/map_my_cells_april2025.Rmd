@@ -1,0 +1,548 @@
+---
+title: "My Notebook"
+output: html_notebook
+---
+#Last updated: 4/14/25 - KK
+
+```{r}
+library(qs)
+library(Seurat)
+library(tidyverse)
+```
+
+#Matthew L's way to convert to h5ad
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("zellkonverter")
+
+library(zellkonverter)
+
+# function convert seurat object to h5ad
+# input: obj, output_dir
+# output: NA (saves .h5ad to output_dir)
+seurat_to_h5ad = function(obj, output_dir) {
+  sce <- as.SingleCellExperiment(obj)
+  writeH5AD(sce, output_dir)
+}
+```
+
+#Load in Cohort 1 and 2 neurons sobjs
+```{r}
+xdp_neurons = qread("/broad/macosko/kimkathl/XDP_neurons_Cohorts_1_2_sct_ucell_032125.qs")
+
+xdp_neurons@meta.data
+
+Idents(xdp_neurons) = "final_neuron_subclass_merged"
+```
+
+
+```{r}
+DefaultAssay(xdp_neurons) <- "RNA"
+
+# Keep only the RNA assay
+# if seurat object version is 5 or later, counts is accessed with $, 4 or earlier with @
+
+if (xdp_neurons@version >= 5) {
+    xdp_neurons[["RNA"]] <- CreateAssayObject(counts = xdp_neurons@assays$RNA$counts)
+} else {
+    xdp_neurons[["RNA"]] <- CreateAssayObject(counts = xdp_neurons@assays$RNA@counts)
+}
+
+
+# Remove all other assays
+xdp_neurons@assays <- list(RNA = xdp_neurons[["RNA"]])
+
+# Ensure metadata is properly aligned
+if (!all(rownames(xdp_neurons@meta.data) == colnames(xdp_neurons))) {
+    stop("Cell names in meta.data do not match counts matrix! Check alignment.")
+}
+
+# Save the cleaned Seurat object
+SaveH5Seurat(xdp_neurons, filename = "xdp_neurons.h5Seurat", overwrite = TRUE)
+
+# Convert to H5AD
+Convert("xdp_neurons.h5Seurat", dest = "h5ad", overwrite = TRUE)
+```
+
+
+```{r}
+# Load Seurat object
+seurat_obj <- qread("cell_type_mapper/hmba_neuron.qs")
+DefaultAssay(seurat_obj) <- "RNA"
+
+class(seurat_obj$Group_label)
+
+seurat_obj$Neighborhood_label = as.character(seurat_obj$Neighborhood_label)
+seurat_obj$Class_label = as.character(seurat_obj$Class_label)
+seurat_obj$Subclass_label = as.character(seurat_obj$Subclass_label)
+seurat_obj$Group_label = as.character(seurat_obj$Group_label)
+seurat_obj$Cluster_label = as.character(seurat_obj$Cluster_label)
+
+
+# Keep only the RNA assay
+# if seurat object version is 5 or later, counts is accessed with $, 4 or earlier with @
+
+if (seurat_obj@version >= 5) {
+    seurat_obj[["RNA"]] <- CreateAssayObject(counts = seurat_obj@assays$RNA$counts)
+} else {
+    seurat_obj[["RNA"]] <- CreateAssayObject(counts = seurat_obj@assays$RNA@counts)
+}
+
+
+# Remove all other assays
+seurat_obj@assays <- list(RNA = seurat_obj[["RNA"]])
+
+# Ensure metadata is properly aligned
+if (!all(rownames(seurat_obj@meta.data) == colnames(seurat_obj))) {
+    stop("Cell names in meta.data do not match counts matrix! Check alignment.")
+}
+
+# Save the cleaned Seurat object
+SaveH5Seurat(seurat_obj, filename = "hmba_neuron.h5Seurat", overwrite = TRUE)
+#SaveH5Seurat(seurat_obj, filename = h5seurat_fname, overwrite = TRUE)
+
+# Convert to H5AD
+#Convert(h5seurat_fname, dest = "h5ad", overwrite = TRUE)
+Convert("hmba_neuron.h5Seurat", dest = "h5ad", overwrite = TRUE)
+```
+
+#running slurm script
+```{r}
+#!/bin/bash
+#SBATCH --job-name=mapmycells
+#SBATCH --output=mapmycells_%j.out
+#SBATCH --error=mapmycells_%j.err
+#SBATCH --time=02:00:00              # adjust as needed
+#SBATCH --mem=128G                    # adjust memory based on your data
+#SBATCH --cpus-per-task=12
+#SBATCH --partition=disco   # replace with your cluster's partition
+
+# Load conda or module environment if needed
+source ~/.bashrc
+conda activate your_env_name
+
+# Run your script
+bash run_mapmycells.sh \
+  -r /broad/macosko/kimkathl/XDP/QC_and_Clustering/hmba_neuron.h5ad \
+  -q /broad/macosko/kimkathl/XDP/QC_and_Clustering/xdp_neurons.h5ad \
+  -o /broad/macosko/kimkathl/XDP/QC_and_Clustering/ \
+  -c
+
+```
+
+
+```{r}
+#mapping_output doesn't have labels, just id numbers
+mapping_output_cohort1_2_neurons = read.csv(file = "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_output_040925/mapping_output.csv", skip = 3)
+mapping_output_cohort1_2_neurons
+```
+
+```{r}
+mmc_co1_2_neurons_result = select(mapping_output_cohort1_2_neurons, c("cell_id","Class_label_name", "Class_label_bootstrapping_probability", "Subclass_label_name", "Subclass_label_bootstrapping_probability", "Group_label_name", "Group_label_bootstrapping_probability", "Cluster_label_name", "Cluster_label_bootstrapping_probability"))
+
+rownames(mmc_co1_2_neurons_result) = mmc_co1_2_neurons_result$cell_id
+mmc_co1_2_neurons_result
+```
+
+```{r}
+xdp_neurons <- AddMetaData(xdp_neurons, metadata = mmc_co1_2_neurons_result)
+xdp_neurons@meta.data
+```
+
+```{r}
+DimPlot(xdp_neurons, group.by = "final_neuron_cell_class_merged_harmony", label = T)
+DimPlot(xdp_neurons, group.by = "final_neuron_subclass_merged", label = T)
+DimPlot(xdp_neurons, group.by = "neuron_subclass_merged", label = T)
+ DimPlot(xdp_neurons, group.by = "Class_label_name", label = T)
+ DimPlot(xdp_neurons, group.by = "Subclass_label_name", label = T)
+ DimPlot(xdp_neurons, group.by = "Group_label_name", label = T)
+```
+
+
+```{r}
+a = DimPlot(xdp_neurons, group.by = "Class_label_name", label = T)
+ggsave(a, filename= "map_my_cells_april2025_outputs/Cohort_1_2_neurons_class_labels.png", width = 12, height = 8)
+
+b = DimPlot(xdp_neurons, group.by = "Subclass_label_name", label = T)
+ggsave(b, filename= "map_my_cells_april2025_outputs/Cohort_1_2_neurons_subclass_labels.png", width = 12, height =8)
+
+c = DimPlot(xdp_neurons, group.by = "Group_label_name", label = T)
+ggsave(b, filename= "map_my_cells_april2025_outputs/Cohort_1_2_neurons_group_labels.png", width = 16, height = 8)
+```
+
+
+
+
+
+#4/11/25 map my cells for other sobjs
+#BICAN RECON
+```{r}
+bican_recon = qread("/broad/macosko/kimkathl/bican_recon_apr2025_sct_mask.qs")
+Idents(bican_recon) = "cell_class_annot"
+```
+
+
+```{r}
+DefaultAssay(bican_recon) <- "RNA"
+
+# Keep only the RNA assay
+# if seurat object version is 5 or later, counts is accessed with $, 4 or earlier with @
+
+if (bican_recon@version >= 5) {
+    bican_recon[["RNA"]] <- CreateAssayObject(counts = bican_recon@assays$RNA$counts)
+} else {
+    bican_recon[["RNA"]] <- CreateAssayObject(counts = bican_recon@assays$RNA@counts)
+}
+
+
+# Remove all other assays
+bican_recon@assays <- list(RNA = bican_recon[["RNA"]])
+
+# Ensure metadata is properly aligned
+if (!all(rownames(bican_recon@meta.data) == colnames(bican_recon))) {
+    stop("Cell names in meta.data do not match counts matrix! Check alignment.")
+}
+
+# Save the cleaned Seurat object
+SaveH5Seurat(bican_recon, filename = "bican_recon.h5Seurat", overwrite = TRUE)
+
+# Convert to H5AD
+Convert("bican_recon.h5Seurat", dest = "h5ad", overwrite = TRUE)
+```
+
+#running slurm script
+```{r}
+nano bican_submit_mapmycells.slurm
+sbatch bican_submit_mapmycells.slurm
+
+#!/bin/bash
+#SBATCH --job-name=mapmycells
+#SBATCH --output=mapmycells_%j.out
+#SBATCH --error=mapmycells_%j.err
+#SBATCH --time=4:00:00              # adjust as needed
+#SBATCH --mem=500G                    # adjust memory based on your data
+#SBATCH --cpus-per-task=12
+#SBATCH --partition=disco   # replace with your cluster's partition
+
+# Load conda or module environment if needed
+source ~/.bashrc
+conda activate your_env_name
+
+# Run your script
+bash  /broad/macosko/kimkathl/XDP/QC_and_Clustering/run_mapmycells.sh \
+  -r /broad/macosko/kimkathl/XDP/QC_and_Clustering/HMBA_Human_BG_082024_AIT.h5ad \
+  -q /broad/macosko/kimkathl/XDP/QC_and_Clustering/bican_recon.h5ad \
+  -o /broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_bican_recon \
+  -c
+
+```
+
+```{r}
+#mapping_output doesn't have labels, just id numbers
+mapping_output_bican_recon = read.csv(file = "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_bican_recon/mapping_output.csv", skip = 3)
+mapping_output_bican_recon
+
+mmc_bican_recon_result = select(mapping_output_bican_recon, c("cell_id","Class_label_name", "Class_label_bootstrapping_probability", "Subclass_label_name", "Subclass_label_bootstrapping_probability", "Group_label_name", "Group_label_bootstrapping_probability", "Cluster_label_name", "Cluster_label_bootstrapping_probability"))
+
+rownames(mmc_bican_recon_result) = mmc_bican_recon_result$cell_id
+mmc_bican_recon_result
+```
+
+```{r}
+bican_recon <- AddMetaData(bican_recon, metadata = mmc_bican_recon_result)
+bican_recon@meta.data
+
+DimPlot(bican_recon, group.by = "cell_class_annot", label = T, raster = F)
+DimPlot(bican_recon, group.by = "reclustered_patch_matrix_exotic", label = T, raster = F)
+ DimPlot(bican_recon, group.by = "Class_label_name", label = T, raster = F)
+ DimPlot(bican_recon, group.by = "Subclass_label_name", label = T, raster = F)
+ DimPlot(bican_recon, group.by = "Group_label_name", label = T, raster = F)
+```
+
+```{r}
+a = DimPlot(bican_recon, group.by = "Class_label_name", label = T, raster = F)
+ggsave(a, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_bican_recon/BICAN_Recon_class_labels.png", width = 12, height = 8)
+
+b = DimPlot(bican_recon, group.by = "Subclass_label_name", label = T, raster = F)
+ggsave(b, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_bican_recon/BICAN_Recon_subclass_labels.png", width = 16, height =8)
+
+c = DimPlot(bican_recon, group.by = "Group_label_name", label = T, raster = F)
+ggsave(c, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_bican_recon/BICAN_Recon_group_labels.png", width = 20, height = 10)
+```
+
+```{r}
+d=ggplot(bican_recon@meta.data, aes(x = x_um, y = y_um, color = Class_label_name)) + geom_point(alpha = 0.6) + facet_wrap(~ Group_label_name)
+ggsave(d, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_bican_recon/d.png", width = 15, height = 10)
+```
+
+```{r}
+qsave(bican_recon, "/broad/macosko/kimkathl/bican_recon_apr2025_sct_mask.qs")
+```
+
+
+
+#XDP RECON
+```{r}
+xdp_recon = qread("/broad/macosko/kimkathl/xdp_recon_apr2025_sct_mask.qs")
+xdp_recon
+xdp_recon@meta.data
+
+Idents(xdp_recon) = "new_final_cell_class"
+```
+
+
+```{r}
+DefaultAssay(xdp_recon) <- "RNA"
+
+# Keep only the RNA assay
+# if seurat object version is 5 or later, counts is accessed with $, 4 or earlier with @
+
+if (xdp_recon@version >= 5) {
+    xdp_recon[["RNA"]] <- CreateAssayObject(counts = xdp_recon@assays$RNA$counts)
+} else {
+    xdp_recon[["RNA"]] <- CreateAssayObject(counts = xdp_recon@assays$RNA@counts)
+}
+
+
+# Remove all other assays
+xdp_recon@assays <- list(RNA = xdp_recon[["RNA"]])
+
+# Ensure metadata is properly aligned
+if (!all(rownames(xdp_recon@meta.data) == colnames(xdp_recon))) {
+    stop("Cell names in meta.data do not match counts matrix! Check alignment.")
+}
+
+# Save the cleaned Seurat object
+SaveH5Seurat(xdp_recon, filename = "xdp_recon.h5Seurat", overwrite = TRUE)
+
+# Convert to H5AD
+Convert("xdp_recon.h5Seurat", dest = "h5ad", overwrite = TRUE)
+```
+
+#running slurm script
+```{r}
+nano xdpr_submit_mapmycells.slurm
+sbatch xdpr_submit_mapmycells.slurm
+
+#!/bin/bash
+#SBATCH --job-name=mapmycells
+#SBATCH --output=mapmycells_%j.out
+#SBATCH --error=mapmycells_%j.err
+#SBATCH --time=02:00:00              # adjust as needed
+#SBATCH --mem=250G                    # adjust memory based on your data
+#SBATCH --cpus-per-task=12
+#SBATCH --partition=disco   # replace with your cluster's partition
+
+# Load conda or module environment if needed
+source ~/.bashrc
+conda activate your_env_name
+
+# Run your script
+bash  /broad/macosko/kimkathl/XDP/QC_and_Clustering/run_mapmycells.sh \
+  -r /broad/macosko/kimkathl/XDP/QC_and_Clustering/HMBA_Human_BG_082024_AIT.h5ad \
+  -q /broad/macosko/kimkathl/XDP/QC_and_Clustering/xdp_recon.h5ad \
+  -o /broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_recon \
+  -c
+
+```
+
+
+
+```{r}
+#mapping_output doesn't have labels, just id numbers
+mapping_output_xdp_recon = read.csv(file = "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_recon/mapping_output.csv", skip = 3)
+mapping_output_xdp_recon
+
+mmc_xdp_recon_result = select(mapping_output_xdp_recon, c("cell_id","Class_label_name", "Class_label_bootstrapping_probability", "Subclass_label_name", "Subclass_label_bootstrapping_probability", "Group_label_name", "Group_label_bootstrapping_probability", "Cluster_label_name", "Cluster_label_bootstrapping_probability"))
+
+rownames(mmc_xdp_recon_result) = mmc_xdp_recon_result$cell_id
+mmc_xdp_recon_result
+```
+
+```{r}
+xdp_recon <- AddMetaData(xdp_recon, metadata = mmc_xdp_recon_result)
+xdp_recon@meta.data
+
+DimPlot(xdp_recon, group.by = "new_final_cell_class", label = T, raster = F)
+DimPlot(xdp_recon, group.by = "new_reclustered_patch_matrix_exotic", label = T, raster = F)
+ DimPlot(xdp_recon, group.by = "Class_label_name", label = T, raster = F)
+ DimPlot(xdp_recon, group.by = "Subclass_label_name", label = T, raster = F)
+ DimPlot(xdp_recon, group.by = "Group_label_name", label = T, raster = F)
+```
+
+```{r}
+a = DimPlot(xdp_recon, group.by = "Class_label_name", label = T, raster = F)
+ggsave(a, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_recon/XDP_Recon_class_labels.png", width = 12, height = 8)
+
+b = DimPlot(xdp_recon, group.by = "Subclass_label_name", label = T, raster = F)
+ggsave(b, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_recon/XDP_Recon_subclass_labels.png", width = 16, height =8)
+
+c = DimPlot(xdp_recon, group.by = "Group_label_name", label = T, raster = F)
+ggsave(c, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_recon/XDP_Recon_group_labels.png", width = 20, height = 10)
+```
+
+```{r}
+d=ggplot(xdp_recon@meta.data, aes(x = x_um, y = y_um, color = Class_label_name)) + geom_point(alpha = 0.6) + facet_wrap(~ Group_label_name)
+ggsave(d, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_recon/d.png", width = 15, height = 10)
+```
+
+```{r}
+qsave(xdp_recon, "/broad/macosko/kimkathl/xdp_recon_apr2025_sct_mask.qs")
+```
+
+
+
+
+
+#Cohort 1 and 2 FULL
+```{r}
+xdp_cohort1_2 = qread("/broad/macosko/kimkathl/XDP_Cohorts_1_2_full_032825.qs")
+xdp_cohort1_2
+xdp_cohort1_2@meta.data
+
+Idents(xdp_cohort1_2) = "final_cell_class_merged_harmony"
+```
+
+
+```{r}
+DefaultAssay(xdp_cohort1_2) <- "RNA"
+
+# Keep only the RNA assay
+# if seurat object version is 5 or later, counts is accessed with $, 4 or earlier with @
+
+if (xdp_cohort1_2@version >= 5) {
+    xdp_cohort1_2[["RNA"]] <- CreateAssayObject(counts = xdp_cohort1_2@assays$RNA$counts)
+} else {
+    xdp_cohort1_2[["RNA"]] <- CreateAssayObject(counts = xdp_cohort1_2@assays$RNA@counts)
+}
+
+
+# Remove all other assays
+xdp_cohort1_2@assays <- list(RNA = xdp_cohort1_2[["RNA"]])
+
+# Ensure metadata is properly aligned
+if (!all(rownames(xdp_cohort1_2@meta.data) == colnames(xdp_cohort1_2))) {
+    stop("Cell names in meta.data do not match counts matrix! Check alignment.")
+}
+
+# Save the cleaned Seurat object
+SaveH5Seurat(xdp_cohort1_2, filename = "xdp_cohort1_2.h5Seurat", overwrite = TRUE)
+
+# Convert to H5AD
+Convert("xdp_cohort1_2.h5Seurat", dest = "h5ad", overwrite = TRUE)
+```
+
+#running slurm script
+```{r}
+nano xdp_submit_mapmycells.slurm
+sbatch xdp_submit_mapmycells.slurm
+
+#!/bin/bash
+#SBATCH --job-name=mapmycells
+#SBATCH --output=mapmycells_%j.out
+#SBATCH --error=mapmycells_%j.err
+#SBATCH --time=03:00:00              # adjust as needed
+#SBATCH --mem=128G                    # adjust memory based on your data
+#SBATCH --cpus-per-task=12
+#SBATCH --partition=disco   # replace with your cluster's partition
+
+# Load conda or module environment if needed
+source ~/.bashrc
+conda activate your_env_name
+
+# Run your script
+bash /broad/macosko/kimkathl/XDP/QC_and_Clustering/run_mapmycells.sh \
+  -r /broad/macosko/kimkathl/XDP/QC_and_Clustering/HMBA_Human_BG_082024_AIT.h5ad \
+  -q /broad/macosko/kimkathl/XDP/QC_and_Clustering/xdp_cohort1_2.h5ad \
+  -o /broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_cohort1_2 \
+  -c
+
+```
+
+```{r}
+#mapping_output doesn't have labels, just id numbers
+mapping_output_xdp = read.csv(file = "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_cohort1_2/mapping_output.csv", skip = 3)
+mapping_output_xdp
+```
+
+```{r}
+mmc_co1_2_result = select(mapping_output_xdp, c("cell_id","Class_label_name", "Class_label_bootstrapping_probability", "Subclass_label_name", "Subclass_label_bootstrapping_probability", "Group_label_name", "Group_label_bootstrapping_probability", "Cluster_label_name", "Cluster_label_bootstrapping_probability"))
+
+rownames(mmc_co1_2_result) = mmc_co1_2_result$cell_id
+mmc_co1_2_result
+
+xdp_cohort1_2 <- AddMetaData(xdp_cohort1_2, metadata = mmc_co1_2_result)
+xdp_cohort1_2@meta.data
+```
+
+```{r}
+DimPlot(xdp_cohort1_2, group.by = "final_cell_class_merged_harmony", label = T, raster = F)
+ DimPlot(xdp_cohort1_2, group.by = "Class_label_name", label = T, raster = F)
+ DimPlot(xdp_cohort1_2, group.by = "Subclass_label_name", label = T, raster = F)
+ DimPlot(xdp_cohort1_2, group.by = "Group_label_name", label = T, raster = F)
+```
+
+```{r}
+a = DimPlot(xdp_cohort1_2, group.by = "Class_label_name", label = T, raster = F)
+ggsave(a, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_cohort1_2/XDP_CO1_2_class_labels.png", width = 12, height = 8)
+
+b = DimPlot(xdp_cohort1_2, group.by = "Subclass_label_name", label = T, raster = F)
+ggsave(b, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_cohort1_2/XDP_CO1_2_subclass_labels.png", width = 16, height =8)
+
+c = DimPlot(xdp_cohort1_2, group.by = "Group_label_name", label = T, raster = F)
+ggsave(c, filename= "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_cohort1_2/XDP_CO1_2_group_labels.png", width = 20, height = 10)
+```
+
+```{r}
+qsave(xdp_cohort1_2, "/broad/macosko/kimkathl/XDP_Cohorts_1_2_full_032825.qs")
+```
+
+
+```{r}
+mapping_output_cohort1_2_neurons
+mapping_output_xdp
+```
+
+```{r}
+test = merge(mapping_output_cohort1_2_neurons, mapping_output_xdp, by = "cell_id")
+test
+```
+```{r}
+test$match <- test$Class_label_label.x == test$Class_label_label.y
+
+# Summary of match results
+table(test$match)
+```
+
+```{r}
+rownames(mapping_output_cohort1_2_neurons) = mapping_output_cohort1_2_neurons$cell_id
+rownames(mapping_output_xdp) = mapping_output_xdp$cell_id
+```
+
+
+```{r}
+common_ids <- intersect(rownames(mapping_output_cohort1_2_neurons), rownames(mapping_output_xdp))
+# Compare values (assuming same column, e.g., 'cell_type')
+identical_cells <- mapping_output_cohort1_2_neurons[common_ids, "Group_label_name"] == mapping_output_xdp[common_ids, "Group_label_name"]
+
+# Summary
+table(identical_cells)
+
+
+# Get the IDs where the class labels don't match
+mismatched_ids <- common_ids[!identical_cells]
+
+# Create a comparison table showing both labels
+mismatch_df <- data.frame(
+  cell_id = mismatched_ids,
+  cohort1_2_label = mapping_output_cohort1_2_neurons[mismatched_ids, "Group_label_name"],
+  xdp_label = mapping_output_xdp[mismatched_ids, "Group_label_name"]
+)
+
+# View the first few mismatches
+mismatch_df
+```
+
+
