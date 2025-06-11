@@ -1,0 +1,774 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+.sconline.MASCfn = function(
+    dataset, 
+    cluster, 
+    contrast, 
+    random_effects = NULL, 
+    fixed_effects = NULL,
+    verbose = TRUE, 
+    jackknife=F,
+    statistical.test="Wald") {
+  
+  
+  #Adapted from Fonseka et al. PMID: 30333237
+  
+  # Check inputs
+  require(lme4)
+  if (is.factor(dataset[[contrast]]) == FALSE & is.numeric(dataset[[contrast]]) == FALSE) {
+    stop("Specified contrast term should be coded as a factor or numeric in the dataset")
+  }
+  
+  match.arg(statistical.test,c("LRT","Wald"))
+  
+  
+  # Convert cluster assignments to string
+  cluster = as.character(cluster)
+  # Prepend design matrix generated from cluster assignments
+  designmat = model.matrix(~ cluster + 0, data.frame(cluster = cluster))
+  dataset = cbind(designmat, dataset)
+  # Create output list to hold results
+  res = vector(mode = "list", length = length(unique(cluster)))
+  names(res) = attributes(designmat)$dimnames[[2]]
+  
+  # Create model formulas
+  if (!is.null(fixed_effects) && !is.null(random_effects)) {
+    model_rhs = paste0(c(paste0(fixed_effects, collapse = " + "),
+                          paste0("(1|", random_effects, ")", collapse = " + ")),
+                        collapse = " + ")
+    if (verbose == TRUE & statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+    }
+  } else if (!is.null(fixed_effects) && is.null(random_effects)) {
+    model_rhs = paste0(fixed_effects, collapse = " + ")
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+      # For now, do not allow models without mixed effects terms
+      
+    }
+    stop("No random effects specified")
+  } else if (is.null(fixed_effects) && !is.null(random_effects)) {
+    model_rhs = paste0("(1|", random_effects, ")", collapse = " + ")
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+    }
+  } else {
+    model_rhs = "1" # only includes intercept
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+      
+    }
+    stop("No random or fixed effects specified")
+  }
+  
+  # Initialize list to store model objects for each cluster
+  cluster_models = vector(mode = "list",
+                           length = length(attributes(designmat)$dimnames[[2]]))
+  names(cluster_models) = attributes(designmat)$dimnames[[2]]
+  
+  # Run nested mixed-effects models for each cluster
+  for (i in seq_along(attributes(designmat)$dimnames[[2]])) {
+    test_cluster = attributes(designmat)$dimnames[[2]][i]
+    if (verbose == TRUE) {
+      message(paste("Creating logistic mixed models for", test_cluster))
+    }
+    null_fm = as.formula(paste0(c(paste0(test_cluster, " ~ 1 + "),
+                                   model_rhs), collapse = ""))
+    full_fm = as.formula(paste0(c(paste0(test_cluster, " ~ ", contrast, " + "),
+                                   model_rhs), collapse = ""))
+
+    if (verbose == TRUE) {
+      message(paste("Null model:", null_fm))
+      message(paste("Full model:", full_fm))
+    }
+    
+    # Run null and full mixed-effects models
+    full_model = lme4::glmer(formula = full_fm, data = dataset,
+                              family = binomial, nAGQ = 1, verbose = 0,
+                              control = glmerControl(optimizer = "bobyqa"))
+    
+    
+    # calculate confidence intervals for contrast term beta
+    if(is.factor(dataset[[contrast]])){
+      contrast_lvl2 = paste0(contrast, levels(dataset[[contrast]])[2])
+      
+    } else {
+      contrast_lvl2 = contrast
+    }
+    
+    contrast_ci = confint.merMod(full_model, method = "Wald",
+                                  parm = contrast_lvl2)
+    
+    
+    if(statistical.test=="Wald"){
+      pval=summary(full_model)
+      
+      pval=pval$coefficients[contrast_lvl2,4]
+    } else {
+      null_model = lme4::glmer(formula = null_fm, data = dataset,
+                                family = binomial, nAGQ = 1, verbose = 0,
+                                control = glmerControl(optimizer = "bobyqa"))
+      model_lrt = anova(null_model, full_model)
+      pval=model_lrt[["Pr(>Chisq)"]][2]
+    }
+    
+    # Save model objects to list
+    cluster_models[[i]]$confint = contrast_ci
+    cluster_models[[i]]$pval = pval
+    cluster_models[[i]]$full_model = full_model
+    
+    #jackknifing
+    jk_pvalvec=c()
+    jk_coefvec=c()
+    jk_stable=1
+    if(jackknife){
+      for(ibatch in unique(dataset[,random_effects])){
+        tmp_dataset=dataset[which(dataset[,random_effects]!=ibatch),]
+        
+        jk_full_model = tryCatch({lme4::glmer(formula = full_fm, data = tmp_dataset,
+                                               family = binomial, nAGQ = 1, verbose = 0,
+                                               control = glmerControl(optimizer = "bobyqa"))},error=function(e){return(F)})
+        
+        if(class(jk_full_model)!=class(T)){
+          jk_coefvec=c(jk_coefvec,fixef(jk_full_model)[[contrast_lvl2]])
+          if(statistical.test=="Wald"){
+            tmp_pval=summary(jk_full_model)
+            tmp_pval=tmp_pval$coefficients[contrast_lvl2,4]
+            jk_pvalvec=c(jk_pvalvec,tmp_pval)
+          } else {
+            jk_null_model = tryCatch({lme4::glmer(formula = null_fm, data = tmp_dataset,
+                                                   family = binomial, nAGQ = 1, verbose = 0,
+                                                   control = glmerControl(optimizer = "bobyqa"))},error=function(e) {return(F)})
+            
+            if(class(jk_null_model)!=class(T)){
+              jk_model_lrt = anova(jk_null_model, jk_full_model)
+              # calculate confidence intervals for contrast term beta
+              jk_pvalvec=c(jk_pvalvec,jk_model_lrt[["Pr(>Chisq)"]][2])
+            } else {
+              jk_stable=0
+            }
+          }
+          
+        } else {
+          jk_stable=0
+        }
+        
+      }
+    } else {
+      jk_pvalvec=(-1)
+      jk_coefvec=(-1)
+    }
+    
+    cluster_models[[i]]$jk_pval_median = median(jk_pvalvec)
+    cluster_models[[i]]$jk_pval_mean = mean(jk_pvalvec)
+    cluster_models[[i]]$jk_pval_max = max(jk_pvalvec)
+    
+    cluster_models[[i]]$jk_coef_median = median(jk_coefvec)
+    cluster_models[[i]]$jk_coef_mean = mean(jk_coefvec)
+    cluster_models[[i]]$jk_stable = jk_stable
+    cluster_models[[i]]$jk_coef_min = jk_coefvec[which(abs(jk_coefvec)==min(abs(jk_coefvec)))[1]]
+  }
+  
+  # Organize results into output dataframe
+  output = data.frame(cluster = attributes(designmat)$dimnames[[2]],
+                       size = colSums(designmat))
+  output$model.pvalue = sapply(cluster_models, function(x) x$pval)
+  output[[paste(contrast_lvl2, "OR", sep = ".")]] = sapply(cluster_models, function(x) exp(fixef(x$full)[[contrast_lvl2]]))
+  output[[paste(contrast_lvl2, "OR", "95pct.ci.lower", sep = ".")]] = sapply(cluster_models, function(x) exp(x$confint[contrast_lvl2, "2.5 %"]))
+  output[[paste(contrast_lvl2, "OR", "95pct.ci.upper", sep = ".")]] = sapply(cluster_models, function(x) exp(x$confint[contrast_lvl2, "97.5 %"]))
+  output[[paste(contrast_lvl2,"JK","Min", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_min==(-1)){-1} else{exp(x$jk_coef_min)}})
+  output[[paste(contrast_lvl2,"JK","Mean", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_mean==(-1)){-1} else {exp(x$jk_coef_mean)}})
+  output[[paste(contrast_lvl2,"JK","Median", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_median==(-1)){-1} else {exp(x$jk_coef_median)}})
+  output[[paste(contrast_lvl2,"JK","Max", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_max==(-1)){-1} else {x$jk_pval_max}})
+  output[[paste(contrast_lvl2,"JK","Mean", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_mean==(-1)){-1} else {x$jk_pval_mean}})
+  output[[paste(contrast_lvl2,"JK","Median", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_median==(-1)){-1} else {x$jk_pval_median}})
+  output[[paste(contrast_lvl2,"JK","Stable", sep = ".")]] = sapply(cluster_models, function(x) x$jk_stable)
+  
+  return(output)
+}
+
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+
+getCommonStrings <- function(list_of_lists, n) {
+  # Create an empty list to store string occurrences
+  string_occurrences <- list()
+
+  # Iterate over each sublist
+  for (sublist in list_of_lists) {
+    # For each string in the sublist, increment its count in string_occurrences
+    for (string in unique(sublist)) {
+      if (!is.null(string_occurrences[[string]])) {
+        string_occurrences[[string]] <- string_occurrences[[string]] + 1
+      } else {
+        string_occurrences[[string]] <- 1
+      }
+    }
+  }
+
+  # Filter the strings that occur at least n times
+  common_strings <- names(string_occurrences)[string_occurrences >= n]
+
+  return(common_strings)
+}
+
+getSeuratVarFeatureIntersectByCol = function(
+   seurat_obj,
+   subset_col,
+   original_nfeatures,
+   n_subsets_to_cover=NULL
+){
+  
+   hvgs = list()
+
+
+   unique_ids = unique(seurat_obj@meta.data[[subset_col]])
+
+
+   if (is.null(n_subsets_to_cover)){
+       n_subsets_to_cover = floor(length(unique_ids)/2)
+   }
+
+
+   i=1
+   for (id in unique_ids) {
+       print(paste("Subset", id, "--", i, "of", length(unique_ids)))
+       i = i + 1
+      
+       seurat_subset = seurat_obj[, seurat_obj[[subset_col]] == id]
+      
+       if (ncol(seurat_subset) < 2){next}
+      
+       suppressWarnings({
+           seurat_subset = FindVariableFeatures(
+               seurat_subset, nfeatures=original_nfeatures, verbose = FALSE)
+       })
+      
+       hvgs[[id]] = getSeuratVarFeatures(seurat_subset)
+      
+   }
+
+
+   common_hvgs = getCommonStrings(hvgs, n_subsets_to_cover)
+   print(paste("Number of HVGs in common across", n_subsets_to_cover, "--", length(common_hvgs)))
+
+
+   return(common_hvgs)
+}
+
+getSeuratVarFeatures = function(sobj){
+    # the magical incantation that returns the slot of the attribute of the slot that actually holds the list of variable feature -_-
+    return(sobj@assays$RNA@var.features)
+}
+
+histograms_by_all_celltype = function(final_df, score_col, xlab, width_size, height_size){
+
+celltypes = c("astrocyte", "microglia", "oligo", "opc", "endothelial","immune", "ependymal", "non_SPN", "eSPN", "SPN_matrix", "SPN_patch", "SPN_exotic")
+
+# celltypes = unique(xdp_meta[["neuron_classes"]])  
+plots <- list()
+
+for (celltype in celltypes) {
+  df_sub = final_df[final_df$neuron_classes == celltype, ]
+   
+  if (nrow(df_sub) == 0) {
+    message(paste("No data for cell type:", celltype, "- skipping."))
+    next
+  }
+  
+min = min(df_sub[[score_col]])
+max = max(df_sub[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+  
+  a = plot_overlapping_density_histogram(df = df_sub, 
+                                          hist_col = df_sub[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = paste0("XDP vs Control: ", celltype),
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+    plots[[celltype]] = a
+  
+}
+
+final_plot <- plot_grid(plotlist = plots, ncol = 4)
+
+# Display or save the final plot
+print(final_plot)  # Display
+ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+
+
+histograms_by_celltype = function(final_df, score_col, xlab, width_size, height_size){
+
+  
+min = min(final_df[[score_col]])
+max = max(final_df[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+matrix <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  a = plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+patch <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_patch", ]
+  b= plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+  nonSPN <- final_df[final_df$reclustered_patch_matrix_exotic == "non-SPN", ]
+ c=  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+
+    eSPN <- final_df[final_df$reclustered_patch_matrix_exotic == "eSPN", ]
+  d= plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: eSPN",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+      exotic <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_exotic", ]
+  e= plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN exotic patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+   
+ D1D2 <- final_df[final_df$reclustered_patch_matrix_exotic == "D1_D2", ]
+  f= plot_overlapping_density_histogram(df = D1D2, 
+                                          hist_col = D1D2[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: D1_D2",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+print(a)
+print(b)
+print(e)
+print(c)
+print(d)
+print(f)
+
+pic = a + b + c + d + e + f + plot_layout(ncol = 6)
+ggsave(filename = "pic.png", plot = pic, width = width_size, height = height_size, dpi = 300)
+}
+
+histograms_by_donor <- function(final_df, score_col, celltype, xlab, width_size, height_size) {
+  donor_order <- c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", 
+                   "SCF-19-009", "SCF-19-014", "SCF-19-018", "SCF-20-023", "SCF_20-024", 
+                   "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF-22-054CM", "SCF-22-058CF", 
+                   "SCF_21-037CM2", "SCF-23-068CM")
+  
+  plots <- list()
+  
+  final_df_cellclass = subset(final_df, subset = neuron_classes == celltype)
+  
+     min_val <- min(final_df_cellclass[[score_col]], na.rm = TRUE)
+    max_val <- max(final_df_cellclass[[score_col]], na.rm = TRUE)
+    step <- (max_val - min_val) / 100
+    limits <- seq(min_val, max_val, step)
+    
+  for (donor in donor_order) {
+    df_sub <- final_df_cellclass[final_df_cellclass$donor_id == donor, ]
+    
+    if (nrow(df_sub) == 0) {
+      message(paste("No data for donor:", donor, "- skipping."))
+      next
+    }
+    
+    
+    cell_count <- nrow(df_sub)
+    
+    a <- plot_overlapping_density_histogram(
+      df = df_sub, 
+      hist_col = df_sub[[score_col]],
+      fill_col = "Condition",
+      colors = c("XDP" = "red", "Control" = "blue", "BICAN_V8" = "green", 
+                 "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+      breaks = limits,
+      title = paste0(donor, ": ", celltype, " (Cells: ", cell_count, ")"),
+      xlab = xlab,
+      fig_filename = NULL
+    )
+    
+    plots[[donor]] <- a
+  }
+  
+  final_plot <- plot_grid(plotlist = plots, ncol = 5)
+  
+  print(final_plot)  
+  ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+
+mergeSeuratLayers <- function(obj_list, project_name = "MergedProject") {
+  # Merge the Seurat objects without merging the data layers first
+  merged_obj <- merge(obj_list[[1]], y = obj_list[-1], project = project_name, merge.data = FALSE)
+  
+  # Manually merge counts, data, and scale.data layers
+  merged_obj[["counts"]] <- do.call(cbind, lapply(obj_list, function(x) x[["counts"]]))
+  merged_obj[["data"]] <- do.call(cbind, lapply(obj_list, function(x) x[["data"]]))
+  merged_obj[["scale.data"]] <- do.call(cbind, lapply(obj_list, function(x) x[["scale.data"]]))
+  
+  return(merged_obj)
+}
+
+mergeSeuratListWithMetadata = function(seurat_obj_list, cell_ids=NULL, project=NULL){
+
+    # Harmonize metadata columns
+    all_colnames = unique(unlist(lapply(seurat_obj_list, function(x) colnames(x@meta.data))))
+    seurat_obj_list = lapply(seurat_obj_list, function(x) {
+        missing_cols = setdiff(all_colnames, colnames(x@meta.data))
+        if(length(missing_cols) > 0){
+            x@meta.data[missing_cols] = NA
+        }
+        return(x)
+    })
+
+    if (is.null(project)){
+        project = "merged"
+    }
+    
+    if (is.null(cell_ids)){
+        seurat_merged = Reduce(function(x, y) merge(x, y, project=project), 
+            seurat_obj_list)
+    } else {
+        seurat_merged = Reduce(function(x, y) merge(x, y, project=project, add.cell.ids=cell_ids), 
+            seurat_obj_list)
+    }
+    
+    md = lapply(seurat_obj_list, function(x){
+        x@meta.data$orig.row.names = rownames(x@meta.data)
+        x@meta.data
+    })
+    
+    md = do.call(rbind, md)
+    rownames(md) = md$orig.row.names
+    md$orig.row.names = NULL
+    seurat_merged@meta.data = md
+    return(seurat_merged)
+}
+mergeSeuratObjects <- function(obj_list, project_name = "RECON") {
+  # Initialize the merged object with the first object in the list
+  merged_obj <- obj_list[[1]]
+  
+  # Loop through the rest of the objects and merge them with the merged object
+  for (i in 2:length(obj_list)) {
+    merged_obj <- merge(
+      merged_obj,
+      obj_list[[i]],
+      merge.data = TRUE, # Ensures that the data layer is merged
+      merge.scale.data = TRUE, # Ensures that the scale.data layer is merged
+      project = project_name
+    )
+  }
+  
+  return(merged_obj)
+}
+plot_overlapping_density_histogram = function(
+  
+    df, 
+    hist_col,
+    fill_col,
+    colors = c("blue", "red"),
+    alpha=0.5,
+    breaks=seq(0, 16, 1),
+    title= NULL,
+    xlab = NULL,
+    fig_filename = NULL
+
+){
+    # hist_col is the column you're making a histogram of (e.g. nUMI)
+    # fill_col is the column you're coloring by (e.g. cell_class)
+    # if fig_filename is not null, the plot will be saved to that file
+     
+    if (is.null(xlab)){
+        xlab = hist_col
+    }
+
+    if (is.null(title)){
+        title = paste0("Density Histogram of ", xlab, " by ", fill_col)
+    }
+
+
+    p = (
+        ggplot(df, aes_string(x=hist_col, fill=fill_col)) 
+        + geom_histogram(aes(y=..density..), alpha=alpha, position="identity", breaks=breaks)
+        + labs(title=title, x=xlab, y="Density")    
+        + theme(
+                plot.title = element_text(size=16),
+                axis.line = element_line(color = "black"),  # Add axis lines
+                axis.ticks = element_line(color = "black"),  # Add axis ticks
+                axis.text = element_text(size = 14),  # Increase tick label font size
+                axis.title = element_text(size = 15)  # Increase axis label font size
+            ) 
+        + scale_fill_manual(values=colors)   
+    )
+
+    if (!is.null(fig_filename)){
+        ggsave(fig_filename, p, width=8, height=6)
+    }
+
+    return(p)
+}
+printMarkersByCluster = function(marker_df, marker_tsv="all_markers.tsv", cluster=NULL){
+   broad_markers = read.table(marker_tsv, header = TRUE, sep = "\t")
+   broad_markers$Gene = toupper(broad_markers$Gene)
+
+
+   broad_markers['broad_class'] = NA
+   broad_markers$broad_class[grepl('microglia', tolower(broad_markers$pattern))] = 'microglia'
+   broad_markers$broad_class[grepl('neuron', tolower(broad_markers$pattern))] = 'neuron'
+   broad_markers$broad_class[grepl('astrocyte', tolower(broad_markers$pattern))] = 'astrocyte'
+   broad_markers$broad_class[grepl('oligodendrocyte', tolower(broad_markers$pattern))] = 'oligo'
+   broad_markers$broad_class[grepl('endothelial', tolower(broad_markers$pattern))] = 'endo'
+   broad_markers$broad_class[grepl('mural', tolower(broad_markers$pattern))] = 'endo'
+   broad_markers$broad_class[grepl('fibro', tolower(broad_markers$pattern))] = 'fibroblast'
+   broad_markers$broad_class[grepl('ependymal', tolower(broad_markers$pattern))] = 'ependymal' 
+   broad_markers$broad_class[grepl('opc', tolower(broad_markers$pattern))] = 'opc'
+   broad_markers$broad_class[grepl('polydendro', tolower(broad_markers$pattern))] = 'opc'
+   broad_markers$broad_class[grepl('b_cell', tolower(broad_markers$pattern))] = 'immune'
+   broad_markers$broad_class[grepl('t_cell', tolower(broad_markers$pattern))] = 'immune'
+   broad_markers$broad_class[grepl('neutro', tolower(broad_markers$pattern))] = 'immune'
+   broad_markers$broad_class[grepl('nk_cell', tolower(broad_markers$pattern))] = 'immune'
+   broad_markers = broad_markers[!is.na(broad_markers$broad_class), c('Gene', 'broad_class')]
+
+
+   broad_markers_ordered = broad_markers[order(broad_markers$broad_class),]
+
+
+   # Merge broad_markers_ordered with markers
+   broad_markers_ordered = merge(
+       broad_markers_ordered, marker_df, by.x = "Gene", by.y="gene", all.x = TRUE)
+
+
+   # Order by broad_class and cluster
+   broad_markers_ordered = broad_markers_ordered[
+       order(broad_markers_ordered$broad_class,
+       broad_markers_ordered$Gene, broad_markers_ordered$cluster),]
+
+
+   if (!is.null(cluster)){
+       broad_markers_ordered = broad_markers_ordered[broad_markers_ordered$cluster == cluster,]
+       broad_markers_ordered = broad_markers_ordered[complete.cases(broad_markers_ordered),]
+   }
+   broad_markers_ordered$pct.1 = round(broad_markers_ordered$pct.1, 2)
+   broad_markers_ordered$pct.2 = round(broad_markers_ordered$pct.2, 2)
+   broad_markers_ordered$avg_log2FC = round(broad_markers_ordered$avg_log2FC, 2)
+   print(broad_markers_ordered[,
+       c("Gene", "broad_class", "cluster", "avg_log2FC", "pct.1", "pct.2")], row.names=FALSE)
+}
+ranked_genes_scores = function(sobj, scorecol, genelist, scorename) {
+  
+  # Subset the Seurat object to include only the desired cell type
+  subset_sobj <- subset(sobj, subset = reclustered_patch_matrix_exotic == "SPN_matrix")
+  
+  # Fetch the UCell scores and gene expression data
+  scores <- FetchData(subset_sobj, vars = scorecol)  # replace with the actual name of the score column
+  gene_expression <- FetchData(subset_sobj, vars = genelist)  # gene_list contains your gene names
+  
+  # Calculate the correlation between each gene's expression and the UCell scores
+  correlation_results <- cor(gene_expression, scores, use = "pairwise.complete.obs")  # Handle missing data
+
+  # Create a data frame of contributions
+  contribution <- as.data.frame(correlation_results)
+  contribution$genes <- rownames(contribution)
+  
+  # Sort by correlation values (if desired)
+  contribution <- contribution[order(-abs(contribution[[1]])), ]  # Sort by absolute correlation values
+  
+  # Create a bar plot of gene contributions
+  plot <- ggplot(contribution, aes(x = reorder(genes, -V1), y = V1)) +  # Use -V1 to sort in descending order
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(title = "Gene Contribution to UCell Score", 
+         x = paste0(scorename, " Genes"), 
+         y = paste0("Correlation with ", scorename, " Score")) +
+    theme_minimal()  # Optional: add a minimal theme for better aesthetics
+
+  # Save the plot
+  ggsave(filename = "gene_contribution_plot.png", plot = plot, width = 5, height = 10)
+  
+  return(contribution)  # Optionally return the contribution data frame for further analysis
+}
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+
+spatial_gene_exp_plot = function(gene_of_interest, seurat_object, cluster, type, wid, hei){
+
+metadata_df = seurat_object@meta.data
+metadata_df$cell_ids = rownames(metadata_df)
+
+#replace seurat_obj here
+gene_df = as.data.frame(FetchData(seurat_object, vars = gene_of_interest))
+gene_df$cell_ids = rownames(gene_df)
+
+df_final = merge(metadata_df, gene_df, by = "cell_ids" )
+df_final
+
+#Replace GENE with gene name
+pic = ggplot(df_final, aes(x = x_um, y = y_um, color = df_final[[gene_of_interest]])) + 
+  geom_point(size = 0.4) + 
+  scale_color_viridis_c(option = "magma", name = "Expression", direction = -1) + 
+  labs(color = "Expression") +
+  theme_void() + 
+  facet_wrap(as.formula(paste("~", cluster))) + 
+  ggtitle(paste0(" ", gene_of_interest, ", ", type)) +
+  theme(
+    plot.title = element_text(size = 40),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.text = element_text(size = 24),  
+    legend.title = element_text(size = 26)
+  ) + 
+  ylab(NULL)
+
+ggsave(pic, filename = "pic.png", width = wid, height = hei)
+}
+spatial_scores = function(metadata, column, title, updown = -1){
+a = ggplot(metadata, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size =0.4) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ final_cell_class)
+
+metadata_neurons = subset(metadata, subset = final_cell_class == "neuron")
+b = ggplot(metadata_neurons, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size = 0.4) + ggtitle(paste0(" ", title, " Scores"))+ scale_color_viridis_c(option = "magma", name = "Expression", direction = updown)+   labs(paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ reclustered_patch_matrix_exotic)
+
+ggsave(a, filename = "pic1.png", width = 12, height = 10)
+ggsave(b, filename = "pic2.png", width = 12, height = 7)
+}
+standardize_layers <- function(seurat_obj) {
+  # Rename all layers to a standard set of names
+  DefaultAssay(seurat_obj) <- "RNA"
+  seurat_obj[["RNA"]]@counts <- seurat_obj[[grep("counts", names(seurat_obj@assays$RNA@data))]][[1]]
+  seurat_obj[["RNA"]]@data <- seurat_obj[[grep("data", names(seurat_obj@assays$RNA@data))]][[1]]
+  seurat_obj[["RNA"]]@scale.data <- seurat_obj[[grep("scale.data", names(seurat_obj@assays$RNA@data))]][[1]]
+  
+  # Remove any other extra layers
+  seurat_obj <- DietSeurat(seurat_obj, counts = TRUE, data = TRUE, scale.data = TRUE, dimreducs = NULL)
+  
+  return(seurat_obj)
+}
+
+standardize_layers_v5 <- function(seurat_obj) {
+  # Set the active assay to RNA
+  DefaultAssay(seurat_obj) <- "RNA"
+  
+  # Access the RNA assay
+  assay_obj <- seurat_obj[["RNA"]]
+  
+  # Rename counts, data, and scale.data uniformly
+  assay_obj@counts <- assay_obj[[grep("counts", names(assay_obj))]][[1]]
+  assay_obj@data <- assay_obj[[grep("data", names(assay_obj))]][[1]]
+  assay_obj@scale.data <- assay_obj[[grep("scale.data", names(assay_obj))]][[1]]
+  
+  # Update the Seurat object with the modified assay
+  seurat_obj[["RNA"]] <- assay_obj
+  
+  # Reduce the object to only necessary layers
+  seurat_obj <- DietSeurat(seurat_obj, assays = "RNA", dimreducs = NULL)
+  
+  return(seurat_obj)
+}
+
+getSeuratVarFeatures = function(sobj){
+    rna_assay <- GetAssay(sobj, assay = "RNA")  # Explicitly get the assay
+    return(VariableFeatures(rna_assay))  # Use VariableFeatures() instead of direct slot access
+}
+
+```
+
+

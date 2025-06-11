@@ -1,0 +1,1319 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters = qread("temphome/RECON/clean_recon_sobj_with_neuron_subclusters_103124.qs")
+clean_recon_sobj_with_neuron_subclusters@meta.data
+clean_recon_sobj_with_neuron_subclusters
+```
+```{r}
+library(sctransform)
+clean_recon_sobj_with_neuron_subclusters = SCTransform(clean_recon_sobj_with_neuron_subclusters, vars.to.regress = "percent.mt", verbose = FALSE)
+clean_recon_sobj_with_neuron_subclusters
+```
+
+```{r}
+qsave(clean_recon_sobj_with_neuron_subclusters, "clean_recon_sobj_with_neuron_subclusters_sct.qs")
+```
+
+
+#HLA-A, B, C, F, B2M
+```{r}
+spatial_gene_exp_plot = function(gene_of_interest, seurat_object, cluster, type, wid, hei){
+
+metadata_df = seurat_object@meta.data
+metadata_df$cell_ids = rownames(metadata_df)
+
+#replace seurat_obj here
+gene_df = as.data.frame(FetchData(seurat_object, vars = gene_of_interest))
+gene_df$cell_ids = rownames(gene_df)
+
+df_final = merge(metadata_df, gene_df, by = "cell_ids" )
+df_final
+
+#Replace GENE with gene name
+pic = ggplot(df_final, aes(x = x_um, y = y_um, color = df_final[[gene_of_interest]])) + 
+  geom_point(size = 0.4) + 
+  scale_color_viridis_c(option = "magma", name = "Expression", direction = -1) + 
+  labs(color = "Expression") +
+  theme_void() + 
+  facet_wrap(as.formula(paste("~", cluster))) + 
+  ggtitle(paste0(" ", gene_of_interest, ", ", type)) +
+  theme(
+    plot.title = element_text(size = 40),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+    legend.text = element_text(size = 24),  
+    legend.title = element_text(size = 26)
+  ) + 
+  ylab(NULL)
+
+ggsave(pic, filename = "pic.png", width = wid, height = hei)
+}
+
+```
+
+```{r}
+spatial_gene_exp_plot(gene_of_interest = "FKBP5", seurat_object =Recon_neuron_new_clean_final, cluster = "reclustered_patch_matrix_exotic", type = "Neurons", wid = 18, hei = 10)
+```
+
+```{r}
+spatial_gene_exp_plot(gene_of_interest = "EPSTI1", seurat_object =clean_recon_sobj_with_neuron_subclusters , cluster = "final_cell_class",type = "All Cell Classes", wid = 13, hei = 10)
+```
+
+```{r}
+library(UCell)
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(HLA = c("HLA-A")),
+  name = '_A'
+)
+```
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(HLA = c("HLA-B")),
+  name = '_B'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(HLA = c("HLA-C")),
+  name = '_C'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(HLA = c("HLA-F")),
+  name = '_F'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(HLA = c("B2M")),
+  name = '_B2M'
+)
+```
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(HLA = c("HLA-A", "HLA-B", "HLA-C", "HLA-F","B2M")),
+  name = '_combined'
+)
+```
+
+
+
+```{r}
+antigen_processing_genes = c("CTSB", "CD74", "HSP90AA1", "KLRC3", "HSPA6", "HSPA5", "HSPA1L", "KLRC4", "HSPA8", "HSPA2", "TAP2", "HSPA4", "TAP1", "TAPBP", "CD4", "RFX5", "IFNG", "HSPA1A", "HLA-DRA", "HLA-DQB1", "KLRD1", "CALR", "HSPA1B", "TNF", "KIR2DL1", "KIR2DL2", "KIR2DL3", "KIR2DL4", "CTSS", "CTSL", "B2M", "HLA-DOB", "KIR2DL5A", "CIITA", "HLA-DQA2", "HLA-DOA", "HLA-DQA1", "PDIA3", "HLA-DRB5", 
+"KIR2DS1", "NFYB", "KIR2DS2", "NFYC", "KIR2DS3", "KIR2DS4", "KIR2DS5", "HLA-C", "RFXANK", 
+"KIR3DL1", "CD8B2", "KIR3DL2", "HLA-A", "HLA-B", "KIR3DL3", "HLA-G", "HLA-E", "HLA-F", "CREB1", "CD8B", "RFXAP", "CD8A", "CANX", "LGMN", "PSME2", "PSME3", "HLA-DPB1", "PSME1", "HLA-DRB4", 
+"HLA-DRB3", "HLA-DRB1", "HSP90AB1", "IFI30", "HLA-DMB", "HLA-DPA1", "KLRC1", "KLRC2", "NFYA","HLA-DMA")
+
+antigen_MHC1_genes =  c("TAP2", "TAP1", "LNPEP", "TAPBP", "PSMB9", "PSMC6", "PSMC4", "PSMC5", "PSMC2", "PSMC3", "CLEC4A", "CD207", "PSMC1", "NCF1", "CALR", "PSMD11", "PSMD10", "PSMD13", "PSMD12", 
+           "PSMD14", "SNAP23", "PSMB11", "PSMB10", "PSMD9", "PSMD7", "PSMD8", "PSMD5", "MFSD6", 
+           "PSMD6", "PSMD3", "PSMD4", "PSMD1", "PSMD2", "FCER1G", "B2M", "CD36", "PDIA3", "CHUK", 
+           "HLA-C", "CYBB", "HLA-A", "CYBA", "HLA-B", "HLA-G", "HLA-E", "HLA-F", "PSMA6", "PSMA7", 
+           "PSMA4", "VAMP8", "PSMA5", "PSMA2", "PSMA3", "PSME4", "PSMA1", "PSME2", "PSME3", "PSME1", 
+           "SEC22B", "VAMP3", "NCF2", "ITGB5", "NCF4", "IFI30", "PSMA8", "PSMB7", "IKBKB", "PSMB8", 
+           "PSMB5", "PSMB6", "FCGR1A", "PSMB3", "PSMB4", "PSMB1", "PSMB2", "PSMF1", "ITGAV", "IKBKG")
+
+antigen_MHC2_genes = c("SEC24A", "SEC24C", "CD74", "SEC24B", "LAG3", "AP1S1", "AP1B1", "DYNC1LI1", "DYNC1LI2", "CAPZA2", "KIF4B", "CAPZA3", "KIF4A", "CAPZA1", "SEC24D", "KIF5A", "RACGAP1", "AP2S1", 
+           "RILP", "HLA-DOB", "HLA-DOA", "HLA-DRB5", "KIF22", "KIF23", "KIF18A", "KIF2B", "KIF2A", 
+           "LGMN", "KIF2C", "HLA-DRB4", "HLA-DRB3", "OSBPL1A", "HLA-DRB1", "IFI30", "KIF3C", "KIF3B", 
+           "KIF3A", "AP1S3", "AP1S2", "KIFAP3", "SEC31A", "SH3GL2", "AP2M1", "SEC13", "DNM2", "CENPE", 
+           "FCGR2B", "PIKFYVE", "HLA-DRA", "HLA-DQB1", "ACTR10", "RAB7A", "HLA-DQB2", "SAR1B", "KIF11",     "ARF1", "KIF15", "CLTC", "CLTA", "KLC2", "CTSV", "KLC1", "ACTR1A", "CTSS", "ACTR1B", "CTSL", 
+           "CAPZB", "AP1M1", "FCER1G", "CTSF", "CTSE", "DYNC1I2", "CTSD", "SPTBN2", "HLA-DQA2", 
+           "AP1M2", "DYNC1I1", "HLA-DQA1", "DYNLL1", "AP2B1", "DYNLL2", "KIF26A", "CANX", "HLA-DPB1", 
+           "DYNC1H1", "DCTN6", "SEC23A", "DCTN3", "DCTN2", "DCTN5", "DCTN4", "DCTN1", "AP2A2", "AP2A1", "AP1G1", "HLA-DMB", "HLA-DPA1", "HLA-DMA")
+
+inflammatory_response_genes = c("IL1R1", "EREG", "MARCO", "TNFSF9", "VIP", "SLAMF1", "SGMS2", "IFITM1", "SERPINE1", "AQP9", "C3AR1", "NOD2", "MYC", "PROK2", "MSR1", "ABCA1", "TNFSF15", "FZD5", "SLC11A2", 
+           "RNF144B", "GPR183", "CHST2", "MEP1A", "NPFFR2", "HPN", "ICAM4", "HIF1A", "ICAM1", 
+           "LPAR1", "KCNMB2", "IL12B", "SCARF1", "TNFSF10", "FFAR2", "CD14", "CMKLR1", "SCN1B", 
+           "LYN", "EDN1", "CCL24", "IL10", "GABBR1", "IL15", "CCL22", "CCL20", "IL10RA", "SPHK1", 
+           "NMI", "TACR3", "LIF", "TACR1", "EMP3", "RHOG", "IL18", "OSMR", "DCBLD2", "PTPRE", 
+           "IL1A", "TLR2", "IL1B", "TLR1", "BST2", "MMP14", "IL18R1", "TLR3", "CD40", "BTG2", 
+           "MEFV", "EBI3", "ADM", "FPR1", "SLC7A1", "SLC7A2", "CX3CL1", "RIPK2", "TIMP1", "KIF1B", 
+           "CCR7", "GCH1", "IFNGR2", "GP1BA", "F3", "CD48", "HBEGF", "CDKN1A", "PTGER2", "PTAFR", 
+           "KCNA3", "PTGER4", "CXCR6", "GNAI3", "GPR132", "NAMPT", "STAB1", "OLR1", "CCL17", 
+           "CD55", "ICOSLG", "IL4R", "SLC31A2", "CD70", "SEMA4D", "OSM", "SLC31A1", "CXCL10", 
+           "CXCL11", "AXL", "SELENOS", "ABI1", "LY6E", "APLNR", "CD69", "SLC28A2", "RAF1", "RELA", 
+           "CSF3R", "CSF3", "CD82", "CSF1", "RGS16", "SLC1A2", "PVR", "AHR", "ATP2C1", "BEST1", 
+           "PDPN", "HAS2", "LAMP3", "CCRL2", "NLRP3", "GPC3", "LDLR", "INHBA", "CYBB", "SELE", 
+           "NFKB1", "MXD1", "SELL", "NMUR1", "IFNAR1", "IL7R", "CALCRL", "C5AR1", "PSEN1", 
+           "IL18RAP", "RASGRP1", "RGS1", "CLEC5A", "NDP", "TNFRSF9", "ROS1", "ITGA5", "EIF2AK2", 
+           "TAPBP", "TNFRSF1B", "ACVR2A", "IRF1", "NFKBIA", "IL6", "ADORA2B", "IRF7", "LCP2", 
+           "CXCL8", "CXCL9", "TNFAIP6", "PIK3R5", "CXCL6", "HRH1", "ADGRE1", "IRAK2", "BDKRB1", 
+           "P2RY2", "PDE4B", "IL15RA", "PTGIR", "ADRM1", "TPBG", "OPRK1", "PLAUR", "ATP2B1", 
+           "P2RX7", "LCK", "KLF6", "P2RX4", "IL2RB", "LTA", "MET", "RTP4", "ITGB3", "SRI", 
+           "ATP2A2", "SLC4A4", "ACVR1B", "GNA15", "CCL7", "CCL5", "PCDH7", "CCL2", "ITGB8", "KCNJ2")
+
+NFKB_genes =  c("MARCKS", "IL23A", "NINJ1", "TNFSF9", "SIK1", "ATF3", "SERPINE1", "MYC", "HES1", "CCNL1", "CCN1", "EGR1", "EGR2", "JAG1", "EGR3", "ABCA1", "GADD45B", "GADD45A", "PLK2", "KLF10", 
+           "EIF1", "EHD1", "FOSL2", "FOSL1", "GPR183", "PLPP3", "IFIT2", "ICAM1", "ZC3H12A", "IER2", 
+           "IL12B", "JUNB", "IER5", "IER3", "STAT5A", "DUSP5", "EDN1", "JUN", "DUSP4", "DUSP1", 
+           "DUSP2", "TSC22D1", "CCL20", "SPHK1", "LIF", "IL18", "TUBB2A", "RHOB", "VEGFA", "PTPRE", 
+           "IL1A", "TLR2", "IL1B", "BHLHE40", "ID2", "CLCF1", "REL", "FJX1", "SGK1", "BTG3", "BTG2", 
+           "BTG1", "SDC4", "LITAF", "AREG", "SOCS3", "PANX1", "RIPK2", "NFIL3", "SERPINB2", "GCH1", 
+           "IFNGR2", "G0S2", "FOS", "SERPINB8", "F3", "SPSB1", "FOSB", "PER1", "F2RL1", "HBEGF", 
+           "CD44", "TRIP10", "CDKN1A", "PTGER4", "PTGS2", "IFIH1", "NAMPT", "OLR1", "ICOSLG", 
+           "PHLDA1", "ZBTB10", "TAP1", "PNRC1", "CXCL10", "CXCL11", "IL6ST", "CD69", "SQSTM1", 
+           "RELA", "CSF2", "CD83", "CSF1", "PPP1R15A", "CD80", "TNC", "TNF", "TANK", "RELB", "ZFP36", 
+           "CCND1", "RNF19B", "CCRL2", "DENND5A", "PHLDA2", "MAP3K8", "LDLR", "SLC16A6", "SMAD3", 
+           "TGIF1", "MAP2K3", "DDX58", "TRAF1", "INHBA", "NFKB1", "NFKB2", "GEM", "NR4A3", "MAFF", 
+           "RCAN1", "NR4A2", "EFNA1", "MXD1", "BIRC2", "YRDC", "BIRC3", "IL7R", "PFKFB3", "IRS2", 
+           "SLC2A3", "PLAU", "SLC2A6", "SAT1", "ETS2", "NR4A1", "SNN", "PMEPA1", "TNFRSF9", "MSC", 
+           "TIPARP", "LAMB3", "GFPT2", "CFLAR", "TNIP1", "IRF1", "NFKBIA", "BMP2", "IL6", "TNIP2", 
+           "BCL6", "BCL3", "NFKBIE", "NFE2L2", "B4GALT1", "NFAT5", "TNFAIP8", "BCL2A1", "TNFAIP6", 
+           "TNFAIP3", "CXCL2", "CXCL1", "TNFAIP2", "CXCL3", "CXCL6", "FUT4", "DRAM1", "DNAJB4", 
+           "PDE4B", "PDLIM5", "MCL1", "KDM6B", "IL15RA", "PLAUR", "ATP2B1", "KLF4", "KLF2", "SOD2", 
+           "KLF9", "KLF6", "ACKR3", "PTX3", "B4GALT5", "TRIB1", "CEBPB", "CEBPD", "PLEK", "KYNU", 
+           "CCL5", "CCL4", "CCL2")
+
+interferon_alpha = c("IL4R", "CD74", "SP110", "MX1", "RSAD2", "TAP1", "PSMB9", "CXCL10", "CXCL11", "IFI44L", "LAP3", "LPAR6", "IFI27", "TRAFD1", "TRIM14", "LY6E", "IFITM2", "IFITM3", "SAMD9", "CSF1", 
+           "IFITM1", "UBE2L6", "SAMD9L", "RNF31", "HERC6", "LAMP3", "CCRL2", "MVB12A", "B2M", "CMTR1", 
+           "GBP2", "GBP4", "EPSTI1", "BATF2", "HLA-C", "TENT5A", "TDRD7", "ISG15", "IFI44", "PARP14", 
+           "MOV10", "ISG20", "PARP12", "PLSCR1", "PROCR", "SELL", "PSME2", "PSME1", "CNP", "LGALS3BP", 
+           "IFI35", "IFIT2", "IFI30", "DDX60", "IFIT3", "NUB1", "HELZ2", "PNPT1", "IL15", "NCOA7", 
+           "EIF2AK2", "NMI", "OAS1", "BST2", "IRF1", "ELF1", "IL7", "IRF2", "IRF9", "IRF7", "UBA7", 
+           "GMPR", "ADAR", "CASP8", "TRIM5", "RIPK2", "CASP1", "STAT2", "WARS1", "PARP9", "PSMA3", 
+           "TXNIP", "CMPK2", "CD47", "RTP4", "C1S", "OGFR", "TMEM140", "USP18", "OASL", "SLC25A28", 
+           "IFIH1", "PSMB8", "DHX58", "TRIM25", "TRIM26", "TRIM21")
+
+interferon_gamma = c("GBP6", "SP110", "MX1", "RSAD2", "MX2", "PSMB9", "PML", "NUP93", "LAP3", "MTHFD2",     "IFI27", "TRIM14", "RBCK1", "IDO1", "IFITM2", "IFITM3", "FGL2", "NOD1", "UBE2L6", 
+           "PSMB10", "PNP", "APOL6", "HERC6", "ST3GAL5", "SLAMF7", "B2M", "GBP4", "EPSTI1", 
+           "BATF2", "ST8SIA4", "PLA2G4A", "HLA-A", "HLA-B", "HLA-G", "IFI44", "PARP14", 
+           "LATS2", "PARP12", "VAMP8", "PLSCR1", "BANK1", "SERPING1", "PSME2", "SSPN", 
+           "PSME1", "VAMP5", "CFB", "HLA-DRB1", "CFH", "IFI35", "HIF1A", "IFIT2", "IFI30", 
+           "IFIT1", "ICAM1", "IFIT3", "RNF213", "MT2A", "HELZ2", "KLRK1", "TNFSF10", 
+           "CMKLR1", "NCOA3", "GPR18", "PNPT1", "IL15", "IL10RA", "NMI", "BST2", "RAPGEF6", 
+           "IL18BP", "CD40", "BTG1", "SECTM1", "FPR1", "SOCS3", "SOCS1", "RIPK2", "CD38", 
+           "RIPK1", "HLA-DQA1", "P2RY14", "STAT1", "STAT2", "GCH1", "STAT3", "STAT4", 
+           "PSMA2", "PSMA3", "CMPK2", "PELI1", "MARCHF1", "CDKN1A", "OGFR", "PTGS2", 
+           "IFIH1", "PSMB8", "NAMPT", "PSMB2", "METTL7B", "HLA-DMA", "JAK2", "PTPN1", 
+           "ZBP1", "PTPN2", "IL4R", "CD74", "TOR1B", "TAP1", "VCAM1", "CXCL10", "CXCL11", 
+           "IFI44L", "ZNFX1", "TRAFD1", "FAS", "LY6E", "CD69", "PTPN6", "CD86", "SAMD9L", 
+           "RNF31", "CMTR1", "DDX58", "AUTS2", "ARID5B", "TDRD7", "ISG15", "NFKB1", 
+           "ISG20", "MYD88", "SELP", "XAF1", "IFNAR2", "CD274", "LGALS3BP", "SPPL2A", 
+           "CSF2RB", "DDX60", "PIM1", "XCL1", "EIF2AK2", "TAPBP", "IRF1", "NFKBIA", 
+           "IL7", "IL6", "OAS2", "IRF4", "IRF5", "OAS3", "IRF2", "IRF8", "IRF9", "IRF7", 
+           "LCP2", "EIF4E3", "ARL4A", "CXCL9", "TNFAIP6", "TNFAIP3", "NLRC5", "TNFAIP2", 
+           "ADAR", "CASP8", "CASP7", "CASP4", "PDE4B", "CASP3", "ISOC1", "CASP1", 
+           "CIITA", "IL15RA", "GZMA", "LYSMD2", "BPGM", "WARS1", "SOD2", "IL2RB", "TXNIP", 
+           "PFKP", "C1R", "RTP4", "C1S", "MVP", "SRI", "USP18", "OASL", "SAMHD1", 
+           "SLC25A28", "FCGR1A", "CCL7", "DHX58", "CCL5", "TRIM25", "TRIM26", "CCL2", 
+           "ITGB7", "TRIM21", "UPP1")
+
+base_excision_genes = c("MBD4", "PARP4", "PARP2", "LIG1", "PARP3", "PARP1", "XRCC1", "LIG3", "SMUG1", 
+           "NEIL3", "POLE2", "POLE3", "APEX2", "POLE4", "APEX1", "NEIL2", "NEIL1", "PCNA", 
+           "FEN1", "MPG", "OGG1", "HMGB1", "UNG", "POLD4", "POLB", "POLE", "NTHL1", 
+           "POLD1", "POLD2", "POLD3", "TDG", "POLL", "MUTYH")
+
+mismatch_repair_genes = c("PCNA", "RFC4", "RFC5", "MLH1", "RFC2", "LIG1", "RFC3", "RFC1", "RPA2", 
+           "RPA3", "RPA1", "MSH2", "MLH3", "POLD4", "EXO1", "MSH3", "POLD1", "POLD2", 
+           "RPA4", "POLD3", "MSH6", "SSBP1", "PMS2")
+```
+
+
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = antigen_MHC1_genes),
+  name = 'antigen_processing'
+)
+
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = NFKB_genes ),
+  name = 'NFKB'
+)
+```
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters
+clean_recon_sobj_with_neuron_subclusters@meta.data
+```
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = inflammatory_response_genes ),
+  name = 'inflammatory'
+)
+```
+```{r}
+qsave(clean_recon_sobj_with_neuron_subclusters, "clean_recon_sobj_with_neuron_subclusters_sct.qs")
+```
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = interferon_alpha ),
+  name = 'interferon_alpha'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = interferon_gamma ),
+  name = 'interferon_gamma'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = antigen_MHC1_genes ),
+  name = 'MHC1_antigen'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = antigen_MHC2_genes ),
+  name = 'MHC2_antigen'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = base_excision_genes ),
+  name = 'base_excision'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(Score = mismatch_repair_genes ),
+  name = 'mismatch_repair'
+)
+```
+
+
+```{r}
+#antigen_processing_genes
+#antigen_MHC1_genes
+#antigen_MHC2_genes
+#inflammatory_response_genes
+#interferon_alpha
+#interferon_gamma
+#NFKB_genes
+# base_excision_genes
+# mismatch_repair_genes
+
+
+clean_recon_sobj_with_neuron_subclusters@meta.data
+```
+
+
+
+#RIGI, CD7, OAS2, OAS1, IFI44,BTN3A3
+#DDX60 CYTOMPALSIM HELICASE
+#CD7, 
+
+
+
+
+
+```{r}
+metadata = clean_recon_sobj_with_neuron_subclusters@meta.data
+metadata
+#custom_labels <- c(non-SPN = "non-SPN", SPN_exotic = "SPN Patch 2", SPN_matrix = "SPN Matrix", SPN_patch = "SPN Patch 1", eSPN = "eSPN", D1_D2 = "D1_D2")
+```
+
+
+```{r}
+spatial_scores = function(metadata, column, title, updown = -1){
+a = ggplot(metadata, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size =0.4) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ final_cell_class)
+
+metadata_neurons = subset(metadata, subset = final_cell_class == "neuron")
+b = ggplot(metadata_neurons, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size = 0.4) + ggtitle(paste0(" ", title, " Scores"))+ scale_color_viridis_c(option = "magma", name = "Expression", direction = updown)+   labs(paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ reclustered_patch_matrix_exotic)
+
+ggsave(a, filename = "pic1.png", width = 12, height = 10)
+ggsave(b, filename = "pic2.png", width = 12, height = 7)
+}
+```
+
+```{r}
+metadata
+```
+
+
+```{r}
+spatial_scores("Scoreantigen_processing", "Antigen process")
+```
+
+
+```{r}
+xdp_cah_put = qread("~/temphome/XDP_CaH_Put_Combined_101024.qs")
+xdp_cah_put
+DimPlot(xdp_cah_put, label = T)
+```
+```{r}
+xdp_cah_put@meta.data
+```
+
+
+```{r}
+table(xdp_cah_put$final_cell_class)
+xdp_neurons
+```
+```{r}
+xdp_neurons@meta.data
+```
+```{r}
+table(xdp_neurons$reclustered_patch_matrix_exotic)
+```
+
+```{r}
+eSPN = rownames(xdp_neurons@meta.data[xdp_neurons@meta.data$reclustered_patch_matrix_exotic == "eSPN", ])
+length(eSPN)
+
+non_SPN = rownames(xdp_neurons@meta.data[xdp_neurons@meta.data$reclustered_patch_matrix_exotic == "non-SPN", ])
+length(non_SPN)
+
+SPN_exotic = rownames(xdp_neurons@meta.data[xdp_neurons@meta.data$reclustered_patch_matrix_exotic == "SPN_exotic", ])
+length(SPN_exotic)
+
+SPN_matrix = rownames(xdp_neurons@meta.data[xdp_neurons@meta.data$reclustered_patch_matrix_exotic == "SPN_matrix", ])
+length(SPN_matrix)
+
+SPN_patch = rownames(xdp_neurons@meta.data[xdp_neurons@meta.data$reclustered_patch_matrix_exotic == "SPN_patch", ])
+length(SPN_patch)
+```
+```{r}
+xdp_cah_put@meta.data$neuron_classes = xdp_cah_put$final_cell_class
+xdp_cah_put$neuron_classes[rownames(xdp_cah_put@meta.data) %in% eSPN] = "eSPN"
+xdp_cah_put$neuron_classes[rownames(xdp_cah_put@meta.data) %in% non_SPN] = "non_SPN"
+xdp_cah_put$neuron_classes[rownames(xdp_cah_put@meta.data) %in% SPN_exotic] = "SPN_exotic"
+xdp_cah_put$neuron_classes[rownames(xdp_cah_put@meta.data) %in% SPN_matrix] = "SPN_matrix"
+xdp_cah_put$neuron_classes[rownames(xdp_cah_put@meta.data) %in% SPN_patch] = "SPN_patch"
+table(xdp_cah_put$neuron_classes)
+```
+```{r}
+DimPlot(xdp_cah_put, group.by = "neuron_classes", label = T)
+```
+```{r}
+#remove 829 cells
+xdp_cah_put
+xdp_cah_put = subset(xdp_cah_put, subset = neuron_classes != "neuron")
+xdp_cah_put
+DimPlot(xdp_cah_put, group.by = "neuron_classes", label = T)
+```
+```{r}
+library(sctransform)
+xdp_cah_put = SCTransform(xdp_cah_put, vars.to.regress = "pct_mito", verbose = FALSE)
+xdp_cah_put
+```
+```{r}
+DefaultAssay(xdp_cah_put) = "SCT"
+xdp_cah_put
+```
+
+```{r}
+qsave(xdp_cah_put, "xdp_cah_put_sct.qs")
+```
+
+
+
+```{r}
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = antigen_MHC1_genes),
+  name = 'antigen_processing'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = NFKB_genes ),
+  name = 'NFKB'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = inflammatory_response_genes ),
+  name = 'inflammatory'
+)
+
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = interferon_alpha ),
+  name = 'interferon_alpha'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = interferon_gamma ),
+  name = 'interferon_gamma'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = antigen_MHC1_genes ),
+  name = 'MHC1_antigen'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = antigen_MHC2_genes ),
+  name = 'MHC2_antigen'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = base_excision_genes ),
+  name = 'base_excision'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(Score = mismatch_repair_genes ),
+  name = 'mismatch_repair'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(HLA = c("HLA-A")),
+  name = '_A'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(HLA = c("HLA-A", "HLA-B", "HLA-C", "HLA-F","B2M")),
+  name = '_combined'
+)
+```
+
+
+```{r}
+qsave(xdp_cah_put, "xdp_cah_put_sct.qs")
+```
+
+
+```{r}
+xdp_cah_put@meta.data
+```
+
+
+```{r}
+histograms_by_all_celltype = function(final_df, score_col, xlab, width_size, height_size){
+
+celltypes = c("astrocyte", "microglia", "oligo", "opc", "endothelial","immune", "ependymal", "non_SPN", "eSPN", "SPN_matrix", "SPN_patch", "SPN_exotic")
+
+# celltypes = unique(xdp_meta[["neuron_classes"]])  
+plots <- list()
+
+for (celltype in celltypes) {
+  df_sub = final_df[final_df$neuron_classes == celltype, ]
+   
+  if (nrow(df_sub) == 0) {
+    message(paste("No data for cell type:", celltype, "- skipping."))
+    next
+  }
+  
+min = min(df_sub[[score_col]])
+max = max(df_sub[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+  
+  a = plot_overlapping_density_histogram(df = df_sub, 
+                                          hist_col = df_sub[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = paste0("XDP vs Control: ", celltype),
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+    plots[[celltype]] = a
+  
+}
+
+final_plot <- plot_grid(plotlist = plots, ncol = 4)
+
+# Display or save the final plot
+print(final_plot)  # Display
+ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+```
+
+```{r}
+xdp_meta = xdp_cah_put@meta.data
+xdp_meta
+```
+
+
+```{r}
+histograms_by_all_celltype(xdp_meta, "ScoreMHC1_antigen", "Antigen MCH1 score", 20, 10)
+```
+
+#celltypes = c("astrocyte", "microglia", "oligo", "opc", "endothelial","immune", "ependymal", "non_SPN", "eSPN", "SPN_matrix", "SPN_patch", "SPN_exotic")
+
+```{r}
+unique(xdp_meta$donor_id)
+```
+
+
+```{r}
+histograms_by_donor <- function(final_df, score_col, celltype, xlab, width_size, height_size) {
+  donor_order <- c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", 
+                   "SCF-19-009", "SCF-19-014", "SCF-19-018", "SCF-20-023", "SCF_20-024", 
+                   "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF-22-054CM", "SCF-22-058CF", 
+                   "SCF_21-037CM2", "SCF-23-068CM")
+  
+  plots <- list()
+  
+  final_df_cellclass = subset(final_df, subset = neuron_classes == celltype)
+  
+     min_val <- min(final_df_cellclass[[score_col]], na.rm = TRUE)
+    max_val <- max(final_df_cellclass[[score_col]], na.rm = TRUE)
+    step <- (max_val - min_val) / 100
+    limits <- seq(min_val, max_val, step)
+    
+  for (donor in donor_order) {
+    df_sub <- final_df_cellclass[final_df_cellclass$donor_id == donor, ]
+    
+    if (nrow(df_sub) == 0) {
+      message(paste("No data for donor:", donor, "- skipping."))
+      next
+    }
+    
+    
+    cell_count <- nrow(df_sub)
+    
+    a <- plot_overlapping_density_histogram(
+      df = df_sub, 
+      hist_col = df_sub[[score_col]],
+      fill_col = "Condition",
+      colors = c("XDP" = "red", "Control" = "blue", "BICAN_V8" = "green", 
+                 "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+      breaks = limits,
+      title = paste0(donor, ": ", celltype, " (Cells: ", cell_count, ")"),
+      xlab = xlab,
+      fig_filename = NULL
+    )
+    
+    plots[[donor]] <- a
+  }
+  
+  final_plot <- plot_grid(plotlist = plots, ncol = 5)
+  
+  print(final_plot)  
+  ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+
+```
+
+```{r}
+xdp_meta
+```
+
+
+```{r}
+histograms_by_donor(xdp_meta, "Scoreinterferon_gamma", "SPN_matrix" ,"Interferon Gamma score", 25, 15)
+```
+#cool but not super helpful
+
+```{r}
+subset_sobj = subset(clean_recon_sobj_with_neuron_subclusters, subset = reclustered_patch_matrix_exotic == "SPN_matrix")
+```
+
+```{r}
+xdp_meta
+```
+
+```{r}
+scores <- FetchData(subset_sobj, "ScoreMHC2_antigen")  # replace with the actual name of the score column
+gene_expression <- FetchData(subset_sobj, antigen_MHC2_genes)  # gene_list contains your gene names
+correlation_results <- cor(gene_expression, scores)
+correlation_results
+
+contribution <- as.data.frame(cor(gene_expression, scores))
+contribution$genes <- rownames(contribution)
+contribution
+contribution <- na.omit(contribution)
+contribution
+
+a= ggplot(contribution, aes(x = reorder(genes, ScoreMHC2_antigen), y = ScoreMHC2_antigen)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(title = "Antigen MCH2 Gene Contribution to \nUCell Score in SPN_matrix", x = "Antigen MCH2 Genes", y = "Correlation with Antigen MCH2 Score")
+
+ggsave(a, filename= "pic.png", width = 5, height =10)
+```
+
+
+```{r}
+metadata = clean_recon_sobj_with_neuron_subclusters@meta.data
+metadata
+```
+
+```{r}
+ggplot(metadata, aes(x= x_um, y= y_um, color = Scoreinterferon_alpha)) + geom_point(size = 0.5)+scale_color_viridis_c(option = "magma", name = "Expression", direction = -1) + geom_vline(xintercept = 14000, color = "blue", size = 0.5)+ geom_vline(xintercept = 13000, color = "blue", size = 0.5)+ geom_hline(yintercept = 16250, color = "blue", size = 0.5) + geom_hline(yintercept = 17750, color = "blue", size = 0.5) + facet_wrap(~ final_cell_class)
+```
+#findmarkers on roi
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data$interferon_patch = "Other"
+clean_recon_sobj_with_neuron_subclusters$interferon_patch[clean_recon_sobj_with_neuron_subclusters$x_um > 13000 &clean_recon_sobj_with_neuron_subclusters$x_um <14000 & clean_recon_sobj_with_neuron_subclusters$y_um <17750 & clean_recon_sobj_with_neuron_subclusters$y_um > 16250] = "ROI"
+
+clean_recon_sobj_with_neuron_subclusters@meta.data
+table(clean_recon_sobj_with_neuron_subclusters$interferon_patch, clean_recon_sobj_with_neuron_subclusters$final_cell_class)
+```
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data
+```
+
+
+```{r}
+DimPlot(clean_recon_sobj_with_neuron_subclusters, group.by = "new_cell_class", raster = F)
+```
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data
+```
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data$interferon_patch_classes = paste0(clean_recon_sobj_with_neuron_subclusters$interferon_patch,"_", clean_recon_sobj_with_neuron_subclusters$final_cell_class) 
+
+table(clean_recon_sobj_with_neuron_subclusters$interferon_patch_classes)
+```
+
+
+```{r}
+Idents(clean_recon_sobj_with_neuron_subclusters) = "interferon_patch_classes"
+astrocyte_roi_markers = FindMarkers(clean_recon_sobj_with_neuron_subclusters, ident.1 = "ROI_astrocyte", ident.2 = "Other_astrocyte", min.pct = 0.1, logfc_threshold = 0.5, max.cells.per.ident = 10000)
+astrocyte_roi_markers
+
+endo_roi_markers = FindMarkers(clean_recon_sobj_with_neuron_subclusters, ident.1 = "ROI_endothelial", ident.2 = "Other_endothelial", min.pct = 0.1, logfc_threshold = 0.5)
+endo_roi_markers
+
+micro_roi_markers = FindMarkers(clean_recon_sobj_with_neuron_subclusters, ident.1 = "ROI_microglia", ident.2 = "Other_microglia", min.pct = 0.1, logfc_threshold = 0.5)
+micro_roi_markers
+
+neuron_roi_markers = FindMarkers(clean_recon_sobj_with_neuron_subclusters, ident.1 = "ROI_neuron", ident.2 = "Other_neuron", min.pct = 0.1, logfc_threshold = 0.5, max.cells.per.ident = 10000)
+neuron_roi_markers
+
+oligo_roi_markers = FindMarkers(clean_recon_sobj_with_neuron_subclusters, ident.1 = "ROI_oligo", ident.2 = "Other_oligo", min.pct = 0.1, logfc_threshold = 0.5, max.cells.per.ident = 10000)
+astrocyte_roi_markers
+
+opc_roi_markers = FindMarkers(clean_recon_sobj_with_neuron_subclusters, ident.1 = "ROI_opc", ident.2 = "Other_opc", min.pct = 0.1, logfc_threshold = 0.5)
+opc_roi_markers
+
+```
+
+```{r}
+astrocyte_roi_markers_sig = subset(astrocyte_roi_markers, subset = p_val_adj < 0.05)
+endo_roi_markers_sig  = subset(endo_roi_markers, subset = p_val_adj < 0.05)
+oligo_roi_markers_sig  = subset(oligo_roi_markers, subset = p_val_adj < 0.05)
+opc_roi_markers_sig  = subset(opc_roi_markers, subset = p_val_adj < 0.05)
+neuron_roi_markers_sig  = subset(neuron_roi_markers, subset = p_val_adj < 0.05)
+micro_roi_markers_sig  = subset(micro_roi_markers, subset = p_val_adj < 0.05)
+
+astrocyte_roi_markers_sig
+endo_roi_markers_sig
+oligo_roi_markers_sig
+opc_roi_markers_sig
+neuron_roi_markers_sig
+micro_roi_markers_sig
+```
+
+```{r}
+write.csv(astrocyte_roi_markers_sig, "interferon_classes_markers/astrocyte_roi_markers_sig.csv")
+write.csv(endo_roi_markers_sig, "interferon_classes_markers/endo_roi_markers_sig.csv")
+write.csv(oligo_roi_markers_sig, "interferon_classes_markers/oligo_roi_markers_sig.csv")
+write.csv(opc_roi_markers_sig, "interferon_classes_markers/opc_roi_markers_sig.csv")
+write.csv(neuron_roi_markers_sig, "interferon_classes_markers/neuron_roi_markers_sig.csv")
+write.csv(micro_roi_markers_sig, "interferon_classes_markers/micro_roi_markers_sig.csv")
+```
+
+
+```{r}
+length(c_minus_genes)
+new_c_minus_genes = intersect(rownames(xdp_neurons), c_minus_genes) 
+length(new_c_minus_genes)
+```
+
+
+
+```{r}
+astrocyte_roi_genes = rownames(astrocyte_roi_markers_sig)
+length(astrocyte_roi_genes)
+astrocyte_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),astrocyte_roi_genes)
+astrocyte_roi_genes = intersect(rownames(xdp_cah_put),astrocyte_roi_genes)
+length(astrocyte_roi_genes)
+
+
+endo_roi_genes = rownames(endo_roi_markers_sig)
+length(endo_roi_genes)
+endo_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),endo_roi_genes)
+endo_roi_genes = intersect(rownames(xdp_cah_put),endo_roi_genes)
+length(endo_roi_genes)
+
+oligo_roi_genes = rownames(oligo_roi_markers_sig)
+length(oligo_roi_genes)
+oligo_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),oligo_roi_genes)
+oligo_roi_genes = intersect(rownames(xdp_cah_put),oligo_roi_genes)
+length(oligo_roi_genes)
+
+opc_roi_genes = rownames(opc_roi_markers_sig)
+length(opc_roi_genes)
+opc_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),opc_roi_genes)
+opc_roi_genes = intersect(rownames(xdp_cah_put),opc_roi_genes)
+length(opc_roi_genes)
+
+neuron_roi_genes = rownames(neuron_roi_markers_sig)
+length(neuron_roi_genes)
+neuron_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),neuron_roi_genes)
+neuron_roi_genes = intersect(rownames(xdp_cah_put),neuron_roi_genes)
+length(neuron_roi_genes)
+
+micro_roi_genes = rownames(micro_roi_markers_sig)
+length(micro_roi_genes)
+micro_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),micro_roi_genes)
+micro_roi_genes = intersect(rownames(xdp_cah_put),micro_roi_genes)
+length(micro_roi_genes)
+```
+```{r}
+qsave(astrocyte_roi_genes, "astrocyte_roi_genes.qs")
+qsave(endo_roi_genes, "endo_roi_genes.qs")
+qsave(oligo_roi_genes, "oligo_roi_genes.qs")
+qsave(opc_roi_genes, "opc_roi_genes.qs")
+qsave(neuron_roi_genes, "neuron_roi_genes.qs")
+qsave(micro_roi_genes, "micro_roi_genes.qs")
+```
+
+```{r}
+up_astrocyte_roi_genes = subset(astrocyte_roi_markers_sig, subset = avg_log2FC > 0)
+up_endo_roi_genes = subset(endo_roi_markers_sig, subset = avg_log2FC > 0)
+up_oligo_roi_genes = subset(oligo_roi_markers_sig, subset = avg_log2FC > 0)
+up_opc_roi_genes = subset(opc_roi_markers_sig, subset = avg_log2FC > 0)
+up_neuron_roi_genes = subset(neuron_roi_markers_sig, subset = avg_log2FC > 0)
+up_micro_roi_genes = subset(micro_roi_markers_sig, subset = avg_log2FC > 0)
+
+down_astrocyte_roi_genes = subset(astrocyte_roi_markers_sig, subset = avg_log2FC < 0)
+down_endo_roi_genes = subset(endo_roi_markers_sig, subset = avg_log2FC < 0)
+down_oligo_roi_genes = subset(oligo_roi_markers_sig, subset = avg_log2FC < 0)
+down_opc_roi_genes = subset(opc_roi_markers_sig, subset = avg_log2FC < 0)
+down_neuron_roi_genes = subset(neuron_roi_markers_sig, subset = avg_log2FC < 0)
+down_micro_roi_genes = subset(micro_roi_markers_sig, subset = avg_log2FC < 0)
+
+
+up_astrocyte_roi_genes = rownames(up_astrocyte_roi_genes)
+length(up_astrocyte_roi_genes)
+up_astrocyte_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),up_astrocyte_roi_genes)
+up_astrocyte_roi_genes = intersect(rownames(xdp_cah_put),up_astrocyte_roi_genes)
+length(up_astrocyte_roi_genes)
+
+up_endo_roi_genes = rownames(up_endo_roi_genes)
+length(up_endo_roi_genes)
+up_endo_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),up_endo_roi_genes)
+up_endo_roi_genes = intersect(rownames(xdp_cah_put),up_endo_roi_genes)
+length(up_endo_roi_genes)
+
+up_oligo_roi_genes = rownames(up_oligo_roi_genes)
+length(up_oligo_roi_genes)
+up_oligo_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),up_oligo_roi_genes)
+up_oligo_roi_genes = intersect(rownames(xdp_cah_put),up_oligo_roi_genes)
+length(up_oligo_roi_genes)
+
+up_opc_roi_genes = rownames(up_opc_roi_genes)
+length(up_opc_roi_genes)
+up_opc_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),up_opc_roi_genes)
+up_opc_roi_genes = intersect(rownames(xdp_cah_put),up_opc_roi_genes)
+length(up_opc_roi_genes)
+
+up_neuron_roi_genes = rownames(up_neuron_roi_genes)
+length(up_neuron_roi_genes)
+up_neuron_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),up_neuron_roi_genes)
+up_neuron_roi_genes = intersect(rownames(xdp_cah_put),up_neuron_roi_genes)
+length(up_neuron_roi_genes)
+
+up_micro_roi_genes = rownames(up_micro_roi_genes)
+length(up_micro_roi_genes)
+up_micro_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),up_micro_roi_genes)
+up_micro_roi_genes = intersect(rownames(xdp_cah_put),up_micro_roi_genes)
+length(up_micro_roi_genes)
+```
+
+```{r}
+down_astrocyte_roi_genes = rownames(down_astrocyte_roi_genes)
+length(down_astrocyte_roi_genes)
+down_astrocyte_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),down_astrocyte_roi_genes)
+down_astrocyte_roi_genes = intersect(rownames(xdp_cah_put),down_astrocyte_roi_genes)
+length(down_astrocyte_roi_genes)
+
+down_endo_roi_genes = rownames(down_endo_roi_genes)
+length(down_endo_roi_genes)
+down_endo_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),down_endo_roi_genes)
+down_endo_roi_genes = intersect(rownames(xdp_cah_put),down_endo_roi_genes)
+length(down_endo_roi_genes)
+
+down_oligo_roi_genes = rownames(down_oligo_roi_genes)
+length(down_oligo_roi_genes)
+down_oligo_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),down_oligo_roi_genes)
+down_oligo_roi_genes = intersect(rownames(xdp_cah_put),down_oligo_roi_genes)
+length(down_oligo_roi_genes)
+
+down_opc_roi_genes = rownames(down_opc_roi_genes)
+length(down_opc_roi_genes)
+down_opc_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),down_opc_roi_genes)
+down_opc_roi_genes = intersect(rownames(xdp_cah_put),down_opc_roi_genes)
+length(down_opc_roi_genes)
+
+down_neuron_roi_genes = rownames(down_neuron_roi_genes)
+length(down_neuron_roi_genes)
+down_neuron_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),down_neuron_roi_genes)
+down_neuron_roi_genes = intersect(rownames(xdp_cah_put),down_neuron_roi_genes)
+length(down_neuron_roi_genes)
+
+down_micro_roi_genes = rownames(down_micro_roi_genes)
+length(down_micro_roi_genes)
+down_micro_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),down_micro_roi_genes)
+down_micro_roi_genes = intersect(rownames(xdp_cah_put),down_micro_roi_genes)
+length(down_micro_roi_genes)
+```
+
+
+```{r}
+qsave(up_astrocyte_roi_genes, "up_astrocyte_roi_genes.qs")
+qsave(up_endo_roi_genes, "up_endo_roi_genes.qs")
+qsave(up_oligo_roi_genes, "up_oligo_roi_genes.qs")
+qsave(up_opc_roi_genes, "up_opc_roi_genes.qs")
+qsave(up_neuron_roi_genes, "up_neuron_roi_genes.qs")
+qsave(up_micro_roi_genes, "up_micro_roi_genes.qs")
+
+qsave(down_astrocyte_roi_genes, "down_astrocyte_roi_genes.qs")
+qsave(down_oligo_roi_genes, "down_oligo_roi_genes.qs")
+qsave(down_neuron_roi_genes, "down_neuron_roi_genes.qs")
+qsave(down_micro_roi_genes, "down_micro_roi_genes.qs")
+```
+
+
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data
+```
+```{r}
+qsave(clean_recon_sobj_with_neuron_subclusters, "clean_recon_sobj_with_neuron_subclusters_sct.qs")
+```
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(ROI = astrocyte_roi_genes),
+  name = '_astrocyte'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(ROI = endo_roi_genes),
+  name = '_endo'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(ROI = oligo_roi_genes),
+  name = '_oligo'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(ROI = opc_roi_genes),
+  name = '_opc'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(ROI = neuron_roi_genes),
+  name = '_neuron'
+)
+```
+
+#REDO REDO REDO
+```{r}
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(ROI = micro_roi_genes),
+  name = '_mg'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put, features = list(ROI = micro_roi_genes),
+                                                                  name = '_mg'
+ )
+
+qsave(clean_recon_sobj_with_neuron_subclusters, "clean_recon_sobj_with_neuron_subclusters_sct.qs")
+qsave(xdp_cah_put, "xdp_cah_put_sct_new.qs")
+```
+
+
+```{r}
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI = astrocyte_roi_genes),
+#                                                                  name = '_astrocyte'
+# )
+# * NRIR,ENSG00000291144,LGALS17A,RIGI,ALMS1P1,ENSG00000287188,ENSG00000257452,IRF1-AS1,CHROMR,ENSG00000284977,ENSG00000283380,ENSG00000243620,SCAMP1-AS1,LINC02698,ALOX12-AS1,ENSG00000271860,LINC02328
+
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI = endo_roi_genes),
+#                                                                  name = '_endo'
+# )
+# * ENSG00000237654,ENSG00000257452,ENSG00000229368,LINC03072,PRDM16-DT
+
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI = oligo_roi_genes),
+#                                                                  name = '_oligo'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI = opc_roi_genes),
+#                                                                  name = '_opc'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI = neuron_roi_genes),
+#                                                                  name = '_neuron'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put, features = list(ROI = astrocyte_roi_genes),
+#                                                                  name = '_micro_roi_genes'
+# )
+
+```
+
+```{r}
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI_upreg = up_astrocyte_roi_genes),
+#                                                                  name = '_astrocyte'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put, features = list(ROI_upreg = up_endo_roi_genes),
+#                                                                  name = '_endo'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put, features = list(ROI_upreg = up_oligo_roi_genes),
+#                                                                  name = '_oligo'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI_upreg = up_opc_roi_genes),
+#                                                                  name = '_opc'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI_upreg = up_neuron_roi_genes),
+#                                                                  name = '_neuron'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI_upreg = up_micro_roi_genes),
+#                                                                  name = '_mg'
+# )
+# 
+# 
+# #down
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put, features = list(ROI_downreg = down_astrocyte_roi_genes),
+#                                                                  name = '_astrocyte'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI_downreg = down_oligo_roi_genes),
+#                                                                  name = '_oligo'
+# )
+# 
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI_downreg = down_neuron_roi_genes),
+#                                                                  name = '_neuron'
+# )
+# 
+# xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,features = list(ROI_downreg = down_micro_roi_genes),
+#                                                                  name = '_mg'
+# )
+# 
+# qsave(xdp_cah_put, "xdp_cah_put_sct_new.qs")
+```
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters = qread("clean_recon_sobj_with_neuron_subclusters_sct_new.qs")
+clean_recon_sobj_with_neuron_subclusters@meta.data
+xdp_cah_put
+xdp_cah_put@meta.data
+```
+
+```{r}
+a1 = intersect(up_astrocyte_roi_genes, up_endo_roi_genes)
+a1
+a1 = intersect(a1,up_oligo_roi_genes )
+a1
+a1 = intersect(a1,up_opc_roi_genes )
+a1
+a1 = intersect(a1,up_neuron_roi_genes )
+a1
+a1 = intersect(a1,up_micro_roi_genes )
+a1
+```
+
+
+```{r}
+up_astrocyte_roi_genes
+up_endo_roi_genes
+up_oligo_roi_genes
+up_opc_roi_genes
+up_neuron_roi_genes
+up_micro_roi_genes
+
+down_astrocyte_roi_genes
+down_oligo_roi_genes
+down_neuron_roi_genes
+down_micro_roi_genes
+```
+
+
+
+
+
+```{r}
+subset_sobj = subset(clean_recon_sobj_with_neuron_subclusters, subset = reclustered_patch_matrix_exotic == "SPN_matrix")
+
+```
+
+```{r}
+scores <- FetchData(subset_sobj, "ROI_upreg_astrocyte")  # replace with the actual name of the score column
+gene_expression <- FetchData(subset_sobj, up_astrocyte_roi_genes)  # gene_list contains your gene names
+correlation_results <- cor(gene_expression, scores)
+correlation_results
+
+contribution <- as.data.frame(cor(gene_expression, scores))
+contribution$genes <- rownames(contribution)
+contribution
+contribution <- na.omit(contribution)
+contribution
+
+a= ggplot(contribution, aes(x = reorder(genes, ROI_upreg_astrocyte), y = ROI_upreg_astrocyte)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +
+    labs(title = "ROI_upreg_astrocyte Gene Contribution to \nUCell Score in SPN_matrix", x = "ROI_upreg_astrocyte Genes", y = "Correlation with ROI_upreg_astrocyte Score")
+
+ggsave(a, filename= "pic.png", width = 5, height =10)
+```
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data
+```
+
+
+```{r}
+spatial_scores(clean_recon_sobj_with_neuron_subclusters@meta.data, "ROI_downreg_SPN_matrix", "Downregulated in SPN Matrix")
+
+histograms_by_all_celltype(xdp_cah_put@meta.data, "ROI_downreg_SPN_matrix", "Downreg Interferon Matrix score", 20, 10)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put@meta.data, "ROI_downreg_SPN_matrix", "SPN_matrix" ,"Downreg Interferon Matrix score", 25, 15)
+```
+
+#SPN Matrix score
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data$interferon_patch_classes_spn = paste0(clean_recon_sobj_with_neuron_subclusters$reclustered_patch_matrix_exotic,"_" , clean_recon_sobj_with_neuron_subclusters$interferon_patch)
+clean_recon_sobj_with_neuron_subclusters@meta.data 
+Idents(clean_recon_sobj_with_neuron_subclusters) = "interferon_patch_classes_spn"
+```
+
+```{r}
+table(clean_recon_sobj_with_neuron_subclusters$interferon_patch_classes_spn)
+```
+
+
+
+
+```{r}
+matrix_roi_markers = FindMarkers(clean_recon_sobj_with_neuron_subclusters, ident.1 = "SPN_matrix_ROI", ident.2 = "SPN_matrix_Other", min.pct = 0.1, logfc_threshold = 0.5, max.cells.per.ident = 10000)
+matrix_roi_markers
+matrix_roi_markers_sig = subset(matrix_roi_markers, subset = p_val_adj < 0.05)
+matrix_roi_markers_sig
+
+write.csv(matrix_roi_markers_sig, "interferon_classes_markers/matrix_roi_markers_sig.csv")
+```
+
+
+```{r}
+matrix_roi_genes = rownames(matrix_roi_markers_sig)
+length(matrix_roi_genes)
+matrix_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),matrix_roi_genes)
+matrix_roi_genes = intersect(rownames(xdp_cah_put),matrix_roi_genes)
+length(matrix_roi_genes)
+
+qsave(matrix_roi_genes, "matrix_roi_genes.qs")
+```
+
+```{r}
+matrix_roi_markers_sig
+```
+
+
+```{r}
+up_matrix_roi_genes = subset(matrix_roi_markers_sig, subset = avg_log2FC > 0)
+up_matrix_roi_genes
+up_matrix_roi_genes = rownames(up_matrix_roi_genes)
+length(up_matrix_roi_genes)
+
+up_matrix_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),up_matrix_roi_genes)
+up_matrix_roi_genes = intersect(rownames(xdp_cah_put),up_matrix_roi_genes)
+length(up_matrix_roi_genes)
+```
+
+
+```{r}
+down_matrix_roi_genes = subset(matrix_roi_markers_sig, subset = avg_log2FC < 0)
+down_matrix_roi_genes = rownames(down_matrix_roi_genes)
+length(down_matrix_roi_genes)
+down_matrix_roi_genes = intersect(rownames(clean_recon_sobj_with_neuron_subclusters),down_matrix_roi_genes)
+down_matrix_roi_genes = intersect(rownames(xdp_cah_put),down_matrix_roi_genes)
+length(down_matrix_roi_genes)
+
+qsave(up_matrix_roi_genes, "up_matrix_roi_genes.qs")
+qsave(down_matrix_roi_genes, "down_matrix_roi_genes.qs")
+```
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(ROI_upreg = up_matrix_roi_genes),
+  name = '_SPN_matrix'
+)
+
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters,
+  features = list(ROI_downreg = down_matrix_roi_genes),
+  name = '_SPN_matrix'
+)
+
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(ROI_upreg = up_matrix_roi_genes),
+  name = '_SPN_matrix'
+)
+
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put,
+  features = list(ROI_downreg = down_matrix_roi_genes),
+  name = '_SPN_matrix'
+)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+split_recon_df$split[split_recon_df$split == "caudate" & split_recon_df$x_um > 11000 & split_recon_df$y_um < 3000] = "caudate_1"
+split_recon_df$split[split_recon_df$split == "caudate" & split_recon_df$x_um > 11000 & split_recon_df$y_um <6000] = "caudate_2"
+split_recon_df$split[split_recon_df$split == "caudate" & split_recon_df$x_um > 11000 & split_recon_df$y_um <9000] = "caudate_3"
+split_recon_df$split[split_recon_df$split == "caudate" & split_recon_df$x_um > 11000 & split_recon_df$y_um <12000] = "caudate_4"
+
+split_recon_df$split[split_recon_df$split == "putamen" & split_recon_df$x_um < 11000 & split_recon_df$y_um < 3000] = "putamen_1"
+split_recon_df$split[split_recon_df$split == "putamen" & split_recon_df$x_um < 11000 & split_recon_df$y_um <6000] = "putamen_2"
+split_recon_df$split[split_recon_df$split == "putamen" & split_recon_df$x_um < 11000 & split_recon_df$y_um <9000] = "putamen_3"
+split_recon_df$split[split_recon_df$split == "putamen" & split_recon_df$x_um < 11000 & split_recon_df$y_um <12000] = "putamen_4"
+
+```{r}
+metadata
+```
+
+
+```{r}
+ggplot(metadata, aes(x= x_um, y= y_um, color = reclustered_patch_matrix_exotic)) + geom_point(size = 0.1) +  geom_rect(aes(xmin = 12000, xmax = 14000, ymin = 2000, ymax = 5000), 
+            color = "red", fill = NA, size = 0.5)+
+  geom_rect(aes(xmin = 12000, xmax = 14000, ymin = 5000, ymax = 8000), 
+            color = "black", fill = NA, size = 0.5)+
+  geom_rect(aes(xmin = 12000, xmax = 14000, ymin = 8000, ymax = 11000), 
+            color = "purple", fill = NA, size = 0.5)+
+  geom_rect(aes(xmin = 5000, xmax = 7000, ymin = 2000, ymax = 5000), 
+            color = "red", fill = NA, size = 0.5)+
+  geom_rect(aes(xmin = 5000, xmax = 7000, ymin = 5000, ymax = 8000), 
+            color = "black", fill = NA, size = 0.5)+
+  geom_rect(aes(xmin = 5000, xmax = 7000, ymin = 8000, ymax = 11000), 
+            color = "purple", fill = NA, size = 0.5)+
+  facet_wrap(~ reclustered_patch_matrix_exotic) 
+```
+
+
+```{r}
+ggplot(metadata, aes(x= x_um, y= y_um, color = final_cell_class)) + geom_point(size = 0.1) +  geom_rect(aes(xmin = 5000, xmax = 7000, ymin = 2000, ymax = 5000), 
+            color = "red", fill = NA, size = 0.5)+
+  geom_rect(aes(xmin = 5000, xmax = 7000, ymin = 5000, ymax = 8000), 
+            color = "black", fill = NA, size = 0.5)+
+  geom_rect(aes(xmin = 5000, xmax = 7000, ymin = 8000, ymax = 11000), 
+            color = "purple", fill = NA, size = 0.5)+
+  facet_wrap(~ final_cell_class) 
+```
+
+```{r}
+caudate_roi = subset(metadata, subset = x_um >5000 & x_um < 7000 & y_um >8000 & y_um < 11000)
+caudate_roi
+table(caudate_roi$reclustered_patch_matrix_exotic)
+```
+
+
+```{r}
+length(matrix_roi_genes)
+length(neuron_roi_genes)
+```
+
+```{r}
+a = intersect(up_matrix_roi_genes, c_plus_genes)
+a
+```
+
+```{r}
+setdiff(matrix_roi_genes, neuron_roi_genes)
+```
+
+
+```{r}
+setdiff(neuron_roi_genes,matrix_roi_genes)
+```
+
+
+
+
+
+
+
+
+```{r}
+metadata_zoom = subset(metadata, subset = x_um >11000 & x_um <15000 & y_um >15000 & x_um <19000)
+```
+
+
+```{r}
+ggplot(metadata_zoom, aes(x= x_um, y= y_um, color = Scoreinterferon_alpha)) + geom_point(size = 1)+scale_color_viridis_c(option = "magma", name = "Expression", direction = -1) + facet_wrap(~ final_cell_class)+ geom_vline(xintercept = 14000, color = "blue", size = 0.5)+ geom_vline(xintercept = 13000, color = "blue", size = 0.5)+ geom_hline(yintercept = 16250, color = "blue", size = 0.5) + geom_hline(yintercept = 17750, color = "blue", size = 0.5) 
+```
+
+
+
+```{r}
+table(clean_recon_sobj_with_neuron_subclusters$final_cell_class)
+```
+
+
+
+```{r}
+SN_sobj = qread("~/SN_sobj_sct_scores.qs")
+SN_sobj
+SN_sobj@meta.data
+DimPlot(SN_sobj, label = T)
+```
+```{r}
+DFC_sobj = qread("~/DFC_sobj_sct_scores.qs")
+DFC_sobj
+DFC_sobj@meta.data
+DimPlot(DFC_sobj, label = T)
+```
+
+
+
+```{r}
+spatial_gene_exp_plot(gene_of_interest = "DYNC1H1", seurat_object =Recon_neuron_new_clean_final, cluster = "reclustered_patch_matrix_exotic", type = "Neurons", wid = 18, hei = 10)
+```
+
+
+```{r}
+spatial_gene_exp_plot(gene_of_interest = "RNF31", seurat_object =recon , cluster = "final_cell_class",type = "All Cell Classes", wid = 13, hei = 10)
+```
+

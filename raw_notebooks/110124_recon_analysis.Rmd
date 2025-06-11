@@ -1,0 +1,2087 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+histograms_by_celltype = function(final_df, score_col, xlab, width_size, height_size){
+
+  
+min = min(final_df[[score_col]])
+max = max(final_df[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+matrix <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  a = plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+patch <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_patch", ]
+  b= plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+  nonSPN <- final_df[final_df$reclustered_patch_matrix_exotic == "non-SPN", ]
+ c=  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+
+    eSPN <- final_df[final_df$reclustered_patch_matrix_exotic == "eSPN", ]
+  d= plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: eSPN",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+      exotic <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_exotic", ]
+  e= plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN exotic patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+   
+ D1D2 <- final_df[final_df$reclustered_patch_matrix_exotic == "D1_D2", ]
+  f= plot_overlapping_density_histogram(df = D1D2, 
+                                          hist_col = D1D2[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: D1_D2",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+print(a)
+print(b)
+print(e)
+print(c)
+print(d)
+print(f)
+
+pic = a + b + c + d + e + f + plot_layout(ncol = 6)
+ggsave(filename = "pic.png", plot = pic, width = width_size, height = height_size, dpi = 300)
+}
+```
+
+
+```{r}
+xdp_neurons = qread("~/rstudio/workdir/SOBJ/kkim_SOBJ_USE_THESE_final_merged_xdp_neurons.qs")
+xdp_neurons
+
+BICAN_V17 = qread("~/rstudio/workdir/SOBJ/kkim_SOBJ_USE_THESE_final_V17_BICAN_neurons.qs")
+BICAN_V17
+```
+
+```{r}
+DimPlot(xdp_neurons, label = T)
+```
+
+```{r}
+DimPlot(clean_recon_sobj, label = T, raster = F)
+table(clean_recon_sobj$final_cell_class)
+```
+
+```{r}
+DefaultAssay(Recon_neuron_new_clean_final) = "SCT"
+```
+
+
+```{r}
+Recon_neuron_new_clean_final
+xdp_neurons
+BICAN_V8
+BICAN_V17
+```
+```{r}
+Recon_neuron_new_clean_final@meta.data
+xdp_neurons@meta.data
+BICAN_V8@meta.data
+BICAN_V8$reclustered_patch_matrix_exotic = BICAN_V8$reclustered_neuron_joint_type
+```
+
+
+
+#C MINUS: 203--> 186
+```{r}
+length(c_minus_genes)
+final_c_minus_genes = intersect(rownames(Recon_neuron_new_clean_final), c_minus_genes) 
+length(final_c_minus_genes)
+final_c_minus_genes = intersect(rownames(xdp_neurons), final_c_minus_genes) 
+length(final_c_minus_genes)
+final_c_minus_genes = intersect(rownames(BICAN_V8), final_c_minus_genes) 
+length(final_c_minus_genes)
+final_c_minus_genes = intersect(rownames(BICAN_V17), final_c_minus_genes) 
+length(final_c_minus_genes)
+```
+#C PLUS: 369 --> 338
+```{r}
+length(c_plus_genes)
+final_c_plus_genes = intersect(rownames(Recon_neuron_new_clean_final), c_plus_genes) 
+length(final_c_plus_genes)
+final_c_plus_genes = intersect(rownames(xdp_neurons), final_c_plus_genes) 
+length(final_c_plus_genes)
+final_c_plus_genes = intersect(rownames(BICAN_V8), final_c_plus_genes) 
+length(final_c_plus_genes)
+final_c_plus_genes = intersect(rownames(BICAN_V17), final_c_plus_genes) 
+length(final_c_plus_genes)
+```
+D genes: 107 --> 30 
+```{r}
+length(d_genes)
+final_d_genes = intersect(rownames(Recon_neuron_new_clean_final), d_genes) 
+length(final_d_genes)
+final_d_genes = intersect(rownames(xdp_neurons), final_d_genes) 
+length(final_d_genes)
+final_d_genes = intersect(rownames(BICAN_V8), final_d_genes) 
+length(final_d_genes)
+final_d_genes = intersect(rownames(BICAN_V17), final_d_genes) 
+length(final_d_genes)
+```
+```{r}
+qsave(final_c_minus_genes, "final_c_minus_genes.qs")
+qsave(final_c_plus_genes, "final_c_plus_genes.qs")
+qsave(final_d_genes, "final_d_genes.qs")
+```
+
+
+
+#ucell scores
+```{r}
+Recon_neuron_new_clean_final <- AddModuleScore_UCell(Recon_neuron_new_clean_final,
+  features = list(C_minus = final_c_minus_genes),
+  name = 'New'
+)
+
+Recon_neuron_new_clean_final <- AddModuleScore_UCell(Recon_neuron_new_clean_final,
+  features = list(C_plus = final_c_plus_genes),
+  name = 'New'
+)
+
+Recon_neuron_new_clean_final <- AddModuleScore_UCell(Recon_neuron_new_clean_final,
+ features = list(D_genes = final_d_genes),
+  name = 'New'
+)
+
+xdp_neurons <- AddModuleScore_UCell(xdp_neurons,
+  features = list(C_minus = final_c_minus_genes),
+  name = 'New'
+)
+
+xdp_neurons <- AddModuleScore_UCell(xdp_neurons,
+  features = list(C_plus = final_c_plus_genes),
+  name = 'New'
+)
+
+xdp_neurons <- AddModuleScore_UCell(xdp_neurons,
+ features = list(D_genes = final_d_genes),
+  name = 'New'
+)
+
+
+BICAN_V8 <- AddModuleScore_UCell(BICAN_V8,
+  features = list(C_minus = final_c_minus_genes),
+  name = 'New'
+)
+
+BICAN_V8 <- AddModuleScore_UCell(BICAN_V8,
+  features = list(C_plus = final_c_plus_genes),
+  name = 'New'
+)
+
+BICAN_V8 <- AddModuleScore_UCell(BICAN_V8,
+ features = list(D_genes = final_d_genes),
+  name = 'New'
+)
+```
+
+
+```{r}
+Recon_neuron_new_clean_final@meta.data
+xdp_neurons@meta.data
+BICAN_V8@meta.data
+```
+```{r}
+Recon_neuron_new_clean_final@meta.data
+```
+
+
+```{r}
+Recon_neuron_new_clean_final$region = "other"
+Recon_neuron_new_clean_final$region[Recon_neuron_new_clean_final$x_um > 11000 & Recon_neuron_new_clean_final$y_um <12000] = "caudate"
+Recon_neuron_new_clean_final$region[Recon_neuron_new_clean_final$x_um < 11000 & Recon_neuron_new_clean_final$y_um <12000] = "putamen"
+```
+
+```{r}
+table(Recon_neuron_new_clean_final$region)
+```
+
+
+```{r}
+ggplot(Recon_neuron_new_clean_final@meta.data, aes(x= x_um, y = y_um, color = region)) + geom_point() +  ylab(NULL) 
+```
+
+
+```{r}
+Recon_ucell = Recon_neuron_new_clean_final@meta.data
+Recon_ucell$Condition = "XDP_18_006"
+Recon_ucell = Recon_ucell[, c("donor_id", "Condition", "reclustered_patch_matrix_exotic", "C_minusNew", "C_plusNew", "D_genesNew","region")]
+Recon_ucell
+
+xdp_ucell = xdp_neurons@meta.data
+xdp_ucell = xdp_ucell[, c("donor_id", "Condition", "reclustered_patch_matrix_exotic", "C_minusNew", "C_plusNew", "D_genesNew", "region")]
+xdp_ucell
+
+BICAN_V8_ucell = BICAN_V8@meta.data
+BICAN_V8_ucell$Condition = "BICAN_V8"
+BICAN_V8_ucell$donor_id = BICAN_V8_ucell$DONOR
+BICAN_V8_ucell = BICAN_V8_ucell[, c("donor_id", "Condition", "reclustered_patch_matrix_exotic", "C_minusNew", "C_plusNew", "D_genesNew")]
+BICAN_V8_ucell
+```
+```{r}
+Recon_ucell$reclustered_patch_matrix_exotic[Recon_ucell$reclustered_patch_matrix_exotic == "non_SPN"] = "non-SPN"
+
+BICAN_V8_ucell$reclustered_patch_matrix_exotic[BICAN_V8_ucell$reclustered_patch_matrix_exotic == "SPN_patch"] = "SPN_exotic"
+```
+
+```{r}
+BICAN_V8_ucell$region = "caudate"
+```
+
+
+```{r}
+table(Recon_ucell$reclustered_patch_matrix_exotic)
+table(xdp_ucell$reclustered_patch_matrix_exotic)
+table(BICAN_V8_ucell$reclustered_patch_matrix_exotic)
+```
+```{r}
+ucell_df = rbind(Recon_ucell,xdp_ucell,BICAN_V8_ucell)
+ucell_df
+```
+
+
+```{r}
+histograms_by_celltype(final_df= ucell_df, score_col = "C_minusNew", xlab = "C Minus Score", width_size = 32, height_size = 4)
+
+histograms_by_celltype(final_df= ucell_df, score_col = "C_plusNew", xlab = "C Plus Score", width_size = 36, height_size = 4)
+
+histograms_by_celltype(final_df= ucell_df, score_col = "D_genesNew", xlab = "D Score", width_size = 36, height_size = 4)
+```
+
+#by region
+
+```{r}
+final_df= ucell_df
+score_col = "C_minusNew"
+xlab = "C minus"
+
+min = min(final_df[[score_col]])
+max = max(final_df[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+matrix <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_matrix" & final_df$Condition == "Control", ]
+plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix[[score_col]],
+                                          fill_col = "region",
+                                          colors = c("caudate" = "red", "putamen" = "blue", "other" = "orange"),
+                                          breaks = limits,
+                                          title = "SPN matrix - Control",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+```
+```{r}
+Recon_ucell
+```
+
+
+
+```{r}
+split_recon_df = Recon_neuron_new_clean_final@meta.data
+split_recon_df$split = split_recon_df$region
+
+split_recon_df$split[split_recon_df$split == "caudate" & split_recon_df$x_um > 11000 & split_recon_df$y_um < 3000] = "caudate_1"
+split_recon_df$split[split_recon_df$split == "caudate" & split_recon_df$x_um > 11000 & split_recon_df$y_um <6000] = "caudate_2"
+split_recon_df$split[split_recon_df$split == "caudate" & split_recon_df$x_um > 11000 & split_recon_df$y_um <9000] = "caudate_3"
+split_recon_df$split[split_recon_df$split == "caudate" & split_recon_df$x_um > 11000 & split_recon_df$y_um <12000] = "caudate_4"
+
+split_recon_df$split[split_recon_df$split == "putamen" & split_recon_df$x_um < 11000 & split_recon_df$y_um < 3000] = "putamen_1"
+split_recon_df$split[split_recon_df$split == "putamen" & split_recon_df$x_um < 11000 & split_recon_df$y_um <6000] = "putamen_2"
+split_recon_df$split[split_recon_df$split == "putamen" & split_recon_df$x_um < 11000 & split_recon_df$y_um <9000] = "putamen_3"
+split_recon_df$split[split_recon_df$split == "putamen" & split_recon_df$x_um < 11000 & split_recon_df$y_um <12000] = "putamen_4"
+
+
+ggplot(split_recon_df, aes(x= x_um, y = y_um, color = split)) + geom_point() +  ylab(NULL) 
+```
+
+```{r}
+final_df= split_recon_df
+score_col = "C_minusNew"
+xlab = "C minus"
+
+min =  min(final_df[[score_col]])
+max = max(final_df[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+matrix <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_exotic" & final_df$region == "caudate", ]
+plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix[[score_col]],
+                                          fill_col = "split",
+                                          colors = c("caudate_1" = "red", "caudate_2" = "orange", "caudate_3"= "green", "caudate_4" = "blue"),
+                                     #c("putamen_1" = "red", "putamen_2" = "orange", "putamen_3"= "green", "putamen_4" = "blue"),
+                                     #c("caudate_1" = "red", "caudate_2" = "orange", "caudate_3"= "green", "caudate_4" = "blue"),
+                                     
+                                          breaks = limits,
+                                          title = "SPN exotic - XDP_18_006",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+```
+
+
+```{r}
+DimPlot(Recon_neuron_new_clean_final, group.by = "region")
+DimPlot(Recon_neuron_new_clean_final, group.by = "reclustered_patch_matrix_exotic")
+DimPlot(Recon_neuron_new_clean_final, group.by = "high_phase_d")
+```
+
+
+```{r}
+Recon_neuron_new_clean_final@meta.data
+```
+
+
+```{r}
+neuron_meta
+```
+
+
+
+
+```{r}
+final_df= ucell_df
+score_col = "C_minusNew"
+xlab = "C minus- Caudate"
+
+min = min(final_df[[score_col]])
+max = max(final_df[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+
+matrix <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_matrix" & final_df$region == "caudate", ]
+  a = plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+patch <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_patch" & final_df$region == "caudate", ]
+  b= plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+  nonSPN <- final_df[final_df$reclustered_patch_matrix_exotic == "non-SPN" & final_df$region == "caudate", ]
+ c=  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+
+    eSPN <- final_df[final_df$reclustered_patch_matrix_exotic == "eSPN" & final_df$region == "caudate", ]
+  d= plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: eSPN",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+      exotic <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_exotic" & final_df$region == "caudate", ]
+  e= plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN exotic patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+   
+ D1D2 <- final_df[final_df$reclustered_patch_matrix_exotic == "D1_D2" & final_df$region == "caudate", ]
+  f= plot_overlapping_density_histogram(df = D1D2, 
+                                          hist_col = D1D2[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: D1_D2",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+print(a)
+print(b)
+print(e)
+print(c)
+print(d)
+print(f)
+```
+
+
+
+
+
+```{r}
+final_df= ucell_df
+score_col = "D_genesNew"
+xlab = "D Score (zoom)"
+
+min = 0.001
+max = 0.06
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+
+matrix <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  a = plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+patch <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_patch", ]
+  b= plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+  nonSPN <- final_df[final_df$reclustered_patch_matrix_exotic == "non-SPN", ]
+ c=  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+
+    eSPN <- final_df[final_df$reclustered_patch_matrix_exotic == "eSPN", ]
+  d= plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: eSPN",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+      exotic <- final_df[final_df$reclustered_patch_matrix_exotic == "SPN_exotic", ]
+  e= plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN exotic patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+   
+ D1D2 <- final_df[final_df$reclustered_patch_matrix_exotic == "D1_D2", ]
+  f= plot_overlapping_density_histogram(df = D1D2, 
+                                          hist_col = D1D2[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: D1_D2",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+print(a)
+print(b)
+print(e)
+print(c)
+print(d)
+print(f)
+
+```
+
+
+```{r}
+Recon_neuron_new_clean_final_meta = Recon_neuron_new_clean_final@meta.data
+#custom_labels <- c(non-SPN = "non-SPN", SPN_exotic = "SPN Patch 2", SPN_matrix = "SPN Matrix", SPN_patch = "SPN Patch 1", eSPN = "eSPN", D1_D2 = "D1_D2")
+
+# Plot with light gray points for all data in the background
+matrix_recon = subset(Recon_neuron_new_clean_final_meta, subset = reclustered_patch_matrix_exotic == "SPN_matrix")
+
+a = ggplot(matrix_recon, aes(x= x_um, y = y_um, color = C_minusNew)) + geom_point() + ggtitle(" SPN Matrix: C Minus Scores \n") + scale_color_gradientn(colors = c("#FF0000", "#FF4500", "#FF7F50", "#FFD700", "#87CEEB", "#4682B4", "#0000FF")
+) +   labs(color = "C Minus Scores") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL)
+
+b = ggplot(matrix_recon, aes(x= x_um, y = y_um, color = C_plusNew)) + geom_point() + ggtitle(" SPN Matrix: C Plus Scores \n") + scale_color_gradientn(colors = c("#FF0000", "#FFD700", "lightgray")
+) +  labs(color = "C Plus Scores") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL)
+
+pic = a+b
+ggsave(pic, filename = "pic.png", width = 20, height = 10)
+```
+
+
+```{r}
+pic = ggplot(matrix_recon, aes(x= x_um, y = y_um, color = D_genesNew)) + geom_point() + ggtitle(" SPN Matrix: D Scores \n") + scale_color_gradientn(colors = c("lightgray","#0000FF")
+) +  labs(color = "D Scores") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL)
+
+ggsave(pic, filename = "pic.png", width = 10, height = 10)
+```
+
+
+```{r}
+Recon_neuron_new_clean_final_meta = Recon_neuron_new_clean_final@meta.data
+#custom_labels <- c(non-SPN = "non-SPN", SPN_exotic = "SPN Patch 2", SPN_matrix = "SPN Matrix", SPN_patch = "SPN Patch 1", eSPN = "eSPN", D1_D2 = "D1_D2")
+
+# Plot with light gray points for all data in the background
+matrix_recon = subset(Recon_neuron_new_clean_final_meta, subset = reclustered_patch_matrix_exotic == "non_SPN")
+
+a = ggplot(matrix_recon, aes(x= x_um, y = y_um, color = C_minusNew)) + geom_point() + ggtitle(" non-SPN: C Minus Scores \n") + scale_color_gradientn(colors = c("#FF0000", "#FF4500", "#FF7F50", "#FFD700", "#87CEEB", "#4682B4", "#0000FF")
+) +   labs(color = "C Minus Scores") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL)
+
+b = ggplot(matrix_recon, aes(x= x_um, y = y_um, color = C_plusNew)) + geom_point() + ggtitle(" non-SPN: C Plus Scores \n") + scale_color_gradientn(colors = c("#FF0000", "#FFD700", "lightgray")
+) +  labs(color = "C Plus Scores") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL)
+
+
+c = ggplot(matrix_recon, aes(x= x_um, y = y_um, color = D_genesNew)) + geom_point() + ggtitle(" non-SPN: D Scores \n") + scale_color_gradientn(colors = c("lightgray","#0000FF")
+) +  labs(color = "D Scores") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL)
+
+pic = a+b +c
+ggsave(pic, filename = "pic.png", width = 30, height = 10)
+```
+
+
+#subset recon by region and check if scores are different
+```{r}
+ggplot(Recon_neuron_new_clean_final@meta.data, aes(x= x_um, y = y_um, color = reclustered_patch_matrix_exotic)) + geom_point() +  ylab(NULL) 
+```
+
+
+
+```{r}
+Recon_neuron_new_clean_final
+Recon_neuron_caudate = subset(Recon_neuron_new_clean_final, subset = x_um >11000 & y_um < 11000)
+Recon_neuron_caudate
+ggplot(Recon_neuron_caudate@meta.data, aes(x= x_um, y = y_um, color = reclustered_patch_matrix_exotic)) + geom_point() +  ylab(NULL) 
+```
+
+```{r}
+Recon_neuron_caudate <- AddModuleScore_UCell(Recon_neuron_caudate,
+  features = list(C_minus = final_c_minus_genes),
+  name = 'Test'
+)
+
+Recon_neuron_caudate <- AddModuleScore_UCell(Recon_neuron_caudate,
+  features = list(C_plus = final_c_plus_genes),
+  name = 'Test'
+)
+
+Recon_neuron_caudate <- AddModuleScore_UCell(Recon_neuron_caudate,
+ features = list(D_genes = final_d_genes),
+  name = 'Test'
+)
+```
+
+```{r}
+Recon_neuron_caudate@meta.data
+```
+
+
+```{r}
+ggplot(Recon_neuron_caudate@meta.data, aes(x= C_minusNew, y = C_minusTest, color = reclustered_patch_matrix_exotic)) + geom_point() + xlab("C minus") +ylab("C minus caudate subset")
+
+ggplot(Recon_neuron_caudate@meta.data, aes(x= C_plusNew, y = C_plusTest, color = reclustered_patch_matrix_exotic)) + geom_point() + xlab("C plus") +ylab("C plus caudate subset")
+
+ggplot(Recon_neuron_caudate@meta.data, aes(x= D_genesNew, y = D_genesTest, color = reclustered_patch_matrix_exotic)) + geom_point() + xlab("D score") +ylab("D score caudate subset")
+```
+
+
+```{r}
+table(ucell_df$Condition)
+table(ucell_df$region)
+```
+
+
+```{r}
+HLA-A
+```
+
+
+```{r}
+Recon_neuron_new_clean_final <- AddModuleScore_UCell(Recon_neuron_new_clean_final,
+  features = list(HLA = final_c_minus_genes),
+  name = 'New'
+)
+```
+
+
+```{r}
+gene_of_interest = "HLA-A" 
+
+#replace seurat_obj here
+metadata_df = Recon_neuron_new_clean_final@meta.data
+metadata_df$cell_ids = rownames(metadata_df)
+
+#replace seurat_obj here
+gene_df = as.data.frame(FetchData(Recon_neuron_new_clean_final, vars = gene_of_interest))
+gene_df$cell_ids = rownames(gene_df)
+
+df_final = merge(metadata_df, gene_df, by = "cell_ids" )
+df_final
+
+#Replace GENE with gene name
+ggplot(df_final, aes(x= x_um, y = y_um, color = df_final[["HLA-A"]])) + geom_point() +  scale_color_gradient(low = "lightgrey", high = "blue") +  labs(color = "Expression") +
+  theme_void() +  facet_wrap(~ reclustered_patch_matrix_exotic)+
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  
+    legend.title = element_text(size = 26)
+  ) +  ylab(NULL)
+```
+
+
+
+
+
+
+#Make histogram of phase D scores in matrix, patch, and eccentric. Draw a cutoff. Create a column like “high_phase_d”, set as Idents, and run FindAllMarkers for each of these cell types
+
+#compare old sobj cell ids with the new ones with high D scores in new. Were a greater percentage of these cells removed in the original cleaning? 
+
+```{r}
+#highest control: 0.02966206
+
+Recon_neuron_new_clean_final@meta.data$high_phase_d = Recon_neuron_new_clean_final$D_genesNew > 0.0297
+Recon_neuron_new_clean_final@meta.data
+
+Recon_neuron_new_clean_final$high_phase_d[Recon_neuron_new_clean_final$high_phase_d == "FALSE"] = "Other"
+Recon_neuron_new_clean_final$high_phase_d[Recon_neuron_new_clean_final$high_phase_d == "TRUE"] = "high_phase_d"
+Recon_neuron_new_clean_final@meta.data
+```
+```{r}
+table(Recon_neuron_new_clean_final$high_phase_d, Recon_neuron_new_clean_final$reclustered_patch_matrix_exotic)
+```
+
+```{r}
+ggplot(Recon_neuron_new_clean_final@meta.data, aes(x= x_um, y = y_um, color = high_phase_d)) + geom_point(alpha = 0.6) +  ylab(NULL) + facet_wrap(~ reclustered_patch_matrix_exotic) + scale_color_manual(values = c("high_phase_d" = "red", "Other" = "lightgray")) +theme_void()
+```
+
+```{r}
+Recon_neuron_new_clean_final@meta.data$class_and_d_phase = paste0(Recon_neuron_new_clean_final$reclustered_patch_matrix_exotic, "_", Recon_neuron_new_clean_final$high_phase_d)
+Recon_neuron_new_clean_final@meta.data
+```
+
+```{r}
+Idents(Recon_neuron_new_clean_final) = "class_and_d_phase"
+DimPlot(Recon_neuron_new_clean_final, label = T)
+```
+
+
+```{r}
+Matrix_phase_d <- FindMarkers(Recon_neuron_new_clean_final, ident.1 = "SPN_matrix_high_phase_d", ident.2 = "SPN_matrix_Other", min.pct = 0.2, logfc.threshold = 1)
+Matrix_phase_d
+```
+
+```{r}
+Matrix_phase_d_sig = subset(Matrix_phase_d, p_val_adj < 0.05)
+Matrix_phase_d_sig
+```
+```{r}
+top_markers <- Matrix_phase_d_sig %>% 
+  arrange(desc(avg_log2FC))
+
+print(top_markers)
+
+```
+
+```{r}
+table(Recon_neuron_new_clean_final$high_phase_d)
+```
+
+```{r}
+d_phase = rownames(subset(Recon_neuron_new_clean_final@meta.data, subset = high_phase_d == "high_phase_d"))
+length(d_phase)
+```
+
+```{r}
+all(d_phase %in% rownames(Recon_neuron_clean@meta.data)) 
+```
+
+```{r}
+length(intersect(d_phase,rownames(Recon_neuron_clean@meta.data)))
+```
+
+```{r}
+recon = qread("temphome/RECON/clean_recon_sobj_with_neuron_subclusters_103124.qs")
+recon
+```
+```{r}
+Idents(recon) = "final_cell_class"
+FeaturePlot(recon, features = c("TAF1"), raster = F, label = T)
+```
+
+
+
+
+```{r}
+Patch_phase_d <- FindMarkers(Recon_neuron_new_clean_final, ident.1 = "SPN_patch_high_phase_d", ident.2 = "SPN_patch_Other", min.pct = 0.2, logfc.threshold = 1)
+Patch_phase_d
+
+```
+```{r}
+Patch_phase_d_sig = subset(Patch_phase_d, p_val_adj < 0.05)
+Patch_phase_d_sig
+
+Patch_phase_d_sig <- Patch_phase_d_sig %>% 
+  arrange(desc(avg_log2FC))
+
+print(Patch_phase_d_sig)
+```
+
+```{r}
+Matrix_phase_d_sig$gene = rownames(Matrix_phase_d_sig)
+Patch_phase_d_sig$gene = rownames(Patch_phase_d_sig)
+```
+
+```{r}
+Matrix_phase_d_sig$adj.P.Val = Matrix_phase_d_sig$p_val_adj
+Patch_phase_d_sig$adj.P.Val = Patch_phase_d_sig$p_val_adj
+```
+
+```{r}
+write.csv(Matrix_phase_d_sig, "Matrix_high_phase_d.csv")
+write.csv(Patch_phase_d_sig, "Patch_high_phase_d.csv")
+```
+
+#GSEA
+```{r}
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~"
+DE_SUBDIR="GSEA"
+```
+
+
+```{r}
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+
+
+#example
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "gsea")
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+de_files
+```
+
+
+```{r}
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+    kegg_2021_human = "GSEA/KEGG_2021_Human.txt",
+    go_process = "GSEA/GO_Biological_Process_2021.txt",
+    go_function = "GSEA/GO_Molecular_Function_2021.txt",
+    disgenet = "GSEA/DisGeNET.txt",
+    msigdb_hallmark = "GSEA/MSigDB_Hallmark_2020.txt",
+    neural_activity = "GSEA/neural_activity_arranged.txt",
+    wikipathways = "GSEA/WikiPathways_2019_Human.txt",
+    tf_perturbations = "GSEA/TF_Perturbations_Followed_by_Expression.txt",
+    jensen_diseases = "GSEA/Jensen_DISEASES.txt"
+)
+```
+
+
+```{r}
+if (!requireNamespace("BiocManager", quietly = TRUE)) {
+    install.packages("BiocManager")
+}
+BiocManager::install("EnsDb.Hsapiens.v86")
+
+```
+
+
+```{r}
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$gene)
+    anno=anno[match(dataDE$gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="logFC", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_logfc.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+
+```{r}
+# Define cell types
+cell_types <- list("Matrix", "Patch")
+
+
+# Initialize an empty named list to store the dataframes
+d_gene_gsea_df_list <- list()
+
+# Loop through each cell type and read the corresponding file into a dataframe
+for (cell_type in cell_types) {
+  # Construct the file name
+  gsea_file_name <- paste(cell_type, "_high_phase_d.csv__gsea_logfc.tsv", sep = "")
+  
+  # Print the file name to verify the path
+  print(paste("Trying to read file:", gsea_file_name))
+  
+  # Check if the file exists
+  if (file.exists(gsea_file_name)) {
+    # Read the file into a dataframe
+    gsea_file <- read.delim(gsea_file_name, header = TRUE)
+    
+    # Store the dataframe in the list with the cell type as the name
+    d_gene_gsea_df_list[[cell_type]] <- gsea_file
+  } else {
+    print(paste("File does not exist:", gsea_file_name))
+  }
+}
+```
+
+
+```{r}
+# Accessing the dataframes
+# You can access each dataframe by its cell type name, for example:
+if ("Matrix" %in% names(d_gene_gsea_df_list)) {
+  Matrix_df <- d_gene_gsea_df_list[["Matrix"]]
+}
+
+```
+
+
+```{r}
+# Extract relevant data from GSEA results
+data <- gsea_results@result
+data$GeneRatio <- sapply(data$GeneRatio, function(x) eval(parse(text=x)))
+
+# Define a new column for NES absolute value for dot circumference
+data$NES_abs <- abs(data$NES)
+
+# Define a new column for -log10(p.adjust) for coloring the dots
+data$log10_pvalue <- -log10(data$p.adjust)
+
+```
+
+
+
+```{r}
+df_ordered <- df[order(df$column_name), ]
+```
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_astro_df
+caudate_astro_df = caudate_astro_df[order(caudate_astro_df$NES),]
+caudate_astro_df
+```
+
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_endo_df= caudate_gsea_df_list[["endo"]]
+caudate_ependymal_df= caudate_gsea_df_list[["ependymal"]]
+caudate_immune_df =caudate_gsea_df_list[["immune"]]
+caudate_microglia_df = caudate_gsea_df_list[["mg"]]
+caudate_neuron_df = caudate_gsea_df_list[["neuron"]]
+caudate_oligo_df=caudate_gsea_df_list[["oligo"]]
+caudate_opc_df=caudate_gsea_df_list[["opc"]]
+```
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install(version = "3.12")
+```
+
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("clusterProfiler")
+```
+
+```{r}
+# Load necessary libraries
+library(clusterProfiler)
+# Read GSEA results
+gsea_results <- caudate_neuron_df
+
+# Select top 10 pathways by adjusted p-value
+top_gsea_results <- gsea_results[order(gsea_results$padj), ][1:10, ]
+
+# Create a bar plot
+ggplot(top_gsea_results, aes(x = reorder(Description, NES), y = NES)) +
+    geom_bar(stat = "identity", fill = "steelblue") +
+    coord_flip() +  # Flip coordinates for better readability
+    labs(title = "Top 10 Enriched Pathways",
+         x = "Pathway",
+         y = "Normalized Enrichment Score (NES)") +
+    theme_minimal()
+
+```
+
+
+```{r}
+# Select the top 20 NES
+top20_gsea <- caudate_astro_df[order(-abs(caudate_astro_df$NES)), ][1:20, ]
+top20_gsea
+
+```
+
+
+```{r}
+# Load ggplot2 library
+library(ggplot2)
+
+# Create a bar plot
+ggplot(top20_gsea, aes(x = reorder(pathway, NES), y = NES, fill = NES > 0)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +  # Flip coordinates for better readability
+    scale_fill_manual(values = c("red", "blue")) +  # Custom colors for positive and negative NES
+    theme_minimal() +
+    labs(title = "Top 20 Gene Sets by Normalized Enrichment Score (NES)",
+         x = "Gene Set",
+         y = "NES",
+         fill = "NES > 0")
+```
+
+```{r}
+# Create a dot plot
+ggplot(top20_gsea, aes(x = reorder(pathway, NES), y = NES, color = NES > 0)) +
+    geom_point(aes(size = -log10(padj)), shape = 21, stroke = 1.5) +
+    coord_flip() +  # Flip coordinates for better readability
+    scale_color_manual(values = c("red", "blue")) +  # Custom colors for positive and negative NES
+    theme_minimal() +
+    labs(title = "Top 20 Gene Sets by Normalized Enrichment Score (NES)",
+         x = "Gene Set",
+         y = "NES",
+         size = "-log10(adjusted p-value)",
+         color = "NES > 0")
+
+```
+
+
+
+```{r}
+merged_caudate_gsea <- intersect(caudate_astro_df$pathway, caudate_neuron_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_oligo_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_microglia_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_opc_df$pathway)
+length(merged_caudate_gsea)
+
+```
+```{r}
+ca =caudate_astro_df
+```
+
+```{r}
+merged_caudate_gsea
+```
+
+
+
+```{r}
+nrow(caudate_astro_df)
+nrow(caudate_endo_df)
+nrow(caudate_ependymal_df)
+nrow(caudate_immune_df)
+nrow(caudate_microglia_df)
+nrow(caudate_oligo_df)
+nrow(caudate_neuron_df)
+nrow(caudate_opc_df)
+```
+
+
+
+
+
+```{r}
+caudate_cell_types = list("astro", "endo", "ependymal", "immune", "mg", "neuron", "oligo", "opc")
+putamen_cell_types = list("astro", "endo", "mg", "neuron", "oligo", "opc")
+caudate_gsea_df_list = list()
+
+for (cell_type in caudate_cell_types){
+gsea_file_name = paste("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/gsea/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep="")
+
+gsea_file = read.delim(gsea_file_name, header = TRUE)
+#caudate_gsea_df_list[[cell_type]] = gsea_file
+}
+
+```
+
+
+
+
+```{r}
+caudate_gsea_df_list[["astro"]]
+```
+
+
+
+```{r}
+df_ordered <- df[order(df$column_name), ]
+```
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_astro_df
+caudate_astro_df = caudate_astro_df[order(caudate_astro_df$NES),]
+caudate_astro_df
+```
+
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_astro_df = caudate_astro_df[caudate_astro_df$gene_set != "tf_perturbations",]
+caudate_astro_df
+
+caudate_endo_df= caudate_gsea_df_list[["endo"]]
+caudate_endo_df = caudate_endo_df[caudate_endo_df$gene_set != "tf_perturbations",]
+caudate_endo_df
+
+caudate_ependymal_df= caudate_gsea_df_list[["ependymal"]]
+caudate_ependymal_df = caudate_ependymal_df[caudate_ependymal_df$gene_set != "tf_perturbations",]
+caudate_ependymal_df
+
+caudate_immune_df =caudate_gsea_df_list[["immune"]]
+caudate_immune_df = caudate_immune_df[caudate_immune_df$gene_set != "tf_perturbations",]
+caudate_immune_df
+
+caudate_microglia_df = caudate_gsea_df_list[["mg"]]
+caudate_microglia_df = caudate_microglia_df[caudate_microglia_df$gene_set != "tf_perturbations",]
+caudate_microglia_df
+
+caudate_neuron_df = caudate_gsea_df_list[["neuron"]]
+caudate_neuron_df = caudate_neuron_df[caudate_neuron_df$gene_set != "tf_perturbations",]
+caudate_neuron_df
+
+caudate_oligo_df=caudate_gsea_df_list[["oligo"]]
+caudate_oligo_df = caudate_oligo_df[caudate_oligo_df$gene_set != "tf_perturbations",]
+caudate_oligo_df
+
+caudate_opc_df=caudate_gsea_df_list[["opc"]]
+caudate_opc_df = caudate_opc_df[caudate_opc_df$gene_set != "tf_perturbations",]
+caudate_opc_df
+```
+
+```{r}
+merged_caudate_gsea <- intersect(caudate_oligo_df$pathway, caudate_neuron_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea
+```
+
+
+```{r}
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_astro_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea
+```
+
+
+```{r}
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_microglia_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_opc_df$pathway)
+length(merged_caudate_gsea)
+```
+
+
+
+
+
+```{r}
+Dot_plot = function(cell_type_df, title){
+
+top10_gsea_pos <- cell_type_df[order(cell_type_df$NES, decreasing =TRUE), ][1:10, ]
+top10_gsea_pos
+
+top10_gsea_neg <- cell_type_df[order(cell_type_df$NES), ][1:10, ]
+top10_gsea_neg
+
+top20_gsea <- rbind(top10_gsea_pos, top10_gsea_neg)
+top20_gsea
+
+ggplot(top20_gsea, aes(x = reorder(pathway, NES), y = NES, color = NES > 0)) +
+    geom_point(aes(size = padj), shape = 21, stroke = 1.5) +
+    coord_flip() +  # Flip coordinates for better readability
+    scale_color_manual(values = c("red", "blue")) +  # Custom colors for positive and negative NES
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(size = 14),  # X-axis text size
+        axis.text.y = element_text(size = 14),  # Y-axis text size
+        axis.title.x = element_text(size = 16),  # X-axis title size
+        axis.title.y = element_text(size = 16),  # Y-axis title size
+        plot.title = element_text(size = 18, face = "bold"),  # Plot title size and bold
+        legend.title = element_text(size = 16),  # Legend title size
+        legend.text = element_text(size = 14)  # Legend text size
+    ) +
+    labs(title = title ,
+         x = "Gene Set",
+         y = "NES",
+         size = "adjusted p-value",
+         color = "NES > 0")
+}
+```
+
+```{r}
+Dot_plot(caudate_astro_df, "Astrocytes: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_endo_df, "Endo: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_ependymal_df, "Ependymal: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_immune_df, "Immune: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_microglia_df, "Microglia: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_neuron_df, "Neuron: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_oligo_df, "Oligo: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_opc_df, "OPC: Top 10 Gene Sets by NES +/-")
+
+```
+
+```{r}
+putamen_gsea_df_list
+```
+
+
+```{r}
+putamen_astro_df = putamen_gsea_df_list[["astro"]]
+
+putamen_endo_df= putamen_gsea_df_list[["endo"]]
+putamen_microglia_df = putamen_gsea_df_list[["mg"]]
+putamen_neuron_df = putamen_gsea_df_list[["neuron"]]
+putamen_oligo_df=putamen_gsea_df_list[["oligo"]]
+putamen_opc_df=putamen_gsea_df_list[["opc"]]
+```
+
+
+```{r}
+putamen_astro_df = putamen_gsea_df_list[["astro"]]
+putamen_astro_df = putamen_astro_df[putamen_astro_df$gene_set != "tf_perturbations",]
+putamen_astro_df
+
+putamen_endo_df= putamen_gsea_df_list[["endo"]]
+putamen_endo_df = putamen_endo_df[putamen_endo_df$gene_set != "tf_perturbations",]
+putamen_endo_df
+
+putamen_microglia_df = putamen_gsea_df_list[["mg"]]
+putamen_microglia_df = putamen_microglia_df[putamen_microglia_df$gene_set != "tf_perturbations",]
+putamen_microglia_df
+
+putamen_neuron_df = putamen_gsea_df_list[["neuron"]]
+putamen_neuron_df = putamen_neuron_df[putamen_neuron_df$gene_set != "tf_perturbations",]
+putamen_neuron_df
+
+putamen_oligo_df=putamen_gsea_df_list[["oligo"]]
+putamen_oligo_df = putamen_oligo_df[putamen_oligo_df$gene_set != "tf_perturbations",]
+putamen_oligo_df
+
+putamen_opc_df=putamen_gsea_df_list[["opc"]]
+putamen_opc_df = putamen_opc_df[putamen_opc_df$gene_set != "tf_perturbations",]
+putamen_opc_df
+```
+
+
+
+```{r}
+Dot_plot(putamen_astro_df, "Astrocytes: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_endo_df, "Endo: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_microglia_df, "Microglia: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_neuron_df, "Neuron: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_oligo_df, "Oligo: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_opc_df, "OPC: Top 10 Gene Sets by NES +/-")
+
+```
+
+#Try with just positional geneset: I'm using chrXq13 from msigdb because TAF1 is on Xq13.1?
+
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/GSEA"
+DE_SUBDIR="de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30"
+#DE_SUBDIR="de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30"
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+
+
+```{r}
+print(gene_sets)
+```
+
+
+#example
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "positional_gsea_new")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+  Xchrome= "GSEA/genesets/allchrome.txt",  
+  #Xq13 = "GSEA/genesets/Xq13geneset.txt",
+    Xlinked_recessive = "GSEA/genesets/Xlinked_RESS.txt",
+    Xlinked_dominant = "GSEA/genesets/Xlinked_DOM.txt")
+
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+    if (! grepl("trend", de_slogan)){next}
+
+    #if (strsplit(de_slogan, "__")[[1]][[2]] != "opc"){next}
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$gene)
+    anno=anno[match(dataDE$gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="logFC", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_logfc.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+
+```{r}
+#caudate_cell_types = list("astro", "endo", "ependymal", "neuron", "oligo", "opc")
+putamen_cell_types = list("astro")
+putamen_gsea_df_list = list()
+
+for (cell_type in putamen_cell_types){
+gsea_file_name = paste("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/positional_gsea_new/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep="")
+
+#gsea_file_name = paste("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/positional_gsea_new/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep="")
+gsea_file = read.delim(gsea_file_name, header = TRUE)
+putamen_gsea_df_list[[cell_type]] = gsea_file
+}
+```
+
+```{r}
+caudate_gsea_df_list
+putamen_gsea_df_list
+```
+
+```{r}
+putamen_astro_df = putamen_gsea_df_list[["astro"]]
+```
+
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_endo_df = caudate_gsea_df_list[["endo"]]
+caudate_ependymal_df = caudate_gsea_df_list[["ependymal"]]
+caudate_neuron_df = caudate_gsea_df_list[["neuron"]]
+caudate_oligo_df = caudate_gsea_df_list[["oligo"]]
+caudate_opc_df = caudate_gsea_df_list[["opc"]]
+```
+
+```{r}
+Dot_plot(caudate_astro_df, "Astrocytes: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_endo_df, "Endo: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_ependymal_df, "Ependymal: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_neuron_df, "Neuron: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_oligo_df, "Oligo: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_opc_df, "OPC: Top 10 Gene Sets by NES +/-")
+```
+
+
+
+
+
+
+```{r}
+# Define cell types
+caudate_cell_types <- list("astro", "endo", "ependymal", "immune", "mg", "neuron", "oligo", "opc")
+putamen_cell_types <- list("astro", "endo", "mg", "neuron", "oligo", "opc")
+
+# Initialize an empty named list to store the dataframes
+new_caudate_gsea_df_list <- list()
+#new_putamen_gsea_df_list <- list()
+
+# Loop through each cell type and read the corresponding file into a dataframe
+for (cell_type in caudate_cell_types) {
+  # Construct the file name
+  gsea_file_name <- paste("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/positional_gsea_new/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep = "")
+  
+  # Print the file name to verify the path
+  print(paste("Trying to read file:", gsea_file_name))
+  
+  # Check if the file exists
+  if (file.exists(gsea_file_name)) {
+    # Read the file into a dataframe
+    gsea_file <- read.delim(gsea_file_name, header = TRUE)
+    
+    # Store the dataframe in the list with the cell type as the name
+    new_caudate_gsea_df_list[[cell_type]] <- gsea_file
+  } else {
+    print(paste("File does not exist:", gsea_file_name))
+  }
+}
+
+```
+
+
+"
+
+```{r}
+caudate_astro_df$name = "CaH_astrocyte"
+caudate_endo_df$name = "CaH_endothelial"
+caudate_ependymal_df$name = "CaH_ependymal"
+caudate_neuron_df$name = "CaH_neuron"
+caudate_oligo_df$name = "CaH_oligo"
+caudate_opc_df$name = "CaH_opc"
+putamen_astro_df$name = "Put_astrocyte"
+```
+
+```{r}
+caudate_astro_df
+caudate_endo_df
+caudate_neuron_df
+caudate_ependymal_df
+caudate_oligo_df
+caudate_opc_df
+putamen_astro_df
+```
+
+
+```{r}
+merged_cah_positional = rbind(caudate_astro_df, caudate_endo_df, caudate_ependymal_df, caudate_neuron_df, caudate_oligo_df, caudate_opc_df, putamen_astro_df) 
+
+merged_cah_positional
+```
+
+
+
+
+
+```{r}
+data = merged_cah_positional
+
+data$NES_abs <- abs(data$NES)
+data$log10_padj <- -log10(data$padj)
+
+# Create the dot plot with the specified color gradient
+ggplot(data, aes(x = name, y = pathway)) +
+  geom_point(aes(size = NES_abs, color = padj, fill = NES), shape = 21, stroke = 1) +
+  scale_size_continuous(range = c(1, 10)) +  # Adjust the range as needed
+  scale_color_gradient(low = "black", high = "white") +
+  scale_fill_gradient2(low = "red", mid = "white", high = "green", midpoint = 0) +  # Gradient from blue to red
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Positional GSEA DotPlot for X chromosome",
+    x = "Cell Type",
+    y = "Gene Sets",
+    size = "Absolute NES",
+    color = "p-value", 
+    fill = "NES"
+  ) +
+  guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+```
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+data$NES_abs <- abs(data$NES)
+data$log10_padj <- -log10(data$p.adjust)
+
+# Create the dot plot with the specified color gradient
+ggplot(data, aes(x = CellType, y = Description)) +
+  geom_point(aes(size = NES_abs, color = p.adjust, fill = NES), shape = 21, stroke = 1) +
+  scale_size_continuous(range = c(1, 10)) +  # Adjust the range as needed
+  scale_color_gradient(low = "white", high = "black") +
+  scale_fill_gradient2(low = "red", mid = "white", high = "green", midpoint = 0) +  # Gradient from blue to red
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "GSEA DotPlot by Cell Type",
+    x = "Cell Type",
+    y = "Gene Sets",
+    size = "Absolute NES",
+    color = "p-value", 
+    fill = "NES"
+  ) +
+  guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+
+```
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_endo_df= caudate_gsea_df_list[["endo"]]
+caudate_ependymal_df= caudate_gsea_df_list[["ependymal"]]
+caudate_immune_df= caudate_gsea_df_list[["immune"]]
+caudate_microglia_df = caudate_gsea_df_list[["mg"]]
+caudate_neuron_df = caudate_gsea_df_list[["neuron"]]
+caudate_oligo_df=caudate_gsea_df_list[["oligo"]]
+caudate_opc_df=caudate_gsea_df_list[["opc"]]
+```
+
+
+```{r}
+merged_caudate_gsea <- intersect(caudate_astro_df$pathway, caudate_neuron_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_oligo_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_microglia_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_opc_df$pathway)
+length(merged_caudate_gsea)
+```
+```{r}
+library(ggplot2)
+
+# Example data
+data <- data.frame(
+  CellType = rep(c("astro", "da", "endo", "immune", "mg", "nonda", "oligo", "opc"), times = 10),
+  Description = rep(paste("GeneSet", 1:10, sep = ""), each = 8),
+  NES = runif(80, -3, 3),
+  p.adjust = runif(80, 0, 0.1)
+)
+data
+```
+
+
+
+```{r}
+cah_astro_sub= subset(caudate_astro_df, caudate_astro_df$pathway %in% merged_caudate_gsea)
+cah_endo_sub= subset(caudate_endo_df, caudate_endo_df$pathway %in% merged_caudate_gsea)
+cah_ependymal_sub= subset(caudate_ependymal_df, caudate_ependymal_df$pathway %in% merged_caudate_gsea)
+cah_immune_sub= subset(caudate_immune_df, caudate_immune_df$pathway %in% merged_caudate_gsea)
+cah_microglia_sub= subset(caudate_microglia_df, caudate_microglia_df$pathway %in% merged_caudate_gsea)
+cah_neuron_sub= subset(caudate_neuron_df, caudate_neuron_df$pathway %in% merged_caudate_gsea)
+cah_oligo_sub= subset(caudate_oligo_df, caudate_oligo_df$pathway %in% merged_caudate_gsea)
+cah_opc_sub= subset(caudate_opc_df, caudate_opc_df$pathway %in% merged_caudate_gsea)
+```
+
+
+```{r}
+cah_astro_sub$cell_type = "Astrocyte"
+cah_endo_sub$cell_type = "Endo"
+cah_ependymal_sub$cell_type = "Ependymal"
+#cah_immune_sub$cell_type = "Immune"
+cah_microglia_sub$cell_type = "Microglia"
+cah_neuron_sub$cell_type = "Neuron"
+cah_oligo_sub$cell_type = "Oligo"
+cah_opc_sub$cell_type = "OPC"
+```
+
+
+```{r}
+cah_immune_sub
+```
+
+```{r}
+merged_cah_df = rbind(cah_astro_sub, cah_endo_sub,cah_ependymal_sub, cah_microglia_sub,cah_neuron_sub,cah_oligo_sub, cah_opc_sub)
+merged_cah_df
+```
+
+
+
+```{r}
+data = merged_cah_df
+
+data$NES_abs <- abs(data$NES)
+data$log10_padj <- -log10(data$padj)
+
+# Create the dot plot with the specified color gradient
+ggplot(data, aes(x = cell_type, y = pathway)) +
+  geom_point(aes(size = NES_abs, color = padj, fill = NES), shape = 21, stroke = 1) +
+  scale_size_continuous(range = c(1, 10)) +  # Adjust the range as needed
+  scale_color_gradient(low = "white", high = "black") +
+  scale_fill_gradient2(low = "red", mid = "white", high = "green", midpoint = 0) +  # Gradient from blue to red
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "GSEA DotPlot by Cell Type",
+    x = "Cell Type",
+    y = "Gene Sets",
+    size = "Absolute NES",
+    color = "p-value", 
+    fill = "NES"
+  ) +
+  guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+```
+
+
+
+```{r}
+putamen_astro_df = putamen_gsea_df_list[["astro"]]
+putamen_endo_df= putamen_gsea_df_list[["endo"]]
+putamen_microglia_df = putamen_gsea_df_list[["mg"]]
+putamen_neuron_df = putamen_gsea_df_list[["neuron"]]
+putamen_oligo_df=putamen_gsea_df_list[["oligo"]]
+putamen_opc_df=putamen_gsea_df_list[["opc"]]
+```
+
+
+```{r}
+merged_putamen_gsea <- intersect(putamen_astro_df$pathway, putamen_neuron_df$pathway)
+length(merged_putamen_gsea)
+merged_putamen_gsea<- intersect(merged_putamen_gsea, putamen_oligo_df$pathway)
+length(merged_putamen_gsea)
+merged_putamen_gsea<- intersect(merged_putamen_gsea, putamen_microglia_df$pathway)
+length(merged_putamen_gsea)
+merged_putamen_gsea<- intersect(merged_putamen_gsea, putamen_opc_df$pathway)
+length(merged_putamen_gsea)
+```
+
+
+```{r}
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+e= plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue","XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = "XDP vs Control: SPN exotic patch",
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#go by shared features NOT SUBSETTINGNNNN
+```{r}
+Recon_genes = rownames(Recon_neuron_new_clean_final)
+length(Recon_genes)
+
+xdp_genes = rownames(xdp_neurons)
+length(xdp_genes)
+
+V8_genes = rownames(BICAN_V8)
+length(V8_genes)
+
+V17_genes = rownames(BICAN_V17)
+length(V17_genes)
+```
+```{r}
+intersected_genes = intersect(V8_genes, xdp_genes)
+length(intersected_genes)
+
+intersected_genes = intersect(intersected_genes, Recon_genes)
+length(intersected_genes)
+
+intersected_genes = intersect(intersected_genes, V17_genes)
+length(intersected_genes)
+```
+
+```{r}
+Recon_neuron_new_clean_final
+xdp_neurons
+BICAN_V8
+```
+
+
+```{r}
+# Ensure features are in each layer if layers are used
+intersected_genes <- intersect(intersected_genes, rownames(Recon_neuron_new_clean_final[["SCT"]]))
+length(intersected_genes)
+```
+
+
+#17072 shared genes
+```{r}
+Recon_neuron_new_clean_final_test = subset(Recon_neuron_new_clean_final, features = intersected_genes)
+
+xdp_neurons_test= subset(xdp_neurons, features = intersected_genes)
+BICAN_V8_test= subset(BICAN_V8, features = intersected_genes)
+
+Recon_neuron_new_clean_final_test
+xdp_neurons_test
+BICAN_V8_test
+```
+
+
+
+```{r}
+Recon_neuron_new_clean_final
+xdp_neurons
+```
+
+
+
