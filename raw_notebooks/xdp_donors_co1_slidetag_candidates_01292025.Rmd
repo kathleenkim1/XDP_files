@@ -1,0 +1,61 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+xdp_cah_put = qread("/broad/macosko/kimkathl/Current_sobj/XDP_CaH_Put_Combined_101024.qs")
+
+```
+
+```{r}
+xdp_cah_put@meta.data
+```
+
+
+```{r}
+xdp_cah_summary = xdp_cah_put@meta.data %>%
+  group_by(donor_id) %>%
+  summarise(mUMI = median(nUmi),
+            median_pct_intronic = median(pct_intronic),
+            average_pct_intronic = mean(pct_intronic),
+            total_nuclei = n(),
+            median_pct_mito = median(pct_mito),
+            average_pct_mito = mean(pct_mito),
+            nReads = sum(nRead),
+            median_number_of_genes = median(nFeature_RNA),
+            average_number_of_genes = mean(nFeature_RNA),
+            DV200 = unique(DV200),
+            RQS = unique(RQS),
+            MQS = unique(MQS),
+            MQS_numerical = unique(MQS_numerical),
+            Condition = unique(Condition)
+            )
+xdp_cah_summary
+
+write.csv(xdp_cah_summary,"temp.csv")
+```
+
+
+```{r}
+xdp_cah_put_spns = subset(xdp_cah_put, subset = sub_class == "SPN")
+xdp_cah_put_spns
+```
+
+
+```{r}
+xdp_cah_summary = xdp_cah_put_spns@meta.data %>%
+  group_by(donor_id) %>%
+  summarise(SPN_mUMI = median(nUmi),
+            total_SPN_nuclei = n()
+
+            )
+xdp_cah_summary
+
+write.csv(xdp_cah_summary,"temp.csv")
+```
+
+
+
+
+

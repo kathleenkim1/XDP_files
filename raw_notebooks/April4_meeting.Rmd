@@ -1,0 +1,2286 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(qs)
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+everything_metadata = qread("everything_metadata.qs")
+everything_metadata
+write.csv(everything_metadata, "everything_metadata.csv")
+```
+
+
+```{r}
+everything_metadata_new = qread("everything_metadata_new.qs")
+everything_metadata_new
+
+everything_metadata_new$GM_WM_final = everything_metadata_new$GM_WM_IC
+everything_metadata_new$GM_WM_final[everything_metadata_new$GM_WM_final == "Internal_Capsule"] = "White_Matter"
+everything_metadata_new$GM_WM_final[everything_metadata_new$CAP == "Internal_Capsule"] = "White_Matter"
+everything_metadata_new$GM_WM_final[everything_metadata_new$CAP == "Other"] = "White_Matter"
+
+everything_metadata_new$GM_WM_final[everything_metadata_new$CAP == "Caudate"] = "Gray_Matter"
+everything_metadata_new$GM_WM_final[everything_metadata_new$CAP == "Putamen"] = "Gray_Matter"
+everything_metadata_new$GM_WM_final[everything_metadata_new$CAP == "Nucleus_Accumbens"] = "Gray_Matter"
+everything_metadata_new
+```
+
+```{r}
+Condition_colors = c("XDP" = "red", "Control" = "blue","Cohort_1_XDP" = "red", "Cohort_1_Control" = "blue", "Cohort_2_XDP" = "orange", "Cohort_2_Control" = "green", "Recon_Control" = "cyan", "Recon_XDP" = "purple") 
+              
+Region_colors = c("Caudate" = "red", "Putamen" = "blue","Internal_Capsule" = "green", "Nucleus_Accumbens" = "orange", "Other" = "pink", "Unplaced" = "grey", "White_Matter" = "blue", "Gray_Matter" = "red", "White Matter" = "blue", "Gray Matter" = "red", "Uncertain" = "Green")
+```
+
+```{r}
+#I am assuming these cells were filtered out in neuronal subclustering, but when we merge back together, they dont have ident
+everything_metadata_new[is.na(everything_metadata_new$ALL_neuron_classes),]
+
+everything_metadata_new <- everything_metadata_new[!is.na(everything_metadata_new$ALL_neuron_classes), ]
+everything_metadata_new
+```
+```{r}
+everything_metadata_new$ALL_neuron_grouped_classes = everything_metadata_new$ALL_neuron_classes
+everything_metadata_new$ALL_neuron_grouped_classes[everything_metadata_new$ALL_neuron_grouped_classes == "SPN_exotic"] = "SPN_patch" 
+everything_metadata_new$ALL_neuron_grouped_classes[everything_metadata_new$ALL_neuron_grouped_classes == "SPN_patch_2"] = "SPN_patch" 
+
+table(everything_metadata_new$ALL_neuron_grouped_classes)
+```
+
+
+```{r}
+everything_metadata_new %>%
+  group_by(Cohort_Condition, GM_WM_final, CAP) %>%
+  summarise(n = n())
+```
+```{r}
+BICAN_scores = subset(everything_metadata_new, subset = Cohort_Condition == "Recon_Control")
+BICAN_scores
+
+XDP_scores = subset(everything_metadata_new, subset = Cohort_Condition == "Recon_XDP")
+XDP_scores
+```
+
+
+#functions
+```{r}
+spatial_scores_bican = function(metadata, column, title, updown = -1){
+a = ggplot(metadata, aes(x= x_um_rotated, y = y_um_rotated, color = !!sym(column))) + geom_point(size =0.6) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ ALL_final_cell_class)
+
+metadata_neurons = subset(metadata, subset = ALL_final_cell_class == "neuron")
+b = ggplot(metadata_neurons, aes(x= x_um_rotated, y = y_um_rotated, color = !!sym(column))) + geom_point(size = 0.6) + ggtitle(paste0(" ", title, " Scores"))+ scale_color_viridis_c(option = "magma", name = "Expression", direction = updown)+ labs(paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ ALL_neuron_grouped_classes)
+
+ggsave(a, filename = "pic1.png", width = 16, height = 12)
+ggsave(b, filename = "pic2.png", width = 16, height = 8)
+}
+
+spatial_scores_xdp = function(metadata, column, title, updown = -1){
+a = ggplot(metadata, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size =0.6) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ ALL_final_cell_class)
+
+metadata_neurons = subset(metadata, subset = ALL_final_cell_class == "neuron")
+b = ggplot(metadata_neurons, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size = 0.6) + ggtitle(paste0(" ", title, " Scores"))+ scale_color_viridis_c(option = "magma", name = "Expression", direction = updown)+ labs(paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ ALL_neuron_grouped_classes)
+
+ggsave(a, filename = "pic3.png", width = 14, height = 12)
+ggsave(b, filename = "pic4.png", width = 12, height = 10)
+}
+
+histograms_by_all_celltype = function(final_df, score_col, colorby, xlab, width_size, height_size){
+
+celltypes = unique(everything_metadata_new[["ALL_neuron_grouped_classes"]])  
+plots <- list()
+
+min = min(final_df[[score_col]])
+max = max(final_df[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+for (celltype in celltypes) {
+  df_sub = final_df[final_df$ALL_neuron_grouped_classes == celltype, ]
+   
+  if (nrow(df_sub) == 0) {
+    message(paste("No data for cell type:", celltype, "- skipping."))
+    next
+  }
+  
+
+  a = plot_overlapping_density_histogram(df = df_sub, 
+                                          hist_col = df_sub[[score_col]],
+                                          fill_col = colorby,
+                                          colors = Condition_colors,
+                                          breaks = limits,
+                                          title = paste0("XDP vs Control: ", celltype),
+                                          xlab = xlab,
+                                          fig_filename = NULL) 
+  
+    plots[[celltype]] = a
+  
+}
+
+final_plot <- plot_grid(plotlist = plots, ncol = 4)
+
+# Display or save the final plot
+print(final_plot)  # Display
+ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+
+histograms_by_donor <- function(final_df, score_col, celltype, colorby, xlab, width_size, height_size) {
+  donor_order <- c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014", "SCF-19-018", "SCF-20-023", "SCF-20-025", "SCF_20-024", "SCF-21-030", "SCF_22-043", "SCF_21_027", "SCF_21_029", "SCF_21_032", "SCF_21_034", "SCF_21_038", "SCF_21_041", "SCF_23_070_MMC","SCF_21-037CM2",  "SCF-22-054CM", "SCF-23-068CM", "SCF-22-058CF","SCF_22_049CCF",  "SCF_22_063CM","SCF_22_065CM", "SCF_22_067CM", "SCF_23_072CF",  "SCF_23_074CF", "SCF_23_075CM", "SCF_23_079CF", "BICAN_donor")
+
+  plots <- list()
+  
+  final_df_cellclass <- subset(final_df, ALL_neuron_grouped_classes == celltype)
+
+  # Remove rows with NA values in the score column
+  final_df_cellclass <- final_df_cellclass[!is.na(final_df_cellclass[[score_col]]), ]
+
+  # Set common x-axis limits
+  min_val <- min(final_df_cellclass[[score_col]], na.rm = TRUE)
+  max_val <- max(final_df_cellclass[[score_col]], na.rm = TRUE)
+  step <- (max_val - min_val) / 100
+  limits <- seq(min_val, max_val, step)
+
+  first_plot <- NULL
+  for (donor in donor_order) {
+    df_sub <- final_df_cellclass[final_df_cellclass$donor_id == donor, ]
+    if (nrow(df_sub) == 0) {
+      message(paste("No data for donor:", donor, "- skipping."))
+      next
+    }
+    
+    cell_count <- nrow(df_sub)
+
+    # Create the plot, keep legend only for the first plot
+    plot <- plot_overlapping_density_histogram(
+      df = df_sub, 
+      hist_col = df_sub[[score_col]],
+      fill_col = colorby,
+      colors = Condition_colors,
+      breaks = limits,
+      title = paste0(donor, ": (Cells: ", cell_count, ")"),
+      xlab = xlab,
+      fig_filename = NULL
+    ) + theme(legend.position = "none")  # Removed ylim() to prevent warnings
+
+    if (is.null(first_plot)) {
+      first_plot <- plot  # Store first plot (which has a legend)
+    }
+    
+    plots[[donor]] <- plot
+  }
+
+  if (length(plots) == 0) {
+    stop("No valid plots were generated. Check if data exists for the specified cell type.")
+  }
+
+  # Extract legend from the first plot
+  legend <- get_legend(first_plot)
+
+  # Combine all plots without individual legends
+  final_plot <- plot_grid(plotlist = plots, ncol = 6)
+
+  # Add a big title at the top
+  title_plot <- ggdraw() + draw_label(celltype, fontface = "bold", size = 16)
+
+  # Arrange the final grid with the legend below and title on top
+  final_plot_with_legend <- plot_grid(title_plot, final_plot, legend, ncol = 1, rel_heights = c(0.2, 4, 0.3))
+
+  print(final_plot_with_legend)  
+  ggsave("combined_plot.png", final_plot_with_legend, width = width_size, height = height_size)
+}
+
+wilcox_dot_plot = function(data, cell_class, score_col, colorby = "Cohort", ylab, titl){
+  
+df = subset(data, subset = ALL_neuron_grouped_classes == cell_class)
+df
+print(df)
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+print(df_avg)
+
+cases = subset(df, Condition == "XDP")
+controls = subset(df, Condition == "Control")
+
+print(XDP_scores)
+print(XDP_Control_scores)
+
+XDP_scores <- cases[[score_col]]
+XDP_Control_scores <-controls[[score_col]]
+
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+
+print(result1)
+print(result2)
+print(result3)
+
+if (result2$p.value  < 0.05) {
+  finalresult <- result2$p.value
+finalresult <- ifelse(finalresult < 2.2e-16, "< 2.2e-16", formatC(pval, format = "e", digits = 3))
+finalresultlab = (paste("p-value:", finalresult))
+
+} else if (result3$p.value  < 0.05) {
+    finalresult <- result3$p.value
+finalresult <- ifelse(finalresult < 2.2e-16, "< 2.2e-16", formatC(pval, format = "e", digits = 3))
+finalresultlab= (paste("p-value:", finalresult))
+  
+} else{
+  finalresultlab = "p-value: NS"
+}
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition, y = avg_score, color = df_avg[[colorby]], shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(3)))+ # One point per donor
+  labs(x = "Condition", y = paste0("Mean ", ylab), color = colorby, shape = "Cohort", title =paste0(titl, ", wilcox ", finalresultlab))+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+}
+
+```
+
+```{r}
+everything_metadata_new
+
+Control_scores = subset(everything_metadata_new, subset = Condition == "Control")
+Control_scores
+```
+
+```{r}
+spatial_scores_bican(BICAN_scores, "antigen_processing_scores", "Antigen Processing")
+spatial_scores_xdp(XDP_scores, "antigen_processing_scores", "Antigen Processing")
+
+histograms_by_all_celltype(everything_metadata_new, "antigen_processing_scores", "Cohort_Condition","Antigen Processing Score", 20, 12)
+```
+
+
+```{r}
+histograms_by_all_celltype(Control_scores, "antigen_processing_scores", "Cohort_Condition","Antigen Processing Score", 20, 12)
+```
+
+```{r}
+histograms_by_donor(everything_metadata_new_fixed, "antigen_processing_scores", "astrocyte" ,"Cohort_Condition", "Antigen Processing Score", 28,20)
+
+wilcox_dot_plot(everything_metadata_new_fixed, "astrocyte","antigen_processing_scores", colorby = "Cohort", ylab = "Antigen Processing Score", titl= "Astrocyte")
+```
+
+```{r}
+#everything is fineee
+#for fizes, check in fixing_WMGM_cell_ids notebooks!
+everything_metadata_new_fixed
+everything_metadata_new_fixed_WM #with the WMGM scores
+qsave(everything_metadata_new_fixed_WM, "everything_metadata_new_fixed_WM.qs")
+
+
+everything_metadata_new_astrocytes = subset(everything_metadata_new_fixed_WM, subset =ALL_final_cell_class == "astrocyte")
+everything_metadata_new_astrocytes
+```
+
+```{r}
+table(everything_metadata_new_astrocytes$Cohort_Condition)
+```
+
+
+```{r}
+BICAN_scores_astro = subset(everything_metadata_new_astrocytes, subset = Cohort_Condition == "Recon_Control")
+XDP_scores_astro = subset(everything_metadata_new_astrocytes, subset = Cohort_Condition == "Recon_XDP")
+                          
+BICAN_scores_astro
+XDP_scores_astro
+```
+#START 
+```{r}
+metadata = BICAN_scores_astro
+column = "ScoreTNC"
+title = "ScoreTNC"
+updown = -1
+
+a = ggplot(metadata, aes(x= x_um_rotated, y = y_um_rotated, color = !!sym(column))) + geom_point(size =0.6) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ ALL_final_cell_class)
+
+ggsave(a, filename = "pic1.png", width = 8, height = 8)
+
+
+metadata = XDP_scores_astro
+
+a = ggplot(metadata, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size =0.6) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ ALL_final_cell_class)
+
+ggsave(a, filename = "pic2.png", width = 8, height = 6)
+```
+
+```{r}
+everything_metadata_new_astrocytes
+```
+
+
+```{r}
+final_df = everything_metadata_new_astrocytes
+score_col = "ScoreGM"
+celltype = "astrocyte"
+colorby = "Cohort_Condition"
+xlab = "GM Score (zoom)"
+width_size = 28
+height_size =20
+  
+  donor_order <- c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014", "SCF-19-018", "SCF-20-023", "SCF-20-025", "SCF_20-024", "SCF-21-030", "SCF_22-043", "SCF_21_027", "SCF_21_029", "SCF_21_032", "SCF_21_034", "SCF_21_038", "SCF_21_041", "SCF_23_070_MMC","SCF_21-037CM2",  "SCF-22-054CM", "SCF-23-068CM", "SCF-22-058CF","SCF_22_049CCF",  "SCF_22_063CM","SCF_22_065CM", "SCF_22_067CM", "SCF_23_072CF",  "SCF_23_074CF", "SCF_23_075CM", "SCF_23_079CF", "BICAN_donor")
+
+  plots <- list()
+  
+  final_df_cellclass <- subset(final_df, ALL_neuron_grouped_classes == celltype)
+
+  # Remove rows with NA values in the score column
+  final_df_cellclass <- final_df_cellclass[!is.na(final_df_cellclass[[score_col]]), ]
+
+  # Set common x-axis limits
+  min_val <- 0.001
+  max_val <- max(final_df_cellclass[[score_col]], na.rm = TRUE)
+  step <- (max_val - min_val) / 100
+  limits <- seq(min_val, max_val, step)
+
+  first_plot <- NULL
+  for (donor in donor_order) {
+    df_sub <- final_df_cellclass[final_df_cellclass$donor_id == donor, ]
+    if (nrow(df_sub) == 0) {
+      message(paste("No data for donor:", donor, "- skipping."))
+      next
+    }
+    
+    cell_count <- nrow(df_sub)
+
+    # Create the plot, keep legend only for the first plot
+    plot <- plot_overlapping_density_histogram(
+      df = df_sub, 
+      hist_col = df_sub[[score_col]],
+      fill_col = colorby,
+      colors = Condition_colors,
+      breaks = limits,
+      title = paste0(donor, ": (Cells: ", cell_count, ")"),
+      xlab = xlab,
+      fig_filename = NULL
+    ) + theme(legend.position = "none") # Removed ylim() to prevent warnings
+
+    if (is.null(first_plot)) {
+      first_plot <- plot  # Store first plot (which has a legend)
+    }
+    
+    plots[[donor]] <- plot
+  }
+
+  if (length(plots) == 0) {
+    stop("No valid plots were generated. Check if data exists for the specified cell type.")
+  }
+
+  # Extract legend from the first plot
+  legend <- get_legend(first_plot)
+
+  # Combine all plots without individual legends
+  final_plot <- plot_grid(plotlist = plots, ncol = 6)
+
+  # Add a big title at the top
+  title_plot <- ggdraw() + draw_label(celltype, fontface = "bold", size = 16)
+
+  # Arrange the final grid with the legend below and title on top
+  final_plot_with_legend <- plot_grid(title_plot, final_plot, legend, ncol = 1, rel_heights = c(0.2, 4, 0.3))
+
+  print(final_plot_with_legend)  
+  ggsave("combined_plot.png", final_plot_with_legend, width = width_size, height = height_size)
+```
+
+
+```{r}
+data = everything_metadata_new_astrocytes
+cell_class = "astrocyte"
+score_col = "ScoreGM"
+colorby = "Cohort"
+ylab = "GM Score"
+titl = "Astrocyte"
+  
+df = subset(data, subset = ALL_neuron_grouped_classes == cell_class)
+df
+print(df)
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+print(df_avg)
+
+cases = subset(df, Condition == "XDP")
+controls = subset(df, Condition == "Control")
+
+print(XDP_scores)
+print(XDP_Control_scores)
+
+XDP_scores <- cases[[score_col]]
+XDP_Control_scores <-controls[[score_col]]
+
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+
+print(result1)
+print(result2)
+print(result3)
+
+if (result2$p.value  < 0.05) {
+  finalresult <- result2$p.value
+finalresult <- ifelse(finalresult < 2.2e-16, "< 2.2e-16", formatC(pval, format = "e", digits = 3))
+finalresultlab = (paste("p-value:", finalresult))
+
+} else if (result3$p.value  < 0.05) {
+    finalresult <- result3$p.value
+finalresult <- ifelse(finalresult < 2.2e-16, "< 2.2e-16", formatC(pval, format = "e", digits = 3))
+finalresultlab= (paste("p-value:", finalresult))
+  
+} else{
+  finalresultlab = "p-value: NS"
+}
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition, y = avg_score, color = df_avg[[colorby]], shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(3)))+ # One point per donor
+  labs(x = "Condition", y = paste0("Mean ", ylab), color = colorby, shape = "Cohort", title =paste0(titl, ", wilcox ", finalresultlab))+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+
+```
+
+```{r}
+everything_metadata_new_astrocytes_controls = subset(everything_metadata_new_astrocytes, subset = Condition == "Control")
+```
+
+
+```{r}
+data = everything_metadata_new_astrocytes_controls
+cell_class = "astrocyte"
+score_col = "ScoreWM"
+colorby = "Cohort"
+ylab = "WM Score"
+titl = "Astrocyte Controls"
+  
+df = subset(data, subset = ALL_neuron_grouped_classes == cell_class)
+df
+print(df)
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+print(df_avg)
+
+co1 = subset(df, Cohort == "Cohort_1")
+co2 = subset(df, Cohort == "Cohort_2")
+
+print(XDP_scores)
+print(XDP_Control_scores)
+
+co1_scores <- co1[[score_col]]
+co2_scores <-co2[[score_col]]
+
+
+result1 <- wilcox.test(co1_scores, co2_scores, alternative = "two.sided")
+result2 <- wilcox.test(co1_scores, co2_scores, alternative = "less")
+result3 <- wilcox.test(co1_scores, co2_scores, alternative = "greater")
+
+print(result1)
+print(result2)
+print(result3)
+
+if (result2$p.value  < 0.05) {
+  finalresult <- result2$p.value
+finalresult <- ifelse(finalresult < 2.2e-16, "< 2.2e-16", formatC(pval, format = "e", digits = 3))
+finalresultlab = (paste("p-value:", finalresult))
+
+} else if (result3$p.value  < 0.05) {
+    finalresult <- result3$p.value
+finalresult <- ifelse(finalresult < 2.2e-16, "< 2.2e-16", formatC(pval, format = "e", digits = 3))
+finalresultlab= (paste("p-value:", finalresult))
+  
+} else{
+  finalresultlab = "p-value: NS"
+}
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Cohort, y = avg_score, color = df_avg[[colorby]], shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(3)))+ # One point per donor
+  labs(x = "Cohort", y = paste0("Mean ", ylab), color = colorby, shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+
+```
+
+```{r}
+data = everything_metadata_new_astrocytes_controls
+cell_class = "astrocyte"
+score_col = "ScoreNFKB"
+colorby = "Cohort"
+ylab = "NFKB Score"
+titl = "Astrocyte Controls"
+  
+df = subset(data, subset = ALL_neuron_grouped_classes == cell_class)
+df
+print(df)
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort, CAP_Region) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+print(df_avg)
+
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = CAP_Region, y = avg_score, color = df_avg[["Cohort"]], shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(3)))+ # One point per donor
+  labs(x = "CAP_Region", y = paste0("Mean ", ylab), color = "Cohort", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 8, height = 6)
+
+
+```
+
+```{r}
+everything_metadata_new_astrocytes
+```
+
+```{r}
+final_df = everything_metadata_new_astrocytes
+  
+maxx = max(everything_metadata_new_astrocytes$ScoreWM)
+maxy = max(everything_metadata_new_astrocytes$ScoreNFKB)
+
+  donor_order <- c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014", "SCF-19-018", "SCF-20-023", "SCF-20-025", "SCF_20-024", "SCF-21-030", "SCF_22-043", "SCF_21_027", "SCF_21_029", "SCF_21_032", "SCF_21_034", "SCF_21_038", "SCF_21_041", "SCF_23_070_MMC","SCF_21-037CM2",  "SCF-22-054CM", "SCF-23-068CM", "SCF-22-058CF","SCF_22_049CCF",  "SCF_22_063CM","SCF_22_065CM", "SCF_22_067CM", "SCF_23_072CF",  "SCF_23_074CF", "SCF_23_075CM", "SCF_23_079CF", "BICAN_donor")
+
+  plots <- list()
+  
+  for (donor in donor_order) {
+    df_sub <- final_df[final_df$donor_id == donor, ]
+    if (nrow(df_sub) == 0) {
+      message(paste("No data for donor:", donor, "- skipping."))
+      next
+    }
+    
+    cell_count <- nrow(df_sub)
+
+    # Create the plot, keep legend only for the first plot
+    plot <- ggplot(df_sub, aes(x = ScoreWM, y = ScoreNFKB, color = WM_GM_test)) +geom_point(size = 0.6, alpha =0.5) + xlab("WM Score") +ylab("NFKB Score") +ggtitle(paste0(donor, ": ", cell_count)) + scale_color_manual(values = Region_colors) + xlim(0, maxx) + ylim(0, maxy)
+
+    if (is.null(first_plot)) {
+      first_plot <- plot  # Store first plot (which has a legend)
+    }
+    
+    plots[[donor]] <- plot
+  }
+
+  if (length(plots) == 0) {
+    stop("No valid plots were generated. Check if data exists for the specified cell type.")
+  }
+
+  # Extract legend from the first plot
+  legend <- get_legend(first_plot)
+
+  # Combine all plots without individual legends
+  final_plot <- plot_grid(plotlist = plots, ncol = 5)
+
+  # Add a big title at the top
+  title_plot <- ggdraw() + draw_label(celltype, fontface = "bold", size = 16)
+
+  # Arrange the final grid with the legend below and title on top
+  final_plot_with_legend <- plot_grid(title_plot, final_plot, legend, ncol = 1, rel_heights = c(0.2, 4, 0.3))
+
+  print(final_plot_with_legend)  
+  ggsave("combined_plot.png", final_plot_with_legend, width = 28, height = 20)
+```
+
+
+```{r}
+library(ggExtra)
+p =ggplot(everything_metadata_new_astrocytes_controls, aes(x = ScoreWM, y = ScoreGM)) +geom_point(size = 0.3, alpha =0.5) 
+p1 = ggMarginal(p, type="histogram" , xparams = list(  bins=100))
+print(p1)
+```
+
+```{r}
+hist(everything_metadata_new_astrocytes$ScoreGM)
+hist(everything_metadata_new_astrocytes$ScoreWM)
+```
+
+```{r}
+ggplot(everything_metadata_new_astrocytes_controls, aes(x = ScoreWM, y = ScoreGM)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  theme_minimal() +
+  labs(title = "White Matter vs Gray Matter Scores",
+       x = "White Matter Score",
+       y = "Gray Matter Score")
+```
+
+
+```{r}
+everything_metadata_new_astrocytes_controls$WM_GM_test <- ifelse(
+  everything_metadata_new_astrocytes_controls$ScoreWM > everything_metadata_new_astrocytes_controls$ScoreGM, "White Matter", 
+  ifelse(everything_metadata_new_astrocytes_controls$ScoreGM > everything_metadata_new_astrocytes_controls$ScoreWM, "Gray Matter", "Uncertain")
+)
+everything_metadata_new_astrocytes_controls
+
+ p = ggplot(everything_metadata_new_astrocytes_controls, aes(x = ScoreWM, y = ScoreGM, color = WM_GM_test)) +
+  geom_point(alpha = 0.5) 
+p1 = ggMarginal(p, type="histogram" , xparams = list(  bins=100))
+print(p1)
+```
+```{r}
+everything_metadata_new_astrocytes$WM_GM_test <- ifelse(
+  everything_metadata_new_astrocytes$ScoreWM > everything_metadata_new_astrocytes$ScoreGM, "White Matter", 
+  ifelse(everything_metadata_new_astrocytes$ScoreGM > everything_metadata_new_astrocytes$ScoreWM, "Gray Matter", "Uncertain")
+)
+everything_metadata_new_astrocytes
+
+p = ggplot(everything_metadata_new_astrocytes, aes(x = ScoreWM, y = ScoreGM, color = WM_GM_test)) +
+  geom_point(alpha = 0.5, size = 0.1) 
+print(p)
+p1 = ggMarginal(p, type="histogram" , xparams = list(  bins=100))
+print(p1)
+```
+
+```{r}
+everything_metadata_new_astrocytes_recon = subset(everything_metadata_new_astrocytes, Cohort == "Recon")
+a = ggplot(everything_metadata_new_astrocytes_recon, aes(x = x_um, y = y_um, color = WM_GM_test)) + geom_point(size = 0.3, alpha = 0.5)+ facet_wrap(~ Cohort_Condition)
+
+ggsave(a, filename = "pic.png", width = 10, height = 4.5)
+```
+
+
+
+```{r}
+table(everything_metadata_new_astrocytes$donor_id, everything_metadata_new_astrocytes$WM_GM_test)
+```
+
+
+```{r}
+regions = unique(everything_metadata_new_astrocytes_controls$CAP_Region)
+
+for (region in regions) {
+  
+
+min = min(everything_metadata_new_astrocytes$ScoreWM)
+max = max(everything_metadata_new_astrocytes$ScoreWM)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+new_df =subset(everything_metadata_new_astrocytes_controls, subset = CAP_Region == region) 
+
+a = plot_overlapping_density_histogram(df = new_df, 
+                                          hist_col = new_df$ScoreWM,
+                                          fill_col = "WM_GM_test",
+                                  colors = Region_colors,
+                                          breaks = limits,
+                                          title = paste0("Astrocytes, ", region),
+                                          xlab = "WM Score",
+                                          fig_filename = NULL) + facet_wrap(~ Cohort_Condition)# + xlim(0, 0.3)
+ print(a)
+  ggsave(a, filename = paste0(region, ".png"), width = 8, height = 4)
+}
+```
+
+
+```{r}
+regions = unique(newdf$CAP_Region)
+
+for (region in regions) {
+  
+new_df =subset(everything_metadata_new_astrocytes_recon, subset = CAP_Region == region) 
+
+min = min(new_df$ScoreNFKB)
+max = max(new_df$ScoreNFKB)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+ a= plot_overlapping_density_histogram(df = new_df, 
+                                          hist_col = new_df$ScoreNFKB,
+                                          fill_col = "Cohort_Condition",
+                                  colors = c("Cohort_1_XDP" = "red", "Cohort_2_XDP" = "orange", "Recon_XDP" = "pink", "Cohort_1_Control" = "blue","Cohort_2_Control" = "cyan", "Recon_Control" = "green"),
+                                          breaks = limits,
+                                          title = paste0("Astrocytes, ", region),
+                                          xlab = "NFKB Score",
+                                          fig_filename = NULL) + facet_wrap(~ Cohort_Condition)
+ print(a)
+ ggsave(a, filename = paste0(region, ".png"), width = 8, height = 5)
+}
+```
+
+
+
+
+# Make a Ucell score for some very specific WM genes (based on BICAN tags) 
+# Within people, average these scores among astrocytes or if bimodal fraction above some threshold.
+# Put all in some df model = lm(NFkB ~ cohort + frac_wm + case_control + cohort:case_control, data = df)
+
+```{r}
+min = 0.001
+#min = min(everything_metadata_new_astrocytes_controls$ScoreWM)
+max = max(everything_metadata_new_astrocytes_controls$ScoreWM)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+#new_df =subset(everything_metadata_new_astrocytes_controls, subset = CAP_Region == region) 
+
+a = plot_overlapping_density_histogram(df = everything_metadata_new_astrocytes_controls, 
+                                          hist_col = everything_metadata_new_astrocytes_controls$ScoreWM,
+                                          fill_col = "Cohort_Condition",
+                                        colors = Condition_colors,
+                                          breaks = limits,
+                                          title = paste0("Control Astrocytes"),
+                                          xlab = "WM Score",
+                                          fig_filename = NULL) + facet_wrap(~ CAP_Region + WM_GM_test2)
+print(a)
+  ggsave(a, filename = paste0("pic.png"), width = 12, height = 6)
+```
+
+#GM not as helpful
+```{r}
+min = 0.001
+#min = min(everything_metadata_new_astrocytes_controls$ScoreGM)
+max = max(everything_metadata_new_astrocytes_controls$ScoreGM)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+#new_df =subset(everything_metadata_new_astrocytes_controls, subset = CAP_Region == region) 
+
+a = plot_overlapping_density_histogram(df = everything_metadata_new_astrocytes_controls, 
+                                          hist_col = everything_metadata_new_astrocytes_controls$ScoreGM,
+                                          fill_col = "Cohort_Condition",
+                                        colors = Condition_colors,
+                                          breaks = limits,
+                                          title = paste0("Control Astrocytes"),
+                                          xlab = "GM Score",
+                                          fig_filename = NULL) + facet_wrap(~ CAP_Region)
+print(a)
+  ggsave(a, filename = paste0("pic.png"), width = 12, height = 6)
+```
+
+
+
+```{r}
+everything_metadata_new_astrocytes_controls$WM_GM_test2 <- ifelse(
+  everything_metadata_new_astrocytes_controls$ScoreWM > 0.20, "White Matter", "Gray Matter")
+
+
+everything_metadata_new_astrocytes_controls
+
+ggplot(everything_metadata_new_astrocytes_controls, aes(x = ScoreWM, y = ScoreGM, color = WM_GM_test2)) +
+  geom_point(alpha = 0.5, size = 0.1) 
+```
+
+```{r}
+min =  min(everything_metadata_new_astrocytes$ScoreWM)
+max = max(everything_metadata_new_astrocytes$ScoreWM)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+a = plot_overlapping_density_histogram(df = everything_metadata_new_astrocytes_controls, 
+                                          hist_col = everything_metadata_new_astrocytes_controls$ScoreWM,
+                                          fill_col = "Cohort_Condition",
+                                  colors = Condition_colors,
+                                          breaks = limits,
+                                          title = paste0("Control Astrocytes"),
+                                          xlab = "WM Score",
+                                          fig_filename = NULL) +facet_wrap(~ WM_GM_test2  + CAP_Region)
+ print(a)
+  ggsave(a, filename = paste0("pic.png"), width = 20, height = 15)
+
+```
+
+
+
+```{r}
+min =  min(everything_metadata_new_astrocytes_controls$ScoreNFKB)
+max = max(everything_metadata_new_astrocytes_controls$ScoreNFKB)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+a = plot_overlapping_density_histogram(df = everything_metadata_new_astrocytes_controls, 
+                                          hist_col = everything_metadata_new_astrocytes_controls$ScoreNFKB,
+                                          fill_col = "WM_GM_test2",
+                                  colors = Region_colors,
+                                          breaks = limits,
+                                          title = paste0("Control Astrocytes"),
+                                          xlab = "NFKB Score",
+                                          fig_filename = NULL) +facet_wrap(~CAP_Region)
+ print(a)
+  ggsave(a, filename = paste0("pic.png"), width = 10, height = 7)
+
+```
+
+```{r}
+everything_metadata_new_astrocytes
+```
+
+```{r}
+data = everything_metadata_new_astrocytes_controls
+cell_class = "astrocyte"
+score_col = "ScoreWM"
+colorby = "Cohort"
+ylab = "WM Score"
+titl = "Astrocyte"
+  
+df = subset(data, subset = ALL_neuron_grouped_classes == cell_class)
+df
+print(df)
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort, CAP_Region) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+print(df_avg)
+
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = CAP_Region, y = avg_score, color = df_avg[["Cohort"]], shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(3)))+ # One point per donor
+  labs(x = "CAP_Region", y = paste0("Mean ", ylab), color = "Cohort", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+```
+
+```{r}
+df_avg <- everything_metadata_new_astrocytes %>%
+  group_by(donor_id, Condition, Cohort, CAP_Region) %>%
+  summarise(WM_avg_score = mean(ScoreWM), NFKB_avg_score = mean(ScoreNFKB), .groups = 'drop')
+df_avg
+```
+
+```{r}
+ggplot(df_avg, aes(x = WM_avg_score, y = NFKB_avg_score, color = Condition, shape = Cohort)) + geom_point()
+```
+
+
+
+```{r}
+model <- lm(NFKB_avg_score ~ Cohort + WM_avg_score + Condition + Cohort:Condition, data = df_avg)
+summary(model)
+```
+
+
+```{r}
+plot(model)
+```
+
+```{r}
+library(ggplot2)
+ggplot(df_avg, aes(x = WM_avg_score, y = NFKB_avg_score, color = Condition)) +
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  facet_wrap(~ Cohort)
+
+```
+
+
+
+
+
+```{r}
+WM_test_df = subset(everything_metadata_new_astrocytes_controls, subset = WM_GM_test2 == "White Matter")
+WM_test_df
+df_avg <- WM_test_df %>%
+  group_by(donor_id, Condition, Cohort, CAP_Region) %>%
+  summarise(WM_avg_score = mean(ScoreWM), NFKB_avg_score = mean(ScoreNFKB), .groups = 'drop')
+df_avg
+```
+
+
+```{r}
+model <- lm(ScoreNFKB ~ Cohort + ScoreWM + Condition + Cohort:Condition, data = everything_metadata_new_astrocytes)
+summary(model)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+Make a Ucell score for some very specific WM genes (based on BICAN tags) 
+Within people, average these scores among astrocytes or if bimodal fraction above some threshold.
+Put all in some df
+model = lm(NFkB ~ cohort + frac_wm + case_control + cohort:case_control, data = df)
+```
+
+
+```{r}
+everything_metadata_new_astrocytes$WM_GM_test2 <- ifelse(
+  everything_metadata_new_astrocytes$ScoreWM > 0.20, "White Matter", "Gray Matter")
+
+
+everything_metadata_new_astrocytes
+
+ggplot(everything_metadata_new_astrocytes, aes(x = ScoreWM, y = ScoreGM, color = WM_GM_test2)) +
+  geom_point(alpha = 0.5, size = 0.1) + facet_wrap(~ Condition)
+```
+
+```{r}
+#min =  min(everything_metadata_new_astrocytes$ScoreWM)
+min = 0.001
+max = max(everything_metadata_new_astrocytes$ScoreWM)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+a = plot_overlapping_density_histogram(df = everything_metadata_new_astrocytes, 
+                                          hist_col = everything_metadata_new_astrocytes$ScoreWM,
+                                          fill_col = "Cohort_Condition",
+                                  colors = Condition_colors,
+                                          breaks = limits,
+                                          title = paste0("Control Astrocytes"),
+                                          xlab = "WM Score",
+                                          fig_filename = NULL) +facet_wrap(~ WM_GM_test2  + CAP_Region)
+ print(a)
+  ggsave(a, filename = paste0("pic.png"), width = 20, height = 15)
+
+```
+
+
+
+```{r}
+min =  min(everything_metadata_new_astrocytes$ScoreNFKB)
+max = max(everything_metadata_new_astrocytes$ScoreNFKB)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+a = plot_overlapping_density_histogram(df = everything_metadata_new_astrocytes, 
+                                          hist_col = everything_metadata_new_astrocytes$ScoreNFKB,
+                                          fill_col = "WM_GM_test2",
+                                  colors = Region_colors,
+                                          breaks = limits,
+                                          title = paste0("Control Astrocytes"),
+                                          xlab = "NFKB Score",
+                                          fig_filename = NULL) +facet_wrap(~CAP_Region)
+ print(a)
+  ggsave(a, filename = paste0("pic.png"), width = 10, height = 7)
+
+```
+
+```{r}
+everything_metadata_new_astrocytes
+```
+
+```{r}
+data = everything_metadata_new_astrocytes
+cell_class = "astrocyte"
+score_col = "ScoreWM"
+colorby = "Cohort"
+ylab = "WM Score"
+titl = "Astrocyte"
+  
+df = subset(data, subset = ALL_neuron_grouped_classes == cell_class)
+df
+print(df)
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort, CAP_Region) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+print(df_avg)
+
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = CAP_Region, y = avg_score, color = df_avg[["Cohort"]], shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(3)))+ # One point per donor
+  labs(x = "CAP_Region", y = paste0("Mean ", ylab), color = "Cohort", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+```
+
+```{r}
+df_avg <- everything_metadata_new_astrocytes %>%
+  group_by(donor_id, Condition, Cohort, CAP_Region, WM_GM_test2) %>%
+  summarise(WM_avg_score = mean(ScoreWM), NFKB_avg_score = mean(ScoreNFKB), .groups = 'drop')
+df_avg
+```
+
+```{r}
+ggplot(df_avg, aes(x = WM_avg_score, y = NFKB_avg_score, color = Condition, shape = Cohort)) + geom_point()
+```
+
+
+
+```{r}
+model <- lm(NFKB_avg_score ~ Cohort + WM_avg_score + Condition + Cohort:Condition, data = df_avg)
+summary(model)
+```
+
+
+```{r}
+plot(model)
+```
+
+```{r}
+library(ggplot2)
+ggplot(df_avg, aes(x = WM_avg_score, y = NFKB_avg_score, color = Condition)) +
+  geom_point() + 
+  geom_smooth(method = "lm") +
+  facet_wrap(~ Cohort)
+
+```
+
+
+
+```{r}
+#subset by WM score < > 0.2
+
+model <- lm(ScoreNFKB ~ Cohort + ScoreWM + Condition + Cohort:Condition, data = everything_metadata_new_astrocytes)
+summary(model)
+```
+
+
+```{r}
+everything_metadata_new
+```
+
+
+#4/3/25 fizes
+```{r}
+data = everything_metadata_new
+cell_class = "SPN_matrix"
+score_col = "antigen_processing_scores"
+ylab = "Antigen Processing Score"
+titl = "Antigen Processing Score in SPN Matrix"
+  
+df = subset(data, subset = ALL_neuron_grouped_classes == cell_class)
+df
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort, Cohort_Condition) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Cohort_Condition, y = avg_score, color = Condition, shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Cohort_Condition", y = paste0("Mean ", ylab), color = "Condition", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+```
+
+```{r}
+xdp_meta = subset(df_avg, Cohort == "Cohort_1")
+xdp_meta
+
+xdp_meta_cases = subset(xdp_meta, Condition == "XDP")
+xdp_meta_controls = subset(xdp_meta, Condition == "Control")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$avg_score  
+XDP_Control_scores <- xdp_meta_controls$avg_score 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+
+```
+#scores by gm vs wm
+
+```{r}
+
+everything_metadata_new_astrocytes$WM_GM <- ifelse(
+  everything_metadata_new_astrocytes$ScoreWM > everything_metadata_new_astrocytes$ScoreGM, "White Matter", 
+  ifelse(everything_metadata_new_astrocytes$ScoreGM > everything_metadata_new_astrocytes$ScoreWM, "Gray Matter", "Uncertain")
+)
+everything_metadata_new_astrocytes
+
+```
+
+
+```{r}
+data = everything_metadata_new_astrocytes
+cell_class = "astrocyte"
+region = "Gray Matter"
+score_col = "Scoreinterferon_alpha"
+ylab = "Interferon Alpha Score"
+titl = "Interferon Alpha Score in GM Astrocytes"
+  
+df = subset(data, subset = WM_GM == region)
+df
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort, Cohort_Condition, WM_GM) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Cohort_Condition, y = avg_score, color = Condition, shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Cohort_Condition", y = paste0("Mean ", ylab), color = "Condition", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) +ylim(0.035, 0.07)
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+```
+
+```{r}
+xdp_meta = subset(df_avg, Cohort == "Cohort_2")
+xdp_meta
+
+xdp_meta_cases = subset(xdp_meta, Condition == "XDP")
+xdp_meta_controls = subset(xdp_meta, Condition == "Control")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$avg_score  
+XDP_Control_scores <- xdp_meta_controls$avg_score 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+
+```
+
+
+```{r}
+cells_per_donor = as.data.frame(table(everything_metadata_new_astrocytes$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(everything_metadata_new_astrocytes$WM_GM, everything_metadata_new_astrocytes$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df$Cohort <- everything_metadata_new_astrocytes$Cohort[match(cell_class_df$Var2, everything_metadata_new_astrocytes$donor_id)]
+
+cell_class_df$Cohort_Condition <- everything_metadata_new_astrocytes$Cohort_Condition[match(cell_class_df$Var2, everything_metadata_new_astrocytes$donor_id)]
+
+cell_class_df$Sex <- everything_metadata_new_astrocytes$Sex[match(cell_class_df$Var2, everything_metadata_new_astrocytes$donor_id)]
+
+cell_class_df$Condition <- everything_metadata_new_astrocytes$Condition[match(cell_class_df$Var2, everything_metadata_new_astrocytes$donor_id)]
+
+cell_class_df
+
+# Count the number of cells per donor
+donor_counts <- table(everything_metadata_new_astrocytes$donor_id)
+
+# Convert to dataframe for sorting
+donor_df <- as.data.frame(donor_counts)
+colnames(donor_df) <- c("donor_id", "cell_count")
+
+# Identify controls (CM, CF) - ensuring it only checks ENDING
+controls <- donor_df[grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+cases <- donor_df[!grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+
+
+# Sort both groups by cell count in descending order
+controls <- controls[order(-controls$cell_count), ]
+cases <- cases[order(-cases$cell_count), ]
+
+
+# Combine ordered donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Print or use the ordered donor IDs
+print(ordered_donors)
+
+
+            
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = ordered_donors)
+# Extract Cohort information
+cell_class_df <- cell_class_df %>%
+  arrange(Cohort, match(Var2, ordered_donors)) %>%
+  mutate(Var2 = factor(Var2, levels = unique(Var2))) 
+
+astro_labels <- cell_class_df %>%
+  filter(Var1 == "White Matter") %>%
+  mutate(y_mid = cell_proportions / 2) 
+
+cell_class_df
+a = ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors") + ylab("Number of cells by Astrocyte WM GM") + labs(fill = "Astrocyte WM GM") +theme(axis.text.x = element_text(angle = 45, hjust = 1))  +facet_grid(~ Cohort, scales = "free_x", space = "free_x")+ geom_text(data = cell_class_df, aes(x = Var2, y = Freq.y, label = Freq.y), vjust = -0.2, size = 3, nudge_y = 0.5) +ylim(0, 2000)
+
+b= ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors") + ylab("Astrocyte WM GM Proportion") + labs(fill = "Astrocyte WM GM")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))   + facet_grid(~ Cohort, scales = "free_x", space = "free_x")+ geom_text(
+    data = astro_labels,  
+    aes(x = Var2, y = y_mid, label = round(cell_proportions, 2)),  # Correctly centered text
+    size = 3
+  )
+
+ggsave(a, filename = "pic.png", width = 14, height = 5)
+ggsave(b, filename = "pic2.png", width = 14, height = 5)
+```
+```{r}
+cell_class_df = subset(cell_class_df, Var1 == "White Matter")
+cell_class_df
+```
+
+
+
+```{r}
+df_avg= cell_class_df
+
+df_avg$donor_id = df_avg$Var2
+df_avg
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Cohort_Condition, y = cell_proportions, color = Condition, shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Cohort_Condition", y = paste0(ylab), color = "Condition", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 6, height = 6)
+```
+
+```{r}
+xdp_meta = subset(df_avg, Cohort == "Cohort_2")
+xdp_meta
+
+xdp_meta_cases = subset(xdp_meta, Condition == "XDP")
+xdp_meta_controls = subset(xdp_meta, Condition == "Control")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$cell_proportions  
+XDP_Control_scores <- xdp_meta_controls$cell_proportions 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+
+```
+```{r}
+xdp_meta = subset(df_avg, Condition == "Control")
+xdp_meta
+
+xdp_meta_cases = subset(xdp_meta, Cohort == "Cohort_1")
+xdp_meta_controls = subset(xdp_meta, Cohort == "Cohort_2")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$cell_proportions  
+XDP_Control_scores <- xdp_meta_controls$cell_proportions 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+```
+
+
+
+
+```{r}
+library(lme4)
+sobj = everything_metadata_new_astrocytes
+sobj = subset(sobj, Cohort != "Recon")
+sobj = subset(sobj, donor_id != "SCF_22_049CCF")
+sobj$WM_GM[sobj$WM_GM == "White Matter"] = "White_Matter"
+sobj$WM_GM[sobj$WM_GM == "Gray Matter"] = "Gray_Matter"
+sobj
+model_cols = c("donor_id", "WM_GM", "Cohort", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$WM_GM, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects=c("donor_id"), # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Cohort","Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+a = ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Cohort 1 + 2 Neurons (no CCF)") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Neuronal Cell Classes") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+
+ggsave(a, filename = "pic.png", width = 7, height = 8)
+```
+
+
+
+```{r}
+data = everything_metadata_new_astrocytes
+
+data = subset(data, Cohort != "Recon")
+cell_class = "astrocyte"
+WMGM = "Gray Matter"
+score_col = "ScoreNFKB"
+ylab = "NFKB Score"
+titl = "NFKB Score in GM Astrocytes"
+  
+df = subset(data, subset = WM_GM == WMGM)
+df
+df_avg <- df %>%
+  group_by(donor_id, Condition, Cohort, Cohort_Condition, WM_GM, CAP_Region) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Cohort_Condition, y = avg_score, color = Condition, shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Cohort_Condition", y = paste0("Mean ", ylab), color = "Condition", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) + facet_wrap(~ CAP_Region)
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 10, height = 6)
+```
+
+```{r}
+xdp_meta = subset(df_avg, Cohort == "Cohort_2")
+xdp_meta = subset(xdp_meta, CAP_Region == "Putamen")
+
+xdp_meta_cases = subset(xdp_meta, Condition == "XDP")
+xdp_meta_controls = subset(xdp_meta, Condition == "Control")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$avg_score  
+XDP_Control_scores <- xdp_meta_controls$avg_score 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+
+```
+
+```{r}
+cell_class_df = subset(cell_class_df, Var1 == "White Matter")
+cell_class_df
+```
+
+```{r}
+df_avg = subset(everything_metadata_new_astrocytes, Cohort != "Recon")
+df_avg <- df_avg %>%
+  group_by(donor_id, Condition, Cohort, Region) %>% #WM_GM #
+  summarise(WM_avg_score = mean(ScoreWM), NFKB_avg_score = mean(ScoreNFKB), .groups = 'drop')
+df_avg
+
+df_avg = merge(df_avg, cell_class_df, by.x = "donor_id", by.y = "Var2")
+df_avg$Cohort = df_avg$Cohort.x
+df_avg$Cohort.x = NULL
+df_avg$Cohort.y = NULL
+df_avg$WM_GM = df_avg$Var1
+ df_avg$Var1= NULL
+df_avg$WM_cell_proportions = df_avg$cell_proportions
+df_avg$cell_proportions = NULL
+df_avg
+```
+
+
+```{r}
+model <- lm(NFKB_avg_score ~ Cohort + WM_cell_proportions + Region + Condition + Cohort:Condition, data = df_avg)
+summary(model)
+```
+
+
+```{r}
+ggplot(df_avg, aes(x = WM_avg_score, y = NFKB_avg_score, color = Condition, shape = Cohort)) + geom_point() + facet_wrap(~ Region)
+```
+
+```{r}
+everything_metadata_new
+```
+
+
+
+```{r}
+cells_per_donor = as.data.frame(table(everything_metadata_new$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(everything_metadata_new$ALL_final_cell_class, everything_metadata_new$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+```
+
+
+```{r}
+df = subset(everything_metadata_new, subset = Cohort != "Recon")
+
+df <- df %>%
+  group_by(donor_id, ALL_neuron_grouped_classes) %>%
+  summarise(count = n(), .groups = "drop") %>% 
+  group_by(donor_id) %>%  
+  mutate(total = sum(count), 
+         cell_proportions = count / total) 
+
+df
+
+caudate_SPN = subset(df, subset = ALL_neuron_grouped_classes == "SPN_matrix")
+caudate_SPN
+
+caudate_SPN$Condition = everything_metadata_new$Condition[match(caudate_SPN$donor_id, everything_metadata_new$donor_id)]
+caudate_SPN$Cohort = everything_metadata_new$Cohort[match(caudate_SPN$donor_id, everything_metadata_new$donor_id)]
+caudate_SPN$Disease_duration = everything_metadata_new$Disease_duration[match(caudate_SPN$donor_id, everything_metadata_new$donor_id)]
+caudate_SPN$Age.of.Death = everything_metadata_new$Age.of.Death[match(caudate_SPN$donor_id, everything_metadata_new$donor_id)]
+caudate_SPN$Age.of.Onset = everything_metadata_new$Age.of.Onset[match(caudate_SPN$donor_id, everything_metadata_new$donor_id)]
+caudate_SPN$Sex = everything_metadata_new$Sex[match(caudate_SPN$donor_id, everything_metadata_new$donor_id)]
+
+
+caudate_SPN
+
+caudate_SPN$Condition[caudate_SPN$donor_id == "SCF_22_049CCF"] = "Control_Carrier"
+caudate_SPN
+
+caudate_SPN$donor_id_new = substring(caudate_SPN$donor_id, 5)
+caudate_SPN$donor_id_new[caudate_SPN$donor_id_new == "-16-011"] = "16-011"
+caudate_SPN$donor_id_new[caudate_SPN$donor_id_new == "-16-012"] = "16-012"
+caudate_SPN
+
+caudate_SPN[is.na(caudate_SPN)] = 0
+caudate_SPN
+```
+
+
+```{r}
+library(ggplot2)
+
+# Filter disease cases only
+disease_only <- subset(caudate_SPN, Disease_duration > 0)
+
+# Fit linear model
+fit <- lm(cell_proportions ~ Disease_duration, data = disease_only)
+summary_fit <- summary(fit)
+r2 <- round(summary_fit$r.squared, 3)
+pval <- signif(summary_fit$coefficients[2, 4], 3)
+
+# Plot everything, regress only on disease
+b = ggplot(caudate_SPN, aes(x = Disease_duration, y = cell_proportions, color = Condition, shape = Cohort)) +
+  geom_point(size = 4, alpha = 0.8) +
+  # Add regression line (one, not by cohort or condition)
+  geom_smooth(
+    data = disease_only,
+    aes(x = Disease_duration, y = cell_proportions), 
+    method = "lm", se = TRUE, color = "black", linetype = "dashed", inherit.aes = FALSE
+  ) +
+  labs(x = "Disease Duration", y = "SPN Matrix Fraction in All Cells") +
+  ggtitle("Disease Duration vs SPN Matrix Fraction in All Cells") +
+  annotate("text", x = Inf, y = Inf, label = paste0("R² = ", r2, "\nP = ", pval), 
+           hjust = 1.1, vjust = 1.5, size = 5, fontface = "italic") +
+  scale_color_discrete(name = "Condition")+ geom_text(aes(label = donor_id_new), vjust = -1, hjust = 0.5) + theme(
+        plot.title = element_text(size = 20),
+         plot.subtitle = element_text(size = 16),# title font size
+        axis.line = element_line(color = "black"),  # Add axis lines
+        axis.ticks = element_line(color = "black"),  # Add axis ticks
+        axis.text = element_text(size = 18),  # Increase tick label font size
+        axis.title = element_text(size = 18),  # Increase axis label font size
+           legend.title = element_text(size = 18),    plot.background = element_rect(fill = "white", color = NA),  # Increase legend title size
+legend.text = element_text(size = 16))
+
+ggsave(b, filename ="pic.png", width = 15,height = 8)
+```
+
+```{r}
+library(ggplot2)
+
+# Filter disease cases only
+disease_only <- subset(caudate_SPN, Condition =="XDP")
+disease_only = subset(disease_only, Age.of.Death > 0)
+disease_only
+# Fit linear model
+fit <- lm(cell_proportions ~ Age.of.Death, data = disease_only)
+summary_fit <- summary(fit)
+r2 <- round(summary_fit$r.squared, 3)
+pval <- signif(summary_fit$coefficients[2, 4], 3)
+
+# Plot everything, regress only on disease
+b = ggplot(caudate_SPN, aes(x = Age.of.Death, y = cell_proportions, color = Condition, shape = Cohort)) +
+  geom_point(size = 4, alpha = 0.8) +
+  # Add regression line (one, not by cohort or condition)
+  geom_smooth(
+    data = disease_only,
+    aes(x = Age.of.Death, y = cell_proportions), 
+    method = "lm", se = TRUE, color = "black", linetype = "dashed", inherit.aes = FALSE
+  ) +
+  labs(x = "Age at Death", y = "SPN Matrix Fraction in All Cells") +
+  ggtitle("Age at Death vs SPN Matrix Fraction in All Cells") +
+  annotate("text", x = Inf, y = Inf, label = paste0("R² = ", r2, "\nP = ", pval), 
+           hjust = 1.1, vjust = 1.5, size = 5, fontface = "italic") +
+  scale_color_discrete(name = "Condition")+ geom_text(aes(label = donor_id_new), vjust = -1, hjust = 0.5) + theme(
+        plot.title = element_text(size = 20),
+         plot.subtitle = element_text(size = 16),# title font size
+        axis.line = element_line(color = "black"),  # Add axis lines
+        axis.ticks = element_line(color = "black"),  # Add axis ticks
+        axis.text = element_text(size = 18),  # Increase tick label font size
+        axis.title = element_text(size = 18),  # Increase axis label font size
+           legend.title = element_text(size = 18),    plot.background = element_rect(fill = "white", color = NA),  # Increase legend title size
+legend.text = element_text(size = 16))
+
+ggsave(b, filename ="pic.png", width = 15,height = 8)
+```
+
+
+```{r}
+ggplot(caudate_SPN, aes(x = Age.of.Onset, y = Disease_duration, color = Condition, shape = Cohort)) +
+  geom_point(size = 3, alpha = 0.8) + geom_text(aes(label = donor_id_new), vjust = -1, hjust = 0.5, size = 3) 
+```
+
+
+```{r}
+library(ggplot2)
+
+# Filter disease cases only
+disease_only <- subset(caudate_SPN, Condition =="XDP")
+disease_only = subset(disease_only, Age.of.Death > 0)
+disease_only
+# Fit linear model
+fit <- lm(cell_proportions ~ Age.of.Death, data = disease_only)
+summary_fit <- summary(fit)
+r2 <- round(summary_fit$r.squared, 3)
+pval <- signif(summary_fit$coefficients[2, 4], 3)
+
+# Plot everything, regress only on disease
+b = ggplot(caudate_SPN, aes(x = Age.of.Death, y = cell_proportions, color = Condition, shape = Cohort)) +
+  geom_point(size = 4, alpha = 0.8) +
+  # Add regression line (one, not by cohort or condition)
+  geom_smooth(
+    data = disease_only,
+    aes(x = Age.of.Death, y = cell_proportions), 
+    method = "lm", se = TRUE, color = "black", linetype = "dashed", inherit.aes = FALSE
+  ) +
+  labs(x = "Age at Death", y = "SPN Matrix Fraction in All Cells") +
+  ggtitle("Age at Death vs SPN Matrix Fraction in All Cells") +
+  annotate("text", x = Inf, y = Inf, label = paste0("R² = ", r2, "\nP = ", pval), 
+           hjust = 1.1, vjust = 1.5, size = 5, fontface = "italic") +
+  scale_color_discrete(name = "Condition")+ geom_text(aes(label = donor_id_new), vjust = -1, hjust = 0.5) + theme(
+        plot.title = element_text(size = 20),
+         plot.subtitle = element_text(size = 16),# title font size
+        axis.line = element_line(color = "black"),  # Add axis lines
+        axis.ticks = element_line(color = "black"),  # Add axis ticks
+        axis.text = element_text(size = 18),  # Increase tick label font size
+        axis.title = element_text(size = 18),  # Increase axis label font size
+           legend.title = element_text(size = 18),    plot.background = element_rect(fill = "white", color = NA),  # Increase legend title size
+legend.text = element_text(size = 16))
+
+ggsave(b, filename ="pic.png", width = 15,height = 8)
+```
+
+```{r}
+library(ggplot2)
+
+# Filter disease cases only
+caudate_SPN_new <- subset(caudate_SPN, Condition =="XDP")
+caudate_SPN_new <- subset(caudate_SPN_new, Disease_duration > 0)
+disease_only = caudate_SPN_new
+# Fit linear model
+fit <- lm(Age.of.Onset ~ Disease_duration, data = disease_only)
+summary_fit <- summary(fit)
+r2 <- round(summary_fit$r.squared, 3)
+pval <- signif(summary_fit$coefficients[2, 4], 3)
+
+# Plot everything, regress only on disease
+b = ggplot(caudate_SPN_new, aes(x = Age.of.Onset, y = Disease_duration, color = Condition, shape = Cohort)) +
+  geom_point(size = 4, alpha = 0.8) +
+  # Add regression line (one, not by cohort or condition)
+  geom_smooth(
+    data = disease_only,
+    aes(x = Age.of.Onset, y = Disease_duration), 
+    method = "lm", se = TRUE, color = "black", linetype = "dashed", inherit.aes = FALSE
+  ) +
+  labs(x = "Age at Onset", y = "Disease Duration") +
+  ggtitle("Age at Onset vs Disease Duration") +
+  annotate("text", x = Inf, y = Inf, label = paste0("R² = ", r2, "\nP = ", pval), 
+           hjust = 1.1, vjust = 1.5, size = 5, fontface = "italic") +
+  scale_color_discrete(name = "Condition")+ geom_text(aes(label = donor_id_new), vjust = -1, hjust = 0.5) + theme(
+        plot.title = element_text(size = 20),
+         plot.subtitle = element_text(size = 16),# title font size
+        axis.line = element_line(color = "black"),  # Add axis lines
+        axis.ticks = element_line(color = "black"),  # Add axis ticks
+        axis.text = element_text(size = 18),  # Increase tick label font size
+        axis.title = element_text(size = 18),  # Increase axis label font size
+           legend.title = element_text(size = 18),    plot.background = element_rect(fill = "white", color = NA),  # Increase legend title size
+legend.text = element_text(size = 16))
+
+ggsave(b, filename ="pic.png", width = 15,height = 8)
+```
+
+
+
+```{r}
+everything_metadata_new
+```
+
+
+```{r}
+cells_per_donor = as.data.frame(table(everything_metadata_new$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(everything_metadata_new$ALL_final_cell_class, everything_metadata_new$donor_id, everything_metadata_new$Cohort_Condition)) #,everything_metadata_new$CAP_Region
+cell_class_df
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df
+
+cell_class_df <- cell_class_df %>% 
+  filter(Freq.x != 0)
+cell_class_df
+cell_class_df$Cohort_Condition = cell_class_df$Var3
+cell_class_df
+
+df_avg= subset(cell_class_df, subset = Var1 == "opc")
+
+df_avg$donor_id = df_avg$Var2
+
+df_avg$Condition = everything_metadata_new$Condition[match(df_avg$donor_id, everything_metadata_new$donor_id)]
+df_avg$Cohort = everything_metadata_new$Cohort[match(df_avg$donor_id, everything_metadata_new$donor_id)]
+df_avg$Sex = everything_metadata_new$Sex[match(df_avg$donor_id, everything_metadata_new$donor_id)]
+df_avg
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Cohort_Condition, y = cell_proportions, color = Condition, shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 4, alpha = 0.5) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Cohort_Condition", y = "OPC Proportion", color = "Condition", shape = "Cohort", title ="OPC Proportion")+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) #+ facet_wrap(~ Var4)
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 12, height = 8)
+```
+
+```{r}
+df_avg
+```
+
+
+```{r}
+# xdp_meta = subset(df_avg, Var4 == "Putamen")
+# xdp_meta
+
+xdp_meta_cases = subset(df_avg, Var3 == "Cohort_1_Control")
+xdp_meta_controls = subset(df_avg, Var3 == "Cohort_2_Control")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$cell_proportions  
+XDP_Control_scores <- xdp_meta_controls$cell_proportions 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+
+```
+
+#taf1 spike
+```{r}
+XDP_Cohort_1_2 = qread("XDP_Cohorts_1_2_full_032825.qs")
+XDP_Cohort_1_2
+```
+
+```{r}
+XDP_Cohort_1_2@meta.data
+XDP_Cohort_1_2@meta.data$Cohort_Condition = paste0(XDP_Cohort_1_2@meta.data$Cohort, "_", XDP_Cohort_1_2@meta.data$Condition)
+```
+
+
+```{r}
+# First, confirm TAF1 is present
+"TAF1" %in% rownames(XDP_Cohort_1_2)
+
+# Violin plot by cohort
+VlnPlot(XDP_Cohort_1_2, features = "TAF1", group.by = c("final_cell_class_merged_harmony"),split.by = "Cohort_Condition", pt.size = 0.1, raster = F) 
+
+```
+
+```{r}
+# Create a combined group label
+TAF1_df$group <- paste(TAF1_df$Cohort, TAF1_df$Condition, sep = "_")
+
+# Boxplot by group
+boxplot(TAF1 ~ group, data = TAF1_df, main = "TAF1 Expression by Cohort and Condition", las = 2)
+
+# Subset to Control only
+control_subset <- subset(TAF1_df, Condition == "Control")
+
+# Perform t-test on TAF1 expression between cohorts within controls
+t.test(TAF1 ~ Cohort, data = control_subset)
+
+
+```
+
+
+
+
+
+```{r}
+min =  min(everything_metadata_new_astrocytes$ScoreWM)
+max = max(everything_metadata_new_astrocytes$ScoreWM)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+a = plot_overlapping_density_histogram(df = everything_metadata_new_astrocytes, 
+                                          hist_col = everything_metadata_new_astrocytes$ScoreWM,
+                                          fill_col = "WM_GM",
+                                  colors = Region_colors,
+                                          breaks = limits,
+                                          title = paste0("Control Astrocytes"),
+                                          xlab = "WM Score",
+                                          fig_filename = NULL) +facet_wrap(~CAP_Region)
+ print(a)
+  ggsave(a, filename = paste0("pic.png"), width = 10, height = 7)
+```
+
+
+
+
+
+```{r}
+```{r}
+FeaturePlot(bican_recon_astrocyte, features = c("WIF1", "TNC"))
+FeaturePlot(xdp_recon_astrocyte, features = c("WIF1", "TNC"))
+FeaturePlot(XDP_astro_Cohorts_1_2, features = c("WIF1", "TNC"))
+```
+
+```{r}
+hvgs = getSeuratVarFeatureIntersectByCol(XDP_astro_Cohorts_1_2, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+XDP_astro_Cohorts_1_2 = (XDP_astro_Cohorts_1_2
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_caudate$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_caudate$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "donor_id") 
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "SCT_snn_res.0.2", label=T) 
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "SCT_snn_res.0.3", label=T) 
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "SCT_snn_res.0.4", label=T) 
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "SCT_snn_res.0.5", label=T) 
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "SCT_snn_res.0.6", label=T) 
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "SCT_snn_res.0.7", label=T) 
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "SCT_snn_res.0.8", label=T)
+```
+
+
+```{r}
+XDP_astro_Cohorts_1_2@meta.data$WM_GM <- ifelse(
+  XDP_astro_Cohorts_1_2$ScoreWM > XDP_astro_Cohorts_1_2$ScoreGM, "White Matter", 
+  ifelse(XDP_astro_Cohorts_1_2$ScoreGM > XDP_astro_Cohorts_1_2$ScoreWM, "Gray Matter", "Uncertain")
+)
+
+FeaturePlot(XDP_astro_Cohorts_1_2, features = c("WIF1", "TNC", "ScoreGM", "ScoreWM"))
+DimPlot(XDP_astro_Cohorts_1_2, group.by = "WM_GM")
+```
+```{r}
+bican_recon_astrocyte@meta.data
+```
+
+
+```{r}
+n_dims_use=20
+
+bican_recon_astrocyte = (bican_recon_astrocyte
+%>% NormalizeData()
+%>% ScaleData()
+%>% FindVariableFeatures(nfeatures = 2500)
+%>% RunPCA()
+   %>% FindNeighbors(dims = 1:n_dims_use) 
+   %>% FindClusters(resolution = 0.01) 
+   %>% FindClusters(resolution = 0.05)
+   %>% FindClusters(resolution = 0.1)
+   %>% FindClusters(resolution = 0.15) 
+   %>% FindClusters(resolution = 0.2) 
+   %>% FindClusters(resolution = 0.2) 
+   %>% FindClusters(resolution = 0.3) 
+   %>% FindClusters(resolution = 0.4) 
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6) 
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% RunUMAP(dims = 1:n_dims_use) 
+)
+bican_recon_astrocyte
+
+
+DimPlot(bican_recon_astrocyte, group.by = "SCT_snn_res.0.2", label=T) 
+DimPlot(bican_recon_astrocyte, group.by = "SCT_snn_res.0.3", label=T) 
+DimPlot(bican_recon_astrocyte, group.by = "SCT_snn_res.0.4", label=T) 
+DimPlot(bican_recon_astrocyte, group.by = "SCT_snn_res.0.5", label=T) 
+DimPlot(bican_recon_astrocyte, group.by = "SCT_snn_res.0.6", label=T) 
+DimPlot(bican_recon_astrocyte, group.by = "SCT_snn_res.0.7", label=T) 
+DimPlot(bican_recon_astrocyte, group.by = "SCT_snn_res.0.8", label=T)
+
+bican_recon_astrocyte@meta.data$WM_GM <- ifelse(
+  bican_recon_astrocyte$ScoreWM > bican_recon_astrocyte$ScoreGM, "White Matter", 
+  ifelse(bican_recon_astrocyte$ScoreGM > bican_recon_astrocyte$ScoreWM, "Gray Matter", "Uncertain")
+)
+
+FeaturePlot(bican_recon_astrocyte, features = c("WIF1", "TNC", "ScoreGM", "ScoreWM"))
+DimPlot(bican_recon_astrocyte, group.by = "WM_GM")
+```
+
+```{r}
+ggplot(bican_recon_astrocyte@meta.data, aes(x = x_um, y = y_um, color = WM_GM)) + geom_point()
+ggplot(bican_recon_astrocyte@meta.data, aes(x = x_um, y = y_um, color = SCT_snn_res.0.2)) + geom_point()
+```
+
+
+```{r}
+n_dims_use=20
+
+xdp_recon_astrocyte = (xdp_recon_astrocyte
+%>% NormalizeData()
+%>% ScaleData()
+%>% FindVariableFeatures(nfeatures = 2500)
+%>% RunPCA()
+   %>% FindNeighbors(dims = 1:n_dims_use) 
+   %>% FindClusters(resolution = 0.01) 
+   %>% FindClusters(resolution = 0.05)
+   %>% FindClusters(resolution = 0.1)
+   %>% FindClusters(resolution = 0.15) 
+   %>% FindClusters(resolution = 0.2) 
+   %>% FindClusters(resolution = 0.2) 
+   %>% FindClusters(resolution = 0.3) 
+   %>% FindClusters(resolution = 0.4) 
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6) 
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% RunUMAP(dims = 1:n_dims_use) 
+)
+xdp_recon_astrocyte
+
+DimPlot(xdp_recon_astrocyte, group.by = "SCT_snn_res.0.2", label=T) 
+DimPlot(xdp_recon_astrocyte, group.by = "SCT_snn_res.0.3", label=T) 
+DimPlot(xdp_recon_astrocyte, group.by = "SCT_snn_res.0.4", label=T) 
+DimPlot(xdp_recon_astrocyte, group.by = "SCT_snn_res.0.5", label=T) 
+DimPlot(xdp_recon_astrocyte, group.by = "SCT_snn_res.0.6", label=T) 
+DimPlot(xdp_recon_astrocyte, group.by = "SCT_snn_res.0.7", label=T) 
+DimPlot(xdp_recon_astrocyte, group.by = "SCT_snn_res.0.8", label=T)
+xdp_recon_astrocyte@meta.data$WM_GM <- ifelse(
+  xdp_recon_astrocyte$ScoreWM > xdp_recon_astrocyte$ScoreGM, "White Matter", 
+  ifelse(xdp_recon_astrocyte$ScoreGM > xdp_recon_astrocyte$ScoreWM, "Gray Matter", "Uncertain")
+)
+
+FeaturePlot(xdp_recon_astrocyte, features = c("WIF1", "TNC", "ScoreGM", "ScoreWM"))
+DimPlot(xdp_recon_astrocyte, group.by = "WM_GM")
+```
+
+```{r}
+ggplot(xdp_recon_astrocyte@meta.data, aes(x = x_um, y = y_um, color = WM_GM)) + geom_point()
+ggplot(xdp_recon_astrocyte@meta.data, aes(x = x_um, y = y_um, color = SCT_snn_res.0.2)) + geom_point()
+```
+
+
+
+
+
+
+```{r}
+```{r}
+final_df = everything_metadata_new_astrocytes
+xlab = "Scoreinterferon_alpha"
+min = min(final_df$Scoreinterferon_alpha)
+max = max(final_df$Scoreinterferon_alpha)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+  
+a = plot_overlapping_density_histogram(df = final_df, 
+                                          hist_col = final_df$Scoreinterferon_alpha,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = paste0("XDP vs Control: Astrocytes"),
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+  
+
+# Display or save the final plot
+ggsave("combined_plot.png", a, width = 7, height =5 )
+```
+
+
+```{r}
+```{r}
+everything_metadata_new_filtered = everything_metadata_new[!is.na(everything_metadata_new$GM_WM_final), ]
+everything_metadata_new_filtered
+```
+```{r}
+BICAN_scores_astro = subset(BICAN_scores, subset = ALL_neuron_grouped_classes == "astrocyte")
+BICAN_scores_astro
+
+XDP_scores_astro = subset(XDP_scores, subset = ALL_neuron_grouped_classes == "astrocyte")
+XDP_scores_astro
+```
+
+
+```{r}
+spatial_scores_bican(BICAN_scores, "ScoreWM", "ScoreWM")
+spatial_scores_xdp(XDP_scores, "ScoreWM", "ScoreWM")
+```
+
+```{r}
+XDP_scores
+```
+
+
+```{r}
+astro_WM_NFKB = subset(everything_metadata_new_filtered, subset = ALL_neuron_grouped_classes == "astrocyte")
+# astro_WM_NFKB= subset(astro_WM_NFKB, subset = Condition == "Control")
+# astro_WM_NFKB
+
+donors = unique(astro_WM_NFKB$donor_id)
+for (donor in donors) {
+  df = subset(astro_WM_NFKB, subset = donor_id == donor) 
+  a = ggplot(df, aes(x = ScoreWM, y=ScoreNFKB , color = Cohort_Condition)) + geom_point(size = 1, alpha = 0.5) + facet_wrap(~ GM_WM_final) + ggtitle(donor)
+print(a)
+}
+
+```
+
+
+
+#Out of curiosity, does the gray and white matter astrocyte proportion estimated via cell scoring relate to SPN proportion out of all cells? Oligo proportion?
+```{r}
+bican_recon_metadata = bican_recon@meta.data
+bican_recon_metadata
+xdp_recon_metadata = xdp_recon@meta.data
+xdp_recon_metadata
+xdp_cohort1_2_metadata = xdp_cohort1_2@meta.data
+xdp_cohort1_2_metadata
+
+xdp_cohort1_2_metadata$CAP = xdp_cohort1_2_metadata$Region
+xdp_cohort1_2_metadata$CAP_mask = NA
+xdp_cohort1_2_metadata$WM_GM = NA
+```
+
+```{r}
+a = select(bican_recon_metadata, c("CAP", "CAP_mask", "WM_GM"))
+a
+b = select(xdp_recon_metadata, c("CAP", "CAP_mask", "WM_GM"))
+b
+c = select(xdp_cohort1_2_metadata, c("CAP", "CAP_mask", "WM_GM"))
+c
+
+d_all = rbind(a, b,c)
+```
+
+
+```{r}
+new_cap_identities = select()
+```
+
+
+
+
+
+```{r}
+everything_metadata
+```
+
+
+
+
+
+

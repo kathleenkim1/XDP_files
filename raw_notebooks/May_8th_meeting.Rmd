@@ -1,0 +1,1700 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+All_cells_df
+```
+
+```{r}
+All_cells_df$Cohort[All_cells_df$Cohort == 1] = "Cohort_1"
+All_cells_df$Cohort[All_cells_df$Cohort == 2] = "Cohort_2"
+All_cells_df$Cohort[All_cells_df$Cohort == 3] = "Cohort_3"
+```
+
+```{r}
+All_cells_df$Sex[All_cells_df$donor_id == "PCMC-16-011"] = "F"
+```
+
+```{r}
+summary_df <- All_cells_df %>%
+  group_by(Region) %>%
+  summarise(donor_cells = n(), .groups = 'drop') 
+summary_df
+
+
+a = ggplot(summary_df, aes(x = Region, y = donor_cells, fill = Region)) +
+  geom_bar(stat = "identity") +  geom_text(aes(y = donor_cells, label = donor_cells), vjust = -0.2, size = 5, nudge_y = 0.5)+
+  theme_minimal() + ylab("Number of Cells")+
+  theme(
+    plot.title = element_text(size = 16),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Tilt x-axis labels
+    axis.title = element_text(size = 15),
+    strip.text = element_text(size = 16)  # Make facet titles larger
+  ) +  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 8, height = 5)
+```
+
+```{r}
+summary_df <- All_cells_df %>%
+  group_by(Condition) %>%
+  summarise(donor_cells = n(), .groups = 'drop') 
+summary_df
+
+
+a = ggplot(summary_df, aes(x = Condition, y = donor_cells, fill = Condition)) +
+  geom_bar(stat = "identity") +  geom_text(aes(y = donor_cells, label = donor_cells), vjust = -0.2, size = 5, nudge_y = 0.5)+
+  theme_minimal() + ylab("Number of Cells")+
+  theme(
+    plot.title = element_text(size = 16),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Tilt x-axis labels
+    axis.title = element_text(size = 15),
+    strip.text = element_text(size = 16)  # Make facet titles larger
+  ) +  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 6, height = 5)
+```
+
+```{r}
+summary_df <- All_cells_df %>%
+  group_by(Condition) %>%
+  summarise(num_donors = n_distinct(donor_id), .groups = "drop")
+
+summary_df
+
+a = ggplot(summary_df, aes(x = Condition, y = num_donors, fill = Condition)) +
+  geom_bar(stat = "identity") +  geom_text(aes(y = num_donors, label = num_donors), vjust = -0.2, size = 5, nudge_y = 0.5)+
+  theme_minimal() + ylab("Number of Donors")+
+  theme(
+    plot.title = element_text(size = 16),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(size = 14),
+    axis.text.x = element_text(angle = 45, hjust = 1),  # Tilt x-axis labels
+    axis.title = element_text(size = 15),
+    strip.text = element_text(size = 16)  # Make facet titles larger
+  ) +  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 6, height = 5)
+```
+
+```{r}
+summary_df <- All_cells_df %>%
+  group_by(donor_id, Condition, Cohort, Region, Sex) %>%
+  summarise(donor_cells = n(), .groups = 'drop') 
+summary_df
+```
+
+```{r}
+a= DimPlot(xdp_recon, group.by = "Class_label_name", label=F, raster = F)
+ggsave(a, filename = "temp.png", width = 8, height = 5)
+```
+
+```{r}
+xdp_recon_neurons = subset(xdp_recon, subset = Class_label_name == "CN CGE GABA" | Class_label_name == "CN LGE GABA" | Class_label_name == "CN MGE GABA"  | Class_label_name == "F M Glut")
+
+hvgs = getSeuratVarFeatureIntersectByCol(xdp_recon_neurons, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+xdp_recon_neurons = (xdp_recon_neurons
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_DFC$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_DFC$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+a= DimPlot(xdp_recon_neurons, group.by = "Subclass_label_name", label=F, raster = F, repel = T)
+ggsave(a, filename = "temp.png", width = 8, height = 5)
+```
+
+```{r}
+a = ggplot(xdp_recon_neurons@meta.data, aes(x= x_um, y = y_um, color = Group_label_name )) + geom_point(size =0.6)+   theme_void() +
+  theme(
+    plot.title = element_text(size = 20),
+    plot.subtitle = element_text(size = 20),
+    strip.text = element_text(size = 20),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ Group_label_name)
+
+ggsave(a, filename = "temp.png", width = 32, height = 15)
+```
+
+```{r}
+xdp_recon_neurons@meta.data$new_subclass_label_name = xdp_recon_neurons@meta.data$Subclass_label_name
+
+xdp_recon_neurons@meta.data$new_subclass_label_name[xdp_recon_neurons@meta.data$new_subclass_label_name == "STR D1 MSN GABA"] = "STR MSN GABA"
+xdp_recon_neurons@meta.data$new_subclass_label_name[xdp_recon_neurons@meta.data$new_subclass_label_name == "STR D2 MSN GABA"] = "STR MSN GABA"
+
+a = ggplot(xdp_recon_neurons@meta.data, aes(x= x_um, y = y_um, color = new_subclass_label_name )) + geom_point(size =0.6)+   theme_void() +
+  theme(
+    plot.title = element_text(size = 20),
+    plot.subtitle = element_text(size = 20),
+    strip.text = element_text(size = 20),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ new_subclass_label_name)
+
+ggsave(a, filename = "temp.png", width = 22, height = 15)
+```
+
+#BICAN
+
+```{r}
+bican_recon = qread("bican_recon_apr2025_sct_mask.qs")
+bican_recon
+bican_recon@meta.data
+DefaultAssay(bican_recon) = "RNA"
+```
+
+```{r}
+a= DimPlot(bican_recon, group.by = "Class_label_name", label=F, raster = F)
+ggsave(a, filename = "temp.png", width = 8, height = 5)
+```
+
+```{r}
+bican_recon_neurons = subset(bican_recon, subset = Class_label_name == "CN CGE GABA" | Class_label_name == "CN LGE GABA" | Class_label_name == "CN MGE GABA"  | Class_label_name == "F M Glut")
+bican_recon_neurons@meta.data$donor_id = "BICAN"
+hvgs = getSeuratVarFeatureIntersectByCol(bican_recon_neurons, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+bican_recon_neurons = (bican_recon_neurons
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_DFC$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_DFC$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+a= DimPlot(bican_recon_neurons, group.by = "Subclass_label_name", label=T, raster = F, repel = T)
+ggsave(a, filename = "temp.png", width = 8, height = 5)
+```
+
+```{r}
+a = ggplot(bican_recon_neurons@meta.data, aes(x= x_um_rotated, y = y_um_rotated, color = Class_label_name )) + geom_point(size =0.6)+   theme_void() +
+  theme(
+    plot.title = element_text(size = 20),
+    plot.subtitle = element_text(size = 20),
+    strip.text = element_text(size = 20),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ Subclass_label_name)
+
+ggsave(a, filename = "temp.png", width = 18, height = 15)
+```
+
+```{r}
+bican_recon_neurons@meta.data$new_subclass_label_name = bican_recon_neurons@meta.data$Subclass_label_name
+
+bican_recon_neurons@meta.data$new_subclass_label_name[bican_recon_neurons@meta.data$new_subclass_label_name == "STR D1 MSN GABA"] = "STR MSN GABA"
+bican_recon_neurons@meta.data$new_subclass_label_name[bican_recon_neurons@meta.data$new_subclass_label_name == "STR D2 MSN GABA"] = "STR MSN GABA"
+
+a = ggplot(bican_recon_neurons@meta.data, aes(x= x_um_rotated, y = y_um_rotated, color = new_subclass_label_name )) + geom_point(size =0.6)+   theme_void() +
+  theme(
+    plot.title = element_text(size = 20),
+    plot.subtitle = element_text(size = 20),
+    strip.text = element_text(size = 20),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ new_subclass_label_name)
+
+ggsave(a, filename = "temp.png", width = 20, height = 15)
+```
+
+
+#XDP
+
+
+```{r}
+table(All_CAHPUT_neurons$class_label_name)
+```
+
+
+```{r}
+All_XDP_Cohort@meta.data
+
+All_CAHPUT_neurons = subset(All_XDP_Cohort, subset = class_label_name == "CN CGE GABA" | class_label_name == "CN LGE GABA" | class_label_name == "CN MGE GABA"  | class_label_name == "F M Glut" )
+All_CAHPUT_neurons
+```
+
+```{r}
+hvgs = getSeuratVarFeatureIntersectByCol(All_CAHPUT_neurons, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+All_CAHPUT_neurons = (All_CAHPUT_neurons
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_DFC$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_DFC$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(All_CAHPUT_neurons, group.by = "donor_id") 
+DimPlot(All_CAHPUT_neurons, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(All_CAHPUT_neurons, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(All_CAHPUT_neurons, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(All_CAHPUT_neurons, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(All_CAHPUT_neurons, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(All_CAHPUT_neurons, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(All_CAHPUT_neurons, group.by = "RNA_snn_res.0.8", label=T)
+
+FeaturePlot(All_CAHPUT_neurons, features = c("SYT1", "AQP4", "C1QA","FLT1"),raster=FALSE)
+FeaturePlot(All_CAHPUT_neurons, features = c("OLIG1", "OLIG2", "MOG" ,"CD96"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("MBP", "MOBP", "TF", "ST18"),raster=FALSE)
+FeaturePlot(All_CAHPUT_neurons, features = c("RBFOX3", "CX3CR1", "GFAP" ,"AQP4"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("GAD1", "GAD2", "SLC17A7" ,"SLC17A6"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("DRD1", "DRD2", "CASZ1" ,"PPP1R1B"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("EPHA4", "SEMA3E", "SLC17A7" ,"SLC17A6"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("P2RY12", "CX3CR1", "C1QB", "BCAS1"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("SEMA5B", "KREMEN1", "PDE1C"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("TAC1", "NNAT", "OPRM1", "ID4"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("SGK1", "EPHA4", "SV2B", "CHAT"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("SST", "CALB1", "PVALB", "LAMP5"),raster=FALSE) 
+FeaturePlot(All_CAHPUT_neurons, features = c("pct_mito"),raster=FALSE) 
+
+
+```
+```{r}
+DimPlot(All_CAHPUT_neurons, group.by = "class_label_name", label=T)
+DimPlot(All_CAHPUT_neurons, group.by = "subclass_label_name", label=T)
+DimPlot(All_CAHPUT_neurons, group.by = "group_label_name", label=T)
+```
+```{r}
+table(ALL_XDP_neurons_meta$subclass_label_name)
+```
+
+```{r}
+library(lme4)
+
+ALL_XDP_neurons_meta = All_CAHPUT_neurons@meta.data
+
+ALL_XDP_neurons_meta$new_subclass_label_name = ALL_XDP_neurons_meta$subclass_label_name
+
+ALL_XDP_neurons_meta$new_subclass_label_name[ALL_XDP_neurons_meta$new_subclass_label_name == "STR D1 MSN GABA"] = "STR MSN GABA"
+ALL_XDP_neurons_meta$new_subclass_label_name[ALL_XDP_neurons_meta$new_subclass_label_name == "STR D2 MSN GABA"] = "STR MSN GABA"
+
+sobj = ALL_XDP_neurons_meta
+sobj = subset(sobj, donor_id != "SCF_22_049CCF")
+
+sobj$subclass_label_name <- gsub("[- ]", "_", sobj$subclass_label_name)
+sobj$new_subclass_label_name <- gsub("[- ]", "_", sobj$new_subclass_label_name)
+
+model_cols = c("donor_id", "new_subclass_label_name", "condition", "sex", "cohort", "age_of_death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$new_subclass_label_name, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects=c("donor_id"), # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("cohort", "sex", "age_of_death") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+a = ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("CaH/Put Neurons") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclass Label") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 7, height = 8)
+```
+
+```{r}
+All_XDP_Cohort@meta.data
+```
+
+```{r}
+temp = All_XDP_Cohort@meta.data
+
+# Count total cells per donor
+cells_per_donor <- as.data.frame(table(temp$donor_id))
+colnames(cells_per_donor) <- c("donor_id", "total_cells")
+
+# Count cells by class and donor
+cell_class_df <- as.data.frame(table(temp$cell_class, temp$donor_id))
+colnames(cell_class_df) <- c("cell_class", "donor_id", "Freq")
+
+# Merge cell class counts with total cell counts
+cell_class_df <- merge(cell_class_df, cells_per_donor, by = "donor_id")
+
+# Calculate proportions
+cell_class_df$cell_proportions <- cell_class_df$Freq / cell_class_df$total_cells
+
+# Add donor-level metadata
+cell_class_df$Cohort <- All_cells_df$Cohort[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Cohort_Condition <- All_cells_df$Cohort_Condition[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Sex <- All_cells_df$Sex[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Condition <- All_cells_df$Condition[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$repeat_length <- All_cells_df$repeat_length[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Age_of_Onset <- All_cells_df$Age_of_Onset[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Age_of_Death <- All_cells_df$Age_of_Death[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Disease_duration <- All_cells_df$Disease_duration[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+
+# Identify controls and cases by donor_id suffix
+controls <- cells_per_donor[grepl("CM$|CF$|CM2$|CM6$", cells_per_donor$donor_id), ]
+cases <- cells_per_donor[!grepl("CM$|CF$|CM2$|CM6$", cells_per_donor$donor_id), ]
+
+# Sort each group by descending cell count
+controls <- controls[order(-controls$total_cells), ]
+cases <- cases[order(-cases$total_cells), ]
+
+# Combine sorted donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Set donor_id as a factor with correct order
+cell_class_df$donor_id <- factor(cell_class_df$donor_id, levels = ordered_donors)
+
+# Optional: re-sort full dataframe to follow donor order
+cell_class_df <- cell_class_df %>%
+  arrange(factor(donor_id, levels = ordered_donors))
+
+# cell_class_df <- cell_class_df %>%
+#   group_by(donor_id) %>%
+#   mutate(opc_olig = sum(cell_proportions[cell_class %in% c("oligo", "opc")])) %>%
+#   ungroup()
+# cell_class_df
+
+# Now compute y_mid for neurons
+astro_labels <- cell_class_df %>%
+  filter(cell_class == "neuron") %>%
+  mutate(y_mid = cell_proportions / 2)
+
+cell_class_df$cell_class <- factor(cell_class_df$cell_class, 
+                                   levels = c("astrocyte", "endothelial", "ependymal", "immune", "microglia", "oligo", "opc", "neuron"))
+
+
+# PLOT 3: Faceted absolute counts
+a <- ggplot(cell_class_df, aes(x = donor_id, y = Freq, fill = cell_class)) +
+  geom_bar(stat = "identity") +
+  xlab("Donors") + ylab("Number of cells by Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+ # facet_grid(~ Cohort, scales = "free_x", space = "free_x") +
+  geom_text(aes(y = total_cells, label = total_cells), vjust = -0.2, size = 3, nudge_y = 0.5) + geom_vline(xintercept = 17.5, linetype = "dashed", color = "black")
+
+# PLOT 4: Faceted proportions
+b <- ggplot(cell_class_df, aes(x = donor_id, y = cell_proportions, fill = cell_class)) +
+  geom_bar(stat = "identity", position = "stack") +
+  xlab("Donors") + ylab("Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+ # facet_grid(~ Cohort, scales = "free_x", space = "free_x")+ 
+  geom_text( data = astro_labels,  
+    aes(x = donor_id, y = y_mid, label = round(cell_proportions, 2)),  # Correctly centered text
+    size = 3)+ geom_vline(xintercept = 17.5, linetype = "dashed", color = "black")
+
+
+# Save plots
+ggsave(a, filename = "pic.png", width = 18, height = 5)
+ggsave(b, filename = "pic2.png", width = 18, height = 5)
+```
+#order by other stuff 
+```{r}
+temp = All_XDP_Cohort@meta.data
+
+# Count total cells per donor
+cells_per_donor <- as.data.frame(table(temp$donor_id))
+colnames(cells_per_donor) <- c("donor_id", "total_cells")
+
+# Count cells by class and donor
+cell_class_df <- as.data.frame(table(temp$cell_class, temp$donor_id))
+colnames(cell_class_df) <- c("cell_class", "donor_id", "Freq")
+
+# Merge cell class counts with total cell counts
+cell_class_df <- merge(cell_class_df, cells_per_donor, by = "donor_id")
+
+# Calculate proportions
+cell_class_df$cell_proportions <- cell_class_df$Freq / cell_class_df$total_cells
+
+# Add donor-level metadata
+cell_class_df$Cohort <- All_cells_df$Cohort[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Cohort_Condition <- All_cells_df$Cohort_Condition[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Sex <- All_cells_df$Sex[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Condition <- All_cells_df$Condition[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$repeat_length <- All_cells_df$repeat_length[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Age_of_Onset <- All_cells_df$Age_of_Onset[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Age_of_Death <- All_cells_df$Age_of_Death[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Disease_duration <- All_cells_df$Disease_duration[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Disease_duration[cell_class_df$donor_id == "SCF_22-048"] = 0
+cell_class_df$Disease_duration[cell_class_df$donor_id == "SCF_22-052"] = 0
+cell_class_df$Disease_duration[cell_class_df$donor_id == "SCF-22-042"] = 0
+cell_class_df$Disease_duration[cell_class_df$donor_id == "SCF-22-044"] = 0
+
+cell_class_df[is.na(cell_class_df)] <- 0
+
+# Identify controls and cases by donor_id suffix
+controls <- cells_per_donor[grepl("CM$|CF$|CM2$|CM6$", cells_per_donor$donor_id), ]
+cases <- cells_per_donor[!grepl("CM$|CF$|CM2$|CM6$", cells_per_donor$donor_id), ]
+
+# Combine sorted donor IDs
+ordered_donors <- cell_class_df %>%
+  group_by(donor_id, Disease_duration, Condition) %>%
+  summarise(.groups = "drop") %>%
+  mutate(sort_key = ifelse(Disease_duration == 0 & Condition == "XDP", Inf, Disease_duration)) %>%
+  arrange(sort_key) %>%
+  pull(donor_id)
+
+# Set donor_id as a factor with correct order
+cell_class_df$donor_id <- factor(cell_class_df$donor_id, levels = ordered_donors)
+
+# Optional: re-sort full dataframe to follow donor order
+cell_class_df <- cell_class_df %>%
+  arrange(factor(donor_id, levels = ordered_donors))
+
+# cell_class_df <- cell_class_df %>%
+#   group_by(donor_id) %>%
+#   mutate(opc_olig = sum(cell_proportions[cell_class %in% c("oligo", "opc")])) %>%
+#   ungroup()
+# cell_class_df
+
+# Now compute y_mid for neurons
+astro_labels <- cell_class_df %>%
+  filter(cell_class == "neuron") %>%
+  mutate(y_mid = cell_proportions / 2)
+
+
+cell_class_df$cell_class <- factor(cell_class_df$cell_class, 
+                                   levels = c("astrocyte", "endothelial", "ependymal", "immune", "microglia", "oligo", "opc", "neuron"))
+
+# PLOT 3: Faceted absolute counts
+a <- ggplot(cell_class_df, aes(x = donor_id, y = Freq, fill = cell_class)) +
+  geom_bar(stat = "identity") +
+  xlab("Donors (Ordered by Disease Duration)") + ylab("Number of cells by Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+ # facet_grid(~ Cohort, scales = "free_x", space = "free_x") +
+  geom_text(aes(y = total_cells, label = total_cells), vjust = -0.2, size = 3, nudge_y = 0.5) + geom_vline(xintercept = 17.5, linetype = "dashed", color = "black")+ geom_vline(xintercept = 42.5, linetype = "dashed", color = "black")
+
+# PLOT 4: Faceted proportions
+b <- ggplot(cell_class_df, aes(x = donor_id, y = cell_proportions, fill = cell_class)) +
+  geom_bar(stat = "identity", position = "stack") +
+  xlab("Donors (Ordered by Disease Duration)") + ylab("Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+ # facet_grid(~ Cohort, scales = "free_x", space = "free_x")+ 
+  geom_text( data = astro_labels,  
+    aes(x = donor_id, y = y_mid, label = round(cell_proportions, 2)),  # Correctly centered text
+    size = 3)+ geom_vline(xintercept = 17.5, linetype = "dashed", color = "black")+ geom_vline(xintercept = 42.5, linetype = "dashed", color = "black")
+
+
+# Save plots
+ggsave(a, filename = "pic.png", width = 18, height = 5)
+ggsave(b, filename = "pic2.png", width = 18, height = 5)
+```
+
+
+
+```{r}
+cell_class_df
+```
+
+
+```{r}
+cell_class_df_neurons = subset(cell_class_df, subset = cell_class == "neuron")
+cell_class_df_neurons
+cell_class_df_neurons$Disease_duration[cell_class_df_neurons$donor_id == "SCF_22-048"] = 0
+cell_class_df_neurons$Disease_duration[cell_class_df_neurons$donor_id == "SCF_22-052"] = 0
+cell_class_df_neurons$Disease_duration[cell_class_df_neurons$donor_id == "SCF-22-042"] = 0
+cell_class_df_neurons$Disease_duration[cell_class_df_neurons$donor_id == "SCF-22-044"] = 0
+ggplot(cell_class_df_neurons, aes(x = repeat_length, y = cell_proportions, color = Condition)) + geom_point()
+ggplot(cell_class_df_neurons, aes(x = Age_of_Onset, y = cell_proportions, color = Condition)) + geom_point()
+ggplot(cell_class_df_neurons, aes(x = Age_of_Death, y = cell_proportions, color = Condition)) + geom_point()
+ggplot(cell_class_df_neurons, aes(x = Disease_duration, y = cell_proportions, color = Condition)) +
+  geom_point() +
+  geom_text(aes(label = donor_id), vjust = -0.5, hjust = 0.5) 
+```
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+
+# Your full dataset
+df_all <- cell_class_df_neurons
+
+# Subset for regression/statistics (exclude duration == 0)
+df_model <- df_all %>% filter(Disease_duration != 0)
+
+ggplot(df_all, aes(x = Disease_duration, y = cell_proportions, color = Condition)) +
+  geom_point() +  # all data points, including Disease_duration == 0
+  geom_smooth(data = df_model, method = "lm", se = TRUE) +
+  stat_cor(data = df_model, method = "pearson", label.x = 15, label.y = 0.3,
+           aes(label = paste(..rr.label.., ..p.label.., sep = "~`,`~"))) +
+  xlab("Disease Duration") +
+  ylab("Neuronal proportion among total cells")
+
+```
+
+```{r}
+All_XDP_Cohort@meta.data
+```
+
+```{r}
+a= DimPlot(All_XDP_Cohort, group.by = "cell_class", label=T, raster = F)
+ggsave(a, filename = "temp.png", width = 10, height = 6)
+```
+
+```{r}
+library(lme4)
+
+ALL_XDP_meta = All_XDP_Cohort@meta.data
+
+sobj = ALL_XDP_meta
+sobj = subset(sobj, donor_id != "SCF_22_049CCF")
+
+model_cols = c("donor_id", "cell_class", "condition", "sex", "cohort", "age_of_death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects=c("donor_id"), # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("cohort", "sex", "age_of_death") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+a = ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Caudate-Putamen") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Cell Class") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 7, height = 8)
+```
+
+
+
+```{r}
+All_XDP_DFC = qread("All_XDP_Cohorts_DFC_sct.qs")
+All_XDP_DFC@meta.data
+a= DimPlot(All_XDP_DFC, group.by = "final_cell_class_merged_harmony", label=T, raster = F)
+ggsave(a, filename = "temp.png", width = 10, height = 6)
+```
+
+```{r}
+library(lme4)
+
+ALL_XDP_meta_dfc = All_XDP_DFC@meta.data
+
+sobj = ALL_XDP_meta_dfc
+sobj = subset(sobj, donor_id != "SCF_22_049CCF")
+
+model_cols = c("donor_id", "final_cell_class_merged_harmony", "Condition", "Sex", "Cohort", "Age_of_Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$final_cell_class_merged_harmony, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects=c("donor_id"), # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Cohort", "Sex", "Age_of_Death") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+a = ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("DFC") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Cell Class") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 7, height = 8)
+```
+
+
+
+
+
+```{r}
+All_XDP_SN = qread("All_XDP_Cohorts_SN_sct.qs")
+All_XDP_SN@meta.data
+a= DimPlot(All_XDP_SN, group.by = "final_cell_class_merged_harmony", label=T, raster = F)
+ggsave(a, filename = "temp.png", width = 10, height = 6)
+```
+```{r}
+FeaturePlot(All_XDP_SN, features = c("TH"))
+```
+
+```{r}
+library(lme4)
+
+ALL_XDP_meta_sn = All_XDP_SN@meta.data
+
+sobj = ALL_XDP_meta_sn
+sobj = subset(sobj, donor_id != "SCF_22_049CCF")
+
+model_cols = c("donor_id", "final_cell_class_merged_harmony", "Condition", "Sex", "Cohort", "Age_of_Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$final_cell_class_merged_harmony, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects=c("donor_id"), # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Cohort", "Sex", "Age_of_Death") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+a = ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("SN") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Cell Class") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 7, height = 8)
+```
+
+
+
+
+```{r}
+gene_of_interest = "PPP3CC" 
+
+#replace seurat_obj here
+metadata_df = bican_recon@meta.data
+metadata_df$cell_ids = rownames(metadata_df)
+
+#replace seurat_obj here
+gene_df = as.data.frame(FetchData(bican_recon, vars = gene_of_interest))
+gene_df$cell_ids = rownames(gene_df)
+
+df_final = merge(metadata_df, gene_df, by = "cell_ids" )
+df_final
+
+#Replace GENE with gene name
+ggplot(df_final, aes(x= x_um, y = y_um, color = PPP3CC)) + geom_point() +  scale_color_gradient(low = "lightgrey", high = "blue") +  labs(color = "Expression") +
+  theme_void() +  facet_wrap(~ reclustered_patch_matrix_exotic)+
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  
+    legend.title = element_text(size = 26)
+  ) +  ylab(NULL)
+```
+
+```{r}
+#mapping_output doesn't have labels, just id numbers
+mapping_output_xdp = read.csv(file = "/broad/macosko/kimkathl/XDP/QC_and_Clustering/map_my_cells_xdp_all/mapping_output.csv", skip = 3)
+mapping_output_xdp
+
+mmc_all_result = select(mapping_output_xdp, c("cell_id","Class_label_name", "Class_label_bootstrapping_probability", "Subclass_label_name", "Subclass_label_bootstrapping_probability", "Group_label_name", "Group_label_bootstrapping_probability", "Cluster_label_name", "Cluster_label_bootstrapping_probability"))
+
+rownames(mmc_all_result) = mmc_all_result$cell_id
+mmc_all_result
+
+All_XDP_Cohort_new <- AddMetaData(All_XDP_Cohort_new, metadata = mmc_all_result)
+All_XDP_Cohort_new@meta.data
+```
+
+
+```{r}
+unique(All_XDP_Cohort_new@meta.data$Subclass_label_name)
+unique(All_XDP_Cohort_new@meta.data$Group_label_name)
+table(All_XDP_Cohort_new@meta.data$new_subclass_label_name)
+
+```
+
+
+```{r}
+All_XDP_Cohort_new@meta.data$new_subclass_label_name = All_XDP_Cohort_new$Subclass_label_name
+
+All_XDP_Cohort_new$new_subclass_label_name[All_XDP_Cohort_new$Group_label_name == "STRd D1 Matrix"] = "STRd_Matrix"
+All_XDP_Cohort_new$new_subclass_label_name[All_XDP_Cohort_new$Group_label_name == "STRd D2 Matrix"] = "STRd_Matrix"
+
+All_XDP_Cohort_new$new_subclass_label_name[All_XDP_Cohort_new$Group_label_name == "STRv D1 Shell"] = "STRv_Shell"
+All_XDP_Cohort_new$new_subclass_label_name[All_XDP_Cohort_new$Group_label_name == "STRv D2 Shell"] = "STRv_Shell"
+
+All_XDP_Cohort_new$new_subclass_label_name[All_XDP_Cohort_new$Group_label_name == "STRd D1 Striosome"] = "STRd_Striosome"
+All_XDP_Cohort_new$new_subclass_label_name[All_XDP_Cohort_new$Group_label_name == "STRd D2 Striosome"] = "STRd_Striosome"
+
+All_XDP_Cohort_new$new_subclass_label_name[All_XDP_Cohort_new$Group_label_name == "STRd D2 StrioMat Hybrid"]= "eSPN"
+All_XDP_Cohort_new$new_subclass_label_name[All_XDP_Cohort_new$Group_label_name == "STRv D1 NUDAP"] = "eSPN"
+
+bican_recon@meta.data$new_subclass_label_name = bican_recon$Subclass_label_name
+
+bican_recon$new_subclass_label_name[bican_recon$Group_label_name == "STRd D1 Matrix"] = "STRd_Matrix"
+bican_recon$new_subclass_label_name[bican_recon$Group_label_name == "STRd D2 Matrix"] = "STRd_Matrix"
+
+bican_recon$new_subclass_label_name[bican_recon$Group_label_name == "STRv D1 Shell"] = "STRv_Shell"
+bican_recon$new_subclass_label_name[bican_recon$Group_label_name == "STRv D2 Shell"] = "STRv_Shell"
+
+bican_recon$new_subclass_label_name[bican_recon$Group_label_name == "STRd D1 Striosome"] = "STRd_Striosome"
+bican_recon$new_subclass_label_name[bican_recon$Group_label_name == "STRd D2 Striosome"] = "STRd_Striosome"
+
+bican_recon$new_subclass_label_name[bican_recon$Group_label_name == "STRd D2 StrioMat Hybrid"]= "eSPN"
+bican_recon$new_subclass_label_name[bican_recon$Group_label_name == "STRv D1 NUDAP"] = "eSPN"
+
+
+xdp_recon@meta.data$new_subclass_label_name = xdp_recon$Subclass_label_name
+
+xdp_recon$new_subclass_label_name[xdp_recon$Group_label_name == "STRd D1 Matrix"] = "STRd_Matrix"
+xdp_recon$new_subclass_label_name[xdp_recon$Group_label_name == "STRd D2 Matrix"] = "STRd_Matrix"
+
+xdp_recon$new_subclass_label_name[xdp_recon$Group_label_name == "STRv D1 Shell"] = "STRv_Shell"
+xdp_recon$new_subclass_label_name[xdp_recon$Group_label_name == "STRv D2 Shell"] = "STRv_Shell"
+
+xdp_recon$new_subclass_label_name[xdp_recon$Group_label_name == "STRd D1 Striosome"] = "STRd_Striosome"
+xdp_recon$new_subclass_label_name[xdp_recon$Group_label_name == "STRd D2 Striosome"] = "STRd_Striosome"
+
+xdp_recon$new_subclass_label_name[xdp_recon$Group_label_name == "STRd D2 StrioMat Hybrid"]= "eSPN"
+xdp_recon$new_subclass_label_name[xdp_recon$Group_label_name == "STRv D1 NUDAP"] = "eSPN"
+```
+
+
+
+```{r}
+All_CAHPUT_neurons_new = subset(All_XDP_Cohort_new, subset = Class_label_name == "CN CGE GABA" | Class_label_name == "CN LGE GABA" | Class_label_name == "CN MGE GABA"  | Class_label_name == "F M Glut")
+
+DimPlot(All_CAHPUT_neurons_new, group.by = "Class_label_name", label=T)
+DimPlot(All_CAHPUT_neurons_new, group.by = "Subclass_label_name", label=T)
+DimPlot(All_CAHPUT_neurons_new, group.by = "Group_label_name", label=T)
+DimPlot(All_CAHPUT_neurons_new, group.by = "new_subclass_label_name", label=T)
+```
+
+```{r}
+library(lme4)
+
+ALL_XDP_neurons_meta = All_CAHPUT_neurons_new@meta.data
+table(ALL_XDP_neurons_meta$new_subclass_label_name)
+```
+
+
+```{r}
+sobj = ALL_XDP_neurons_meta
+sobj = subset(sobj, donor_id != "SCF_22_049CCF")
+
+sobj$new_subclass_label_name <- gsub("[- ]", "_", sobj$new_subclass_label_name)
+
+model_cols = c("donor_id", "new_subclass_label_name", "Condition", "Sex", "Cohort", "Age_of_Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$new_subclass_label_name, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects=c("donor_id"), # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Cohort", "Sex", "Age_of_Death") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+a = ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("CaH/Put Neurons") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclass Label") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 7, height = 8)
+```
+
+
+```{r}
+masc_df_2 = masc_df
+exclude_clusters <- c(
+  "clusterSTR_Granular_GABA", "clusterSN_STH_GABA", "clusterCN_CGE_VIP_GABA",
+  "clusterCN_MGE_LAMP5_GABA", "clusterBN_MEIS2_GABA", "clusterTH_MEIS2_GABA",
+  "clusterSTR_Hybrid_MSN_GABA", "clusterBG_Glut"
+)
+
+masc_df_2 <- subset(masc_df_2, subset = !cluster %in% exclude_clusters)
+
+masc_df_2
+a = ggplot(masc_df_2, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("CaH/Put Neurons") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclass Label") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  ) 
+
+ggsave(a, filename = "temp.png", width = 7, height = 8)
+```
+```{r}
+table(All_CAHPUT_neurons_new$new_subclass_label_name)
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+All_XDP_Cohort_new_meta = All_XDP_Cohort_new@meta.data
+bican_recon_meta = bican_recon@meta.data
+xdp_recon_meta = xdp_recon@meta.data
+
+All_XDP_Cohort_meta
+bican_recon_meta
+xdp_recon_meta
+```
+
+
+
+
+```{r}
+temp$Cohort[temp$Cohort == 1] = "Cohort_1"
+temp$Cohort[temp$Cohort == 2] = "Cohort_2"
+temp$Cohort[temp$Cohort == 3] = "Cohort_3"
+temp$Cohort_Condition = paste0(temp$Cohort, "_", temp$Condition)
+cell_class = "astrocyte"
+score_col = "ScoreNFKB"
+ylab ="NFKB Score"
+titl = "NFKB Score in Astrocyte"
+  
+df_avg <- temp %>%
+  group_by(donor_id, Condition, Cohort, Cohort_Condition, WM_GM) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+
+df_avg$Condition_WM_GM = paste0(df_avg$Condition, "_", df_avg$WM_GM)
+df_avg
+```
+
+```{r}
+temp$Condition_WM_GM = paste0(temp$Condition, "_", temp$WM_GM)
+min =  min(temp$ScoreNFKB
+)
+max = max(temp$ScoreNFKB
+)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+
+a = plot_overlapping_density_histogram(df = temp, 
+                                          hist_col = temp$ScoreNFKB,
+                                          fill_col = "Condition",
+                                  colors = Condition_colors,
+                                          breaks = limits,
+                                          title = paste0("Astrocyte"),
+                                          xlab = "NFKB Score",
+                                          fig_filename = NULL) + facet_wrap(~ WM_GM + Cohort)
+ print(a)
+ ggsave(a, filename = "pic.png", width = 10, height = 4)
+```
+
+
+```{r}
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition_WM_GM, y = avg_score, color = Condition, shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Condition + WM/GM", y = paste0("Mean ", ylab), color = "Condition", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+```
+
+```{r}
+df_avg
+```
+
+
+```{r}
+xdp_meta_cases = subset(df_avg, Condition_WM_GM == "Control_Gray Matter")
+xdp_meta_controls = subset(df_avg, Condition_WM_GM == "XDP_Gray Matter")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$avg_score  
+XDP_Control_scores <- xdp_meta_controls$avg_score 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+Idents(All_CAHPUT_neurons) = "cell_class"
+DefaultAssay(All_CAHPUT_neurons) <- "RNA"
+
+# Keep only the RNA assay
+# if seurat object version is 5 or later, counts is accessed with $, 4 or earlier with @
+
+if (All_CAHPUT_neurons@version >= 5) {
+    All_CAHPUT_neurons[["RNA"]] <- CreateAssayObject(counts = All_CAHPUT_neurons@assays$RNA$counts)
+} else {
+    All_CAHPUT_neurons[["RNA"]] <- CreateAssayObject(counts = All_CAHPUT_neurons@assays$RNA@counts)
+}
+
+
+# Remove all other assays
+All_CAHPUT_neurons@assays <- list(RNA = All_CAHPUT_neurons[["RNA"]])
+
+# Ensure metadata is properly aligned
+if (!all(rownames(All_CAHPUT_neurons@meta.data) == colnames(All_CAHPUT_neurons))) {
+    stop("Cell names in meta.data do not match counts matrix! Check alignment.")
+}
+
+# Save the cleaned Seurat object
+SaveH5Seurat(All_CAHPUT_neurons, filename = "All_CAHPUT_neurons.h5Seurat", overwrite = TRUE)
+
+# Convert to H5AD
+Convert("All_CAHPUT_neurons.h5Seurat", dest = "h5ad", overwrite = TRUE)
+```
+
+
+```{r}
+All_XDP_Cohort_meta = All_XDP_Cohort@meta.data
+rm(All_XDP_Cohort)
+All_XDP_Cohort_new = qread("All_XDP_Cohorts_CaH_Put_sct_ucell.qs")
+```
+
+
+```{r}
+bican_recon
+All_XDP_Cohort_new
+xdp_recon = qread("xdp_recon_apr2025_sct_mask.qs")
+xdp_recon
+```
+```{r}
+All_XDP_Cohort_new@meta.data
+```
+
+
+```{r}
+DefaultAssay(bican_recon) = "SCT"
+DefaultAssay(All_XDP_Cohort_new) = "SCT"
+DefaultAssay(xdp_recon) = "SCT"
+```
+
+```{r}
+hla = c("HLA-A", "HLA-B", "HLA-C")
+tfiid_genes <- c(
+  "TBP",       # TATA-binding protein
+  "TBPL1",     # TBP-like 1
+  "TBPL2",     # TBP-like 2
+  "TAF1",      # TAFII250
+  "TAF2",      # CIF150
+  "TAF3",      # TAFII140
+  "TAF4",      # TAFII130/135
+  "TAF4B",     # TAFII105
+  "TAF5",      # TAFII100
+  "TAF6",      # TAFII70/80
+  "TAF7",      # TAFII55
+  "TAF8",      # TAFII43
+  "TAF9",      # TAFII31/32
+  "TAF9B",     # TAFII31L
+  "TAF10",     # TAFII30
+  "TAF11",     # TAFII28
+  "TAF12",     # TAFII20/15
+  "TAF13",     # TAFII18
+  "TAF15"      # TAFII68
+)
+
+
+All_XDP_Cohort_new <- AddModuleScore_UCell(All_XDP_Cohort_new, features = list(Score = hla), name = 'hla')
+bican_recon <- AddModuleScore_UCell(bican_recon, features = list(Score = hla), name = 'hla')
+xdp_recon <- AddModuleScore_UCell(xdp_recon, features = list(Score = hla), name = 'hla')
+```
+
+
+```{r}
+All_XDP_Cohort_new <- AddModuleScore_UCell(All_XDP_Cohort_new, features = list(Score = tfiid_genes), name = 'tfiid_genes')
+
+
+bican_recon <- AddModuleScore_UCell(bican_recon, features = list(Score = tfiid_genes), name = 'tfiid_genes')
+
+
+xdp_recon <- AddModuleScore_UCell(xdp_recon, features = list(Score = tfiid_genes), name = 'tfiid_genes')
+```
+
+
+```{r}
+All_XDP_Cohort_new@meta.data
+bican_recon@meta.data
+xdp_recon@meta.data
+```
+```{r}
+spatial_scores = function(metadata, column, title, updown = -1){
+a = ggplot(metadata, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size =0.4) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ new_final_cell_class)
+
+metadata_neurons = subset(metadata, subset = new_final_cell_class == "neuron")
+b = ggplot(metadata_neurons, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size = 0.4) + ggtitle(paste0(" ", title, " Scores"))+ scale_color_viridis_c(option = "magma", name = "Expression", direction = updown)+   labs(paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ new_reclustered_patch_matrix_exotic)
+
+ggsave(a, filename = "pic1.png", width = 12, height = 10)
+ggsave(b, filename = "pic2.png", width = 14, height = 7)
+}
+```
+
+```{r}
+spatial_scores(xdp_recon@meta.data, "Scoretfiid_genes", "TFIID")
+```
+
+
+```{r}
+spatial_scores = function(metadata, column, title, updown = -1){
+a = ggplot(metadata, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size =0.4) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ cell_class_annot)
+
+metadata_neurons = subset(metadata, subset = cell_class_annot == "neuron")
+b = ggplot(metadata_neurons, aes(x= x_um, y = y_um, color = !!sym(column))) + geom_point(size = 0.4) + ggtitle(paste0(" ", title, " Scores"))+ scale_color_viridis_c(option = "magma", name = "Expression", direction = updown)+   labs(paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ reclustered_patch_matrix_exotic)
+
+ggsave(a, filename = "pic1.png", width = 12, height = 10)
+ggsave(b, filename = "pic2.png", width = 14, height = 7)
+}
+
+spatial_scores(bican_recon@meta.data, "Scorehla", "HLA")
+```
+
+
+
+
+
+#de stuff
+```{r}
+antigen_processing_df = read.csv("antigen_processing_df.csv", header = T)
+antigen_processing_df
+```
+```{r}
+antigen_processing_df = subset(antigen_processing_df, subset = pathway == "Antigen processing and presentation")
+
+library(ggplot2)
+plot_df <- antigen_processing_df %>%
+  mutate(significant = ifelse(padj < 0.05, "Yes", "No"))
+
+plot_df
+
+library(ggplot2)
+
+# Ensure 'significant' is a logical column: TRUE/FALSE for padj < 0.05
+plot_df$significant <- plot_df$padj < 0.05
+plot_df$NES_abs <- abs(plot_df$NES)
+plot_df$log10_padj <- -log10(plot_df$padj)
+plot_df$pathway <- factor(plot_df$pathway, levels = rev(levels(factor(plot_df$pathway))))
+
+# Order the cell types
+plot_df$cell_class <- factor(plot_df$cell_class, levels = c(
+  "astrocyte", "endothelial", "microglia", "oligo", "opc", "neuron", 
+  "BG_PVALB_GABA", "CN_LHX6_LHX8_GABA", "STR_Cholinergic_GABA", "eSPN", 
+  "STR_SST_GABA", "STRd_Matrix", "STRd_Striosome", "STRv_Shell"
+))
+
+# Create the plot
+a <- ggplot(plot_df, aes(x = cell_class, y = pathway)) +
+  geom_point(
+    aes(size = NES_abs, fill = NES, color = significant),
+    shape = 21, stroke = 1.5
+  ) +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  scale_color_manual(
+    values = c("TRUE" = "black", "FALSE" = "lightgray"),
+    name = "Significant (padj < 0.05)"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(size = 20),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 18),
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 16)
+  ) +
+  labs(
+    title = "GSEA DotPlot - Antigen Processing",
+    x = "Cell Type",
+    y = "Gene Sets",
+    size = "Absolute NES",
+    fill = "NES"
+  ) +
+  guides(
+    color = guide_legend(override.aes = list(size = 5), order = 1),
+    size = guide_legend(order = 2)
+  )
+
+ggsave(a, filename = "temp.png", width = 15, height = 4)
+
+```
+
+```{r}
+nfkb_df = read.csv("nfkb_all.csv", header = T)
+nfkb_df
+```
+
+```{r}
+library(ggplot2)
+plot_df <- nfkb_df %>%
+  mutate(significant = ifelse(padj < 0.05, "Yes", "No"))
+
+plot_df
+
+library(ggplot2)
+
+# Ensure 'significant' is a logical column: TRUE/FALSE for padj < 0.05
+plot_df$significant <- plot_df$padj < 0.05
+plot_df$NES_abs <- abs(plot_df$NES)
+plot_df$log10_padj <- -log10(plot_df$padj)
+plot_df$pathway <- factor(plot_df$pathway, levels = rev(levels(factor(plot_df$pathway))))
+
+# Order the cell types
+plot_df$cell_class <- factor(plot_df$cell_class, levels = c(
+  "astrocyte", "endothelial", "microglia", "oligo", "opc", "neuron", 
+  "BG_PVALB_GABA", "CN_LHX6_LHX8_GABA", "STR_Cholinergic_GABA", "eSPN", 
+  "STR_SST_GABA", "STRd_Matrix", "STRd_Striosome", "STRv_Shell"
+))
+
+# Create the plot
+a <- ggplot(plot_df, aes(x = cell_class, y = pathway)) +
+  geom_point(
+    aes(size = NES_abs, fill = NES, color = significant),
+    shape = 21, stroke = 1.5
+  ) +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  scale_color_manual(
+    values = c("TRUE" = "black", "FALSE" = "lightgray"),
+    name = "Significant (padj < 0.05)"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(size = 20),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 18),
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 16)
+  ) +
+  labs(
+    title = "GSEA DotPlot - TNF Alpha",
+    x = "Cell Type",
+    y = "Gene Sets",
+    size = "Absolute NES",
+    fill = "NES"
+  ) +
+  guides(
+    color = guide_legend(override.aes = list(size = 5), order = 1),
+    size = guide_legend(order = 2)
+  )
+
+ggsave(a, filename = "temp.png", width = 15, height = 8)
+
+```
+
+
+```{r}
+hla_de = read.csv("hla_genes_de.csv")
+hla_de
+```
+```{r}
+plot_df <- hla_de %>%
+  mutate(significant = ifelse(adj.P.Val < 0.05, "Yes", "No"))
+
+plot_df
+
+library(ggplot2)
+
+# Ensure 'significant' is a logical column: TRUE/FALSE for padj < 0.05
+plot_df$significant <- plot_df$adj.P.Val < 0.05
+plot_df$logFC_abs <- abs(plot_df$logFC)
+plot_df$log10_padj <- -log10(plot_df$adj.P.Val)
+plot_df$gene <- factor(plot_df$gene, levels = rev(levels(factor(plot_df$gene))))
+
+# Order the cell types
+plot_df$cell_class <- factor(plot_df$cell_class, levels = c(
+  "astrocyte", "endothelial", "microglia", "oligo", "opc", "neuron", 
+  "BG_PVALB_GABA", "CN_LHX6_LHX8_GABA", "STR_Cholinergic_GABA", "eSPN", 
+  "STR_SST_GABA", "STRd_Matrix", "STRd_Striosome", "STRv_Shell"
+))
+
+
+
+# Create the plot
+a <- ggplot(plot_df, aes(x = cell_class, y = gene)) +
+  geom_point(
+    aes(size = logFC_abs, fill = logFC, color = significant),
+    shape = 21, stroke = 1.5
+  ) +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  scale_color_manual(
+    values = c("TRUE" = "black", "FALSE" = "lightgray"),
+    name = "Significant (padj < 0.05)"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(size = 20),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 18),
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 16)
+  ) +
+  labs(
+    title = "LogFC of HLA genes",
+    x = "Cell Type",
+    y = "HLA Genes",
+    size = "Absolute logFC",
+    fill = "logFC"
+  ) +
+  guides(
+    color = guide_legend(override.aes = list(size = 5), order = 1),
+    size = guide_legend(order = 2)
+  )
+
+ggsave(a, filename = "temp.png", width = 15, height = 8)
+```
+
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+
+# Filter and mutate to add significance based on adj.P.Val
+plot_df <- hla_de %>%
+  mutate(significant = ifelse(adj.P.Val < 0.05, "Yes", "No")) %>%
+  # Filter out genes that are not significant in any cell class
+  group_by(gene) %>%
+  filter(any(adj.P.Val < 0.05)) %>%
+  ungroup()  # Ungroup to remove the grouping
+
+# Ensure 'significant' is a logical column: TRUE/FALSE for adj.P.Val < 0.05
+plot_df$significant <- plot_df$adj.P.Val < 0.05
+plot_df$logFC_abs <- abs(plot_df$logFC)
+plot_df$log10_padj <- -log10(plot_df$adj.P.Val)
+plot_df$gene <- factor(plot_df$gene, levels = rev(levels(factor(plot_df$gene))))
+
+# Order the cell types
+plot_df$cell_class <- factor(plot_df$cell_class, levels = c(
+  "astrocyte", "endothelial", "microglia", "oligo", "opc", "neuron", 
+  "BG_PVALB_GABA", "CN_LHX6_LHX8_GABA", "STR_Cholinergic_GABA", "eSPN", 
+  "STR_SST_GABA", "STRd_Matrix", "STRd_Striosome", "STRv_Shell"
+))
+
+# Create the plot
+a <- ggplot(plot_df, aes(x = cell_class, y = gene)) +
+  geom_point(
+    aes(size = logFC_abs, fill = logFC, color = significant),
+    shape = 21, stroke = 1.5
+  ) +
+  scale_size_continuous(range = c(1, 10)) +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  scale_color_manual(
+    values = c("TRUE" = "black", "FALSE" = "lightgray"),
+    name = "Significant (adj.P.Val < 0.05)"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    plot.title = element_text(size = 20),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    axis.text = element_text(size = 18),
+    axis.title = element_text(size = 18),
+    legend.title = element_text(size = 18),
+    legend.text = element_text(size = 16)
+  ) +
+  labs(
+    title = "LogFC of HLA genes",
+    x = "Cell Type",
+    y = "HLA Genes",
+    size = "Absolute logFC",
+    fill = "logFC"
+  ) +
+  guides(
+    color = guide_legend(override.aes = list(size = 5), order = 1),
+    size = guide_legend(order = 2)
+  )
+
+# Save the plot as a PNG file
+ggsave(a, filename = "temp.png", width = 15, height = 8)
+
+```
+
+
+
+
+
+```{r}
+All_XDP_Cohort_new@meta.data
+```
+
+```{r}
+table(All_XDP_Cohort_new$new_subclass_label_name)
+```
+
+```{r}
+temp = subset(All_XDP_Cohort_new@meta.data, subset = new_subclass_label_name == "STRd_Matrix")
+temp$Cohort[temp$Cohort == 1] = "Cohort_1"
+temp$Cohort[temp$Cohort == 2] = "Cohort_2"
+temp$Cohort[temp$Cohort == 3] = "Cohort_3"
+score_col = "Scorehla"
+ylab ="HLA Score"
+titl = "HLA Score in STRd_Matrix"
+
+df_avg <- temp %>%
+  group_by(donor_id, Condition, Cohort) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition, y = avg_score, color = Condition, shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Condition", y = paste0("Mean ", ylab), color = "Condition", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+
+xdp_meta_cases = subset(df_avg, Condition == "XDP")
+xdp_meta_controls = subset(df_avg, Condition == "Control")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$avg_score  
+XDP_Control_scores <- xdp_meta_controls$avg_score 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+```
