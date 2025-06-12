@@ -1,0 +1,2203 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+#Cohort 1
+  library(ggplot2)
+  library(Seurat)
+  library(Matrix)
+  library(rhdf5)
+  library(dplyr)
+  library(qs)
+  # add any other libraries you need
+
+library_list = list("SN_rxn1", "SN_rxn2", "SN_rxn3", "SN_rxn4")
+RAW_COUNTS_BASENAME = "raw_feature_bc_matrix.h5"
+FILTERED_COUNTS_BASENAME = "out_filtered.h5"
+MOLECULE_INFO_BASENAME = "molecule_info.h5"
+DONOR_ID_BASENAME = "vireo_final_out/donor_ids.tsv"
+this_base_path = "/broad/macosko/kimkathl/Cohort1"
+
+raw_dgc_list = list()
+filtered_dgc_list = list()
+mol_df_list = list()
+donor_ids_list = list()
+metadata_df_list = list()
+seurat_object_list = list()
+
+
+#helper function for cellbender loading
+sum_duplicate_rownames_of_dgc_matrix=function(dgc){   
+    # some umi_data has repeated rownames which causes problems down the road
+    # we will sum the umi counts in these rows
+    # collect rows with duplicate rownames as a dataframe
+    n_occur = data.frame(table(rownames(dgc)))
+    repeated_rownames = n_occur[n_occur$Freq > 1,]$Var1
+    duplicated_dgc = as.data.frame(dgc[rownames(dgc) %in% repeated_rownames,])
+    duplicated_dgc['symbol'] = sub("\\.\\d$", "", rownames(duplicated_dgc))
+
+    # sum across numeric columns
+    numeric_cols = setdiff(colnames(duplicated_dgc), "symbol")
+    summed_duped_umi_rows = duplicated_dgc %>%
+        group_by(symbol) %>%
+        summarise_at(vars(numeric_cols), sum, na.rm = TRUE) %>%
+        ungroup() %>%
+        as.data.frame()
+    # set rownames to be symbol column, then remove it
+    rownames(summed_duped_umi_rows) = summed_duped_umi_rows$symbol
+    summed_duped_umi_rows = summed_duped_umi_rows[, !(names(summed_duped_umi_rows) %in% c('symbol'))]
+
+    # Hack
+    # each round of the loop will remove ONE of each duplicate row 
+    for(i in 1:max(n_occur$Freq)){
+        dgc = dgc[!rownames(dgc) %in% repeated_rownames,]
+    }
+
+    # finally, replace the deduped rows with the summed rows via an rbind
+    dgc = rbind(dgc, as(summed_duped_umi_rows, "sparseMatrix"))
+
+    return(dgc)
+}
+
+  # Read your data
+for (name in library_list) {
+  
+cat(name)
+cat("\n")
+
+raw_counts_path = file.path(this_base_path, name, RAW_COUNTS_BASENAME)
+filtered_counts_path = file.path(this_base_path, name, paste0("pXDPsHSrSNid240830_" , name, "_", FILTERED_COUNTS_BASENAME))
+molecule_info_path = file.path(this_base_path, name, MOLECULE_INFO_BASENAME)
+donor_id_path = file.path(this_base_path, name, DONOR_ID_BASENAME)
+
+h5ls(filtered_counts_path)
+
+file_path = filtered_counts_path # the path to the *_out_filtered.h5 file
+    h5_data = h5read(file_path, "/matrix")
+    counts = h5_data$data
+    indices = h5_data$indices
+    indptr = h5_data$indptr
+    barcodes = h5_data$barcodes
+    num_genes = length(h5_data$features$name)  # Number of genes
+    num_cells = length(barcodes)  # Number of cells
+
+    counts_matrix = sparseMatrix(i=indices + 1,  # +1 for 1-based indexing in R
+                                    p=indptr,
+                                    x=counts,
+                                    dims=c(num_genes, num_cells))
+    
+ 
+    rownames(counts_matrix) = h5_data$features$name # set rownames to be genes
+    colnames(counts_matrix) = barcodes # set colnames to be cell barcodes
+    counts_matrix
+    filtered_dgc = counts_matrix
+    
+       filtered_dgc_list[[name]] = filtered_dgc
+       
+       
+
+print("READING RAW DGC .H5")
+   raw_counts = Read10X_h5(raw_counts_path)
+   raw_dgc_list[[name]] = raw_counts
+
+   cd = data.frame(
+       row.names=colnames(raw_counts),
+       nUMI=colSums(raw_counts),
+       log10_nUMI = log10(colSums(raw_counts) + 1),
+       nGene=colSums(raw_counts > 0),
+       is_in_filtered=colnames(raw_counts) %in% colnames(filtered_dgc_list[[name]])
+   )
+
+# load the molecule data such that you can map the barcodes to what came out of CellRanger
+   # load umi_type to get whether or not the umi was intronic
+   h5fetch = function(x){return(h5read(molecule_info_path, x))}
+   mol_df = data.frame(
+               barcode=h5fetch("barcodes")[h5fetch("barcode_idx")+1] %>% paste0("-1"),
+               feature=h5fetch("features/name")[h5fetch("feature_idx")+1],
+               umi=h5fetch("umi"),
+               umi_type=h5fetch("umi_type"),
+               count=h5fetch("count")
+       )
+      
+   # only consider cells that are in the filtered umi data
+   mol_df = mol_df[mol_df$barcode %in% colnames(filtered_dgc),]
+
+mol_df_grouped = mol_df %>% group_by(barcode) %>%
+       summarize(
+           nUmi=n(),
+           nRead=sum(count),
+           pct_intronic=sum(umi_type==0)/nUmi)
+   rownames(mol_df_grouped) = mol_df_grouped$barcode
+   mol_df_list[[name]] = mol_df_grouped
+
+donor_ids = read.table(donor_id_path, header=T)
+  donor_ids = donor_ids[, c("cell", "donor_id", "prob_max")]
+  donor_ids_list[[name]] = donor_ids
+
+mol_df_rxn = mol_df_list[[name]] 
+  metadata = merge(donor_ids, mol_df_rxn, by.x = "cell", by.y = "barcode", all = TRUE)
+  rownames(metadata) <- metadata$cell
+  
+  metadata <- metadata[rownames(metadata) %in% colnames(filtered_dgc), ]
+metadata
+
+all(colnames(filtered_dgc) == rownames(metadata))
+  metadata <- metadata[match(colnames(filtered_dgc), rownames(metadata)), ]
+  all(colnames(filtered_dgc) == rownames(metadata))
+  
+metadata
+
+metadata <- metadata[!is.na(metadata$donor_id), ]
+metadata
+
+file_path = file.path(this_base_path, name, paste0("pXDPsHSrSNid240830_" , name, "_", FILTERED_COUNTS_BASENAME))
+    h5_data = h5read(file_path, "/matrix")
+    counts = h5_data$data
+    indices = h5_data$indices
+    indptr = h5_data$indptr
+    barcodes = h5_data$barcodes
+    num_genes = length(h5_data$features$name)  # Number of genes
+    num_cells = length(barcodes)  # Number of cells
+
+    counts_matrix = sparseMatrix(i=indices + 1,  # add 1 for 1-based indexing in R
+                                    p=indptr,
+                                    x=counts,
+                                    dims=c(num_genes, num_cells))
+    
+
+    rownames(counts_matrix) = h5_data$features$name # set rownames to be genes
+    colnames(counts_matrix) = barcodes # set colnames to be cell barcodes
+
+# now we want to look only at cells that are in BOTh the CellRanger and CellBender objects
+    # use filtered_dgc from earlier in the loop
+    cellranger_filtered = filtered_dgc[, colnames(filtered_dgc) %in% all_of(colnames(counts_matrix))]
+    cellranger_filtered
+
+counts_matrix_filtered = counts_matrix[, colnames(counts_matrix) %in% all_of(colnames(cellranger_filtered))]
+    counts_matrix_filtered
+    print(dim(counts_matrix_filtered))
+   print("1")
+    # for whatever reason, there can be duplicated rownames (i.e. genes) in the cellbender output, causing errors later on. Sum these together.
+    counts_matrix_filtered = sum_duplicate_rownames_of_dgc_matrix(counts_matrix_filtered) 
+    print(dim(counts_matrix_filtered))
+   print("2")
+    counts_matrix_filtered = counts_matrix_filtered[, match(colnames(cellranger_filtered), colnames(counts_matrix_filtered))]
+    print(dim(counts_matrix_filtered))
+   print("3")
+
+# create your metadata here....
+metadata = metadata[rownames(metadata) %in% colnames(counts_matrix_filtered), ]
+metadata
+
+metadata_df_list[[name]] = metadata 
+    # add metadata argument to CreateSeuratObject
+
+# Compare the first few entries directly
+head(colnames(counts_matrix_filtered))
+head(metadata$cell)
+
+counts_matrix_filtered
+metadata
+
+extra_barcodes <- setdiff(colnames(counts_matrix_filtered), metadata$cell)
+length(extra_barcodes)  # Number of extra barcodes
+extra_barcodes  # List of extra barcodes
+counts_matrix_filtered <- counts_matrix_filtered[, !(colnames(counts_matrix_filtered) %in% extra_barcodes)]
+
+# Sort both and compare
+all(sort(colnames(counts_matrix_filtered)) == sort(metadata$cell))
+# Check types
+str(colnames(counts_matrix_filtered))
+str(metadata$cell)
+# Convert both to character if needed
+metadata$cell <- as.character(metadata$cell)
+colnames(counts_matrix_filtered) <- as.character(colnames(counts_matrix_filtered))
+# Check unique values
+unique(colnames(counts_matrix_filtered))[1:10]  # First 10 in counts_matrix
+unique(metadata$cell)[1:10]  # First 10 in metadata
+metadata_ordered <- metadata[match(colnames(counts_matrix_filtered), metadata$cell), ]
+
+cellbender_sobj = CreateSeuratObject(counts_matrix_filtered, meta.data = metadata)
+
+seurat_object_list[[name]] = cellbender_sobj
+}
+seurat_object_list
+qsave(seurat_object_list, "SN_SN_sobjs/Cohort1_SN.qs")
+
+sn_cohort1_list = seurat_object_list
+
+#Cohort2
+library_list = list("sn_rxn1", "sn_rxn2")
+RAW_COUNTS_BASENAME = "raw_feature_bc_matrix.h5"
+FILTERED_COUNTS_BASENAME = "out_filtered.h5"
+MOLECULE_INFO_BASENAME = "molecule_info.h5"
+DONOR_ID_BASENAME = "vireo_final_out/donor_ids.tsv"
+this_base_path = "/broad/macosko/kimkathl/Cohort2"
+
+raw_dgc_list = list()
+filtered_dgc_list = list()
+mol_df_list = list()
+donor_ids_list = list()
+metadata_df_list = list()
+seurat_object_list = list()
+
+
+#helper function for cellbender loading
+sum_duplicate_rownames_of_dgc_matrix=function(dgc){   
+    # some umi_data has repeated rownames which causes problems down the road
+    # we will sum the umi counts in these rows
+    # collect rows with duplicate rownames as a dataframe
+    n_occur = data.frame(table(rownames(dgc)))
+    repeated_rownames = n_occur[n_occur$Freq > 1,]$Var1
+    duplicated_dgc = as.data.frame(dgc[rownames(dgc) %in% repeated_rownames,])
+    duplicated_dgc['symbol'] = sub("\\.\\d$", "", rownames(duplicated_dgc))
+
+    # sum across numeric columns
+    numeric_cols = setdiff(colnames(duplicated_dgc), "symbol")
+    summed_duped_umi_rows = duplicated_dgc %>%
+        group_by(symbol) %>%
+        summarise_at(vars(numeric_cols), sum, na.rm = TRUE) %>%
+        ungroup() %>%
+        as.data.frame()
+    # set rownames to be symbol column, then remove it
+    rownames(summed_duped_umi_rows) = summed_duped_umi_rows$symbol
+    summed_duped_umi_rows = summed_duped_umi_rows[, !(names(summed_duped_umi_rows) %in% c('symbol'))]
+
+    # Hack
+    # each round of the loop will remove ONE of each duplicate row 
+    for(i in 1:max(n_occur$Freq)){
+        dgc = dgc[!rownames(dgc) %in% repeated_rownames,]
+    }
+
+    # finally, replace the deduped rows with the summed rows via an rbind
+    dgc = rbind(dgc, as(summed_duped_umi_rows, "sparseMatrix"))
+
+    return(dgc)
+}
+
+  # Read your data
+for (name in library_list) {
+  
+cat(name)
+cat("\n")
+
+raw_counts_path = file.path(this_base_path, name, RAW_COUNTS_BASENAME)
+filtered_counts_path = file.path(this_base_path, name, paste0("pXDPsHSrSN_v2_" , name, "_", FILTERED_COUNTS_BASENAME))
+molecule_info_path = file.path(this_base_path, name, MOLECULE_INFO_BASENAME)
+donor_id_path = file.path(this_base_path, name, DONOR_ID_BASENAME)
+
+h5ls(filtered_counts_path)
+
+file_path = filtered_counts_path # the path to the *_out_filtered.h5 file
+    h5_data = h5read(file_path, "/matrix")
+    counts = h5_data$data
+    indices = h5_data$indices
+    indptr = h5_data$indptr
+    barcodes = h5_data$barcodes
+    num_genes = length(h5_data$features$name)  # Number of genes
+    num_cells = length(barcodes)  # Number of cells
+
+    counts_matrix = sparseMatrix(i=indices + 1,  # +1 for 1-based indexing in R
+                                    p=indptr,
+                                    x=counts,
+                                    dims=c(num_genes, num_cells))
+    
+ 
+    rownames(counts_matrix) = h5_data$features$name # set rownames to be genes
+    colnames(counts_matrix) = barcodes # set colnames to be cell barcodes
+    counts_matrix
+    filtered_dgc = counts_matrix
+    
+       filtered_dgc_list[[name]] = filtered_dgc
+       
+       
+
+print("READING RAW DGC .H5")
+   raw_counts = Read10X_h5(raw_counts_path)
+   raw_dgc_list[[name]] = raw_counts
+
+   cd = data.frame(
+       row.names=colnames(raw_counts),
+       nUMI=colSums(raw_counts),
+       log10_nUMI = log10(colSums(raw_counts) + 1),
+       nGene=colSums(raw_counts > 0),
+       is_in_filtered=colnames(raw_counts) %in% colnames(filtered_dgc_list[[name]])
+   )
+
+# load the molecule data such that you can map the barcodes to what came out of CellRanger
+   # load umi_type to get whether or not the umi was intronic
+   h5fetch = function(x){return(h5read(molecule_info_path, x))}
+   mol_df = data.frame(
+               barcode=h5fetch("barcodes")[h5fetch("barcode_idx")+1] %>% paste0("-1"),
+               feature=h5fetch("features/name")[h5fetch("feature_idx")+1],
+               umi=h5fetch("umi"),
+               umi_type=h5fetch("umi_type"),
+               count=h5fetch("count")
+       )
+      
+   # only consider cells that are in the filtered umi data
+   mol_df = mol_df[mol_df$barcode %in% colnames(filtered_dgc),]
+
+mol_df_grouped = mol_df %>% group_by(barcode) %>%
+       summarize(
+           nUmi=n(),
+           nRead=sum(count),
+           pct_intronic=sum(umi_type==0)/nUmi)
+   rownames(mol_df_grouped) = mol_df_grouped$barcode
+   mol_df_list[[name]] = mol_df_grouped
+
+donor_ids = read.table(donor_id_path, header=T)
+  donor_ids = donor_ids[, c("cell", "donor_id", "prob_max")]
+  donor_ids_list[[name]] = donor_ids
+
+mol_df_rxn = mol_df_list[[name]] 
+  metadata = merge(donor_ids, mol_df_rxn, by.x = "cell", by.y = "barcode", all = TRUE)
+  rownames(metadata) <- metadata$cell
+  
+  metadata <- metadata[rownames(metadata) %in% colnames(filtered_dgc), ]
+metadata
+
+all(colnames(filtered_dgc) == rownames(metadata))
+  metadata <- metadata[match(colnames(filtered_dgc), rownames(metadata)), ]
+  all(colnames(filtered_dgc) == rownames(metadata))
+  
+metadata
+
+metadata <- metadata[!is.na(metadata$donor_id), ]
+metadata
+
+file_path = file.path(this_base_path, name, paste0("pXDPsHSrSN_v2_" , name, "_", FILTERED_COUNTS_BASENAME))
+    h5_data = h5read(file_path, "/matrix")
+    counts = h5_data$data
+    indices = h5_data$indices
+    indptr = h5_data$indptr
+    barcodes = h5_data$barcodes
+    num_genes = length(h5_data$features$name)  # Number of genes
+    num_cells = length(barcodes)  # Number of cells
+
+    counts_matrix = sparseMatrix(i=indices + 1,  # add 1 for 1-based indexing in R
+                                    p=indptr,
+                                    x=counts,
+                                    dims=c(num_genes, num_cells))
+    
+
+    rownames(counts_matrix) = h5_data$features$name # set rownames to be genes
+    colnames(counts_matrix) = barcodes # set colnames to be cell barcodes
+
+# now we want to look only at cells that are in BOTh the CellRanger and CellBender objects
+    # use filtered_dgc from earlier in the loop
+    cellranger_filtered = filtered_dgc[, colnames(filtered_dgc) %in% all_of(colnames(counts_matrix))]
+    cellranger_filtered
+
+counts_matrix_filtered = counts_matrix[, colnames(counts_matrix) %in% all_of(colnames(cellranger_filtered))]
+    counts_matrix_filtered
+    print(dim(counts_matrix_filtered))
+   print("1")
+    # for whatever reason, there can be duplicated rownames (i.e. genes) in the cellbender output, causing errors later on. Sum these together.
+    counts_matrix_filtered = sum_duplicate_rownames_of_dgc_matrix(counts_matrix_filtered) 
+    print(dim(counts_matrix_filtered))
+   print("2")
+    counts_matrix_filtered = counts_matrix_filtered[, match(colnames(cellranger_filtered), colnames(counts_matrix_filtered))]
+    print(dim(counts_matrix_filtered))
+   print("3")
+
+# create your metadata here....
+metadata = metadata[rownames(metadata) %in% colnames(counts_matrix_filtered), ]
+metadata
+
+metadata_df_list[[name]] = metadata 
+    # add metadata argument to CreateSeuratObject
+
+# Compare the first few entries directly
+head(colnames(counts_matrix_filtered))
+head(metadata$cell)
+
+counts_matrix_filtered
+metadata
+
+extra_barcodes <- setdiff(colnames(counts_matrix_filtered), metadata$cell)
+length(extra_barcodes)  # Number of extra barcodes
+extra_barcodes  # List of extra barcodes
+counts_matrix_filtered <- counts_matrix_filtered[, !(colnames(counts_matrix_filtered) %in% extra_barcodes)]
+
+# Sort both and compare
+all(sort(colnames(counts_matrix_filtered)) == sort(metadata$cell))
+# Check types
+str(colnames(counts_matrix_filtered))
+str(metadata$cell)
+# Convert both to character if needed
+metadata$cell <- as.character(metadata$cell)
+colnames(counts_matrix_filtered) <- as.character(colnames(counts_matrix_filtered))
+# Check unique values
+unique(colnames(counts_matrix_filtered))[1:10]  # First 10 in counts_matrix
+unique(metadata$cell)[1:10]  # First 10 in metadata
+metadata_ordered <- metadata[match(colnames(counts_matrix_filtered), metadata$cell), ]
+
+cellbender_sobj = CreateSeuratObject(counts_matrix_filtered, meta.data = metadata)
+
+seurat_object_list[[name]] = cellbender_sobj
+}
+seurat_object_list
+
+qsave(seurat_object_list, "SN_SN_sobjs/Cohort2_SN.qs")
+
+sn_cohort2_list = seurat_object_list
+```
+
+```{r}
+#Cohort3
+library_list = list("sn_rxn1", "sn_rxn2")
+RAW_COUNTS_BASENAME = "raw_feature_bc_matrix.h5"
+FILTERED_COUNTS_BASENAME = "out_filtered.h5"
+MOLECULE_INFO_BASENAME = "molecule_info.h5"
+DONOR_ID_BASENAME = "vireo_final_out/donor_ids.tsv"
+this_base_path = "/broad/macosko/kimkathl/Cohort3"
+
+raw_dgc_list = list()
+filtered_dgc_list = list()
+mol_df_list = list()
+donor_ids_list = list()
+metadata_df_list = list()
+seurat_object_list = list()
+
+
+#helper function for cellbender loading
+sum_duplicate_rownames_of_dgc_matrix=function(dgc){   
+    # some umi_data has repeated rownames which causes problems down the road
+    # we will sum the umi counts in these rows
+    # collect rows with duplicate rownames as a dataframe
+    n_occur = data.frame(table(rownames(dgc)))
+    repeated_rownames = n_occur[n_occur$Freq > 1,]$Var1
+    duplicated_dgc = as.data.frame(dgc[rownames(dgc) %in% repeated_rownames,])
+    duplicated_dgc['symbol'] = sub("\\.\\d$", "", rownames(duplicated_dgc))
+
+    # sum across numeric columns
+    numeric_cols = setdiff(colnames(duplicated_dgc), "symbol")
+    summed_duped_umi_rows = duplicated_dgc %>%
+        group_by(symbol) %>%
+        summarise_at(vars(numeric_cols), sum, na.rm = TRUE) %>%
+        ungroup() %>%
+        as.data.frame()
+    # set rownames to be symbol column, then remove it
+    rownames(summed_duped_umi_rows) = summed_duped_umi_rows$symbol
+    summed_duped_umi_rows = summed_duped_umi_rows[, !(names(summed_duped_umi_rows) %in% c('symbol'))]
+
+    # Hack
+    # each round of the loop will remove ONE of each duplicate row 
+    for(i in 1:max(n_occur$Freq)){
+        dgc = dgc[!rownames(dgc) %in% repeated_rownames,]
+    }
+
+    # finally, replace the deduped rows with the summed rows via an rbind
+    dgc = rbind(dgc, as(summed_duped_umi_rows, "sparseMatrix"))
+
+    return(dgc)
+}
+
+  # Read your data
+for (name in library_list) {
+  
+cat(name)
+cat("\n")
+
+raw_counts_path = file.path(this_base_path, name, RAW_COUNTS_BASENAME)
+filtered_counts_path = file.path(this_base_path, name, paste0("pXDPsHSrSN_v3_" , name, "_", FILTERED_COUNTS_BASENAME))
+molecule_info_path = file.path(this_base_path, name, MOLECULE_INFO_BASENAME)
+donor_id_path = file.path(this_base_path, name, DONOR_ID_BASENAME)
+
+h5ls(filtered_counts_path)
+
+file_path = filtered_counts_path # the path to the *_out_filtered.h5 file
+    h5_data = h5read(file_path, "/matrix")
+    counts = h5_data$data
+    indices = h5_data$indices
+    indptr = h5_data$indptr
+    barcodes = h5_data$barcodes
+    num_genes = length(h5_data$features$name)  # Number of genes
+    num_cells = length(barcodes)  # Number of cells
+
+    counts_matrix = sparseMatrix(i=indices + 1,  # +1 for 1-based indexing in R
+                                    p=indptr,
+                                    x=counts,
+                                    dims=c(num_genes, num_cells))
+    
+ 
+    rownames(counts_matrix) = h5_data$features$name # set rownames to be genes
+    colnames(counts_matrix) = barcodes # set colnames to be cell barcodes
+    counts_matrix
+    filtered_dgc = counts_matrix
+    
+       filtered_dgc_list[[name]] = filtered_dgc
+       
+       
+
+print("READING RAW DGC .H5")
+   raw_counts = Read10X_h5(raw_counts_path)
+   raw_dgc_list[[name]] = raw_counts
+
+   cd = data.frame(
+       row.names=colnames(raw_counts),
+       nUMI=colSums(raw_counts),
+       log10_nUMI = log10(colSums(raw_counts) + 1),
+       nGene=colSums(raw_counts > 0),
+       is_in_filtered=colnames(raw_counts) %in% colnames(filtered_dgc_list[[name]])
+   )
+
+# load the molecule data such that you can map the barcodes to what came out of CellRanger
+   # load umi_type to get whether or not the umi was intronic
+   h5fetch = function(x){return(h5read(molecule_info_path, x))}
+   mol_df = data.frame(
+               barcode=h5fetch("barcodes")[h5fetch("barcode_idx")+1] %>% paste0("-1"),
+               feature=h5fetch("features/name")[h5fetch("feature_idx")+1],
+               umi=h5fetch("umi"),
+               umi_type=h5fetch("umi_type"),
+               count=h5fetch("count")
+       )
+      
+   # only consider cells that are in the filtered umi data
+   mol_df = mol_df[mol_df$barcode %in% colnames(filtered_dgc),]
+
+mol_df_grouped = mol_df %>% group_by(barcode) %>%
+       summarize(
+           nUmi=n(),
+           nRead=sum(count),
+           pct_intronic=sum(umi_type==0)/nUmi)
+   rownames(mol_df_grouped) = mol_df_grouped$barcode
+   mol_df_list[[name]] = mol_df_grouped
+
+donor_ids = read.table(donor_id_path, header=T)
+  donor_ids = donor_ids[, c("cell", "donor_id", "prob_max")]
+  donor_ids_list[[name]] = donor_ids
+
+mol_df_rxn = mol_df_list[[name]] 
+  metadata = merge(donor_ids, mol_df_rxn, by.x = "cell", by.y = "barcode", all = TRUE)
+  rownames(metadata) <- metadata$cell
+  
+  metadata <- metadata[rownames(metadata) %in% colnames(filtered_dgc), ]
+metadata
+
+all(colnames(filtered_dgc) == rownames(metadata))
+  metadata <- metadata[match(colnames(filtered_dgc), rownames(metadata)), ]
+  all(colnames(filtered_dgc) == rownames(metadata))
+  
+metadata
+
+metadata <- metadata[!is.na(metadata$donor_id), ]
+metadata
+
+file_path = file.path(this_base_path, name, paste0("pXDPsHSrSN_v3_" , name, "_", FILTERED_COUNTS_BASENAME))
+    h5_data = h5read(file_path, "/matrix")
+    counts = h5_data$data
+    indices = h5_data$indices
+    indptr = h5_data$indptr
+    barcodes = h5_data$barcodes
+    num_genes = length(h5_data$features$name)  # Number of genes
+    num_cells = length(barcodes)  # Number of cells
+
+    counts_matrix = sparseMatrix(i=indices + 1,  # add 1 for 1-based indexing in R
+                                    p=indptr,
+                                    x=counts,
+                                    dims=c(num_genes, num_cells))
+    
+
+    rownames(counts_matrix) = h5_data$features$name # set rownames to be genes
+    colnames(counts_matrix) = barcodes # set colnames to be cell barcodes
+
+# now we want to look only at cells that are in BOTh the CellRanger and CellBender objects
+    # use filtered_dgc from earlier in the loop
+    cellranger_filtered = filtered_dgc[, colnames(filtered_dgc) %in% all_of(colnames(counts_matrix))]
+    cellranger_filtered
+
+counts_matrix_filtered = counts_matrix[, colnames(counts_matrix) %in% all_of(colnames(cellranger_filtered))]
+    counts_matrix_filtered
+    print(dim(counts_matrix_filtered))
+   print("1")
+    # for whatever reason, there can be duplicated rownames (i.e. genes) in the cellbender output, causing errors later on. Sum these together.
+    counts_matrix_filtered = sum_duplicate_rownames_of_dgc_matrix(counts_matrix_filtered) 
+    print(dim(counts_matrix_filtered))
+   print("2")
+    counts_matrix_filtered = counts_matrix_filtered[, match(colnames(cellranger_filtered), colnames(counts_matrix_filtered))]
+    print(dim(counts_matrix_filtered))
+   print("3")
+
+# create your metadata here....
+metadata = metadata[rownames(metadata) %in% colnames(counts_matrix_filtered), ]
+metadata
+
+metadata_df_list[[name]] = metadata 
+    # add metadata argument to CreateSeuratObject
+
+# Compare the first few entries directly
+head(colnames(counts_matrix_filtered))
+head(metadata$cell)
+
+counts_matrix_filtered
+metadata
+
+extra_barcodes <- setdiff(colnames(counts_matrix_filtered), metadata$cell)
+length(extra_barcodes)  # Number of extra barcodes
+extra_barcodes  # List of extra barcodes
+counts_matrix_filtered <- counts_matrix_filtered[, !(colnames(counts_matrix_filtered) %in% extra_barcodes)]
+
+# Sort both and compare
+all(sort(colnames(counts_matrix_filtered)) == sort(metadata$cell))
+# Check types
+str(colnames(counts_matrix_filtered))
+str(metadata$cell)
+# Convert both to character if needed
+metadata$cell <- as.character(metadata$cell)
+colnames(counts_matrix_filtered) <- as.character(colnames(counts_matrix_filtered))
+# Check unique values
+unique(colnames(counts_matrix_filtered))[1:10]  # First 10 in counts_matrix
+unique(metadata$cell)[1:10]  # First 10 in metadata
+metadata_ordered <- metadata[match(colnames(counts_matrix_filtered), metadata$cell), ]
+
+cellbender_sobj = CreateSeuratObject(counts_matrix_filtered, meta.data = metadata)
+
+seurat_object_list[[name]] = cellbender_sobj
+}
+seurat_object_list
+
+qsave(seurat_object_list, "DFC_SN_sobjs/Cohort3_SN.qs")
+sn_cohort3_list = seurat_object_list
+```
+
+
+```{r}
+sn_cohort1_list
+sn_cohort2_list
+sn_cohort3_list
+```
+
+
+```{r}
+Cohort_1_SN_rxn1 = sn_cohort1_list[["SN_rxn1"]]
+Cohort_1_SN_rxn2 = sn_cohort1_list[["SN_rxn2"]]
+Cohort_1_SN_rxn3 = sn_cohort1_list[["SN_rxn3"]]
+Cohort_1_SN_rxn4 = sn_cohort1_list[["SN_rxn4"]]
+Cohort_1_SN_rxn1
+Cohort_1_SN_rxn2
+Cohort_1_SN_rxn3
+Cohort_1_SN_rxn4
+```
+
+
+```{r}
+Cohort_1_SN_rxn1 = subset(Cohort_1_SN_rxn1, subset = donor_id != "doublet" & donor_id != "unassigned")
+Cohort_1_SN_rxn1
+
+Cohort_1_SN_rxn2 = subset(Cohort_1_SN_rxn2, subset = donor_id != "doublet" & donor_id != "unassigned")
+Cohort_1_SN_rxn2
+
+Cohort_1_SN_rxn3 = subset(Cohort_1_SN_rxn3, subset = donor_id != "doublet" & donor_id != "unassigned")
+Cohort_1_SN_rxn3
+
+Cohort_1_SN_rxn4 = subset(Cohort_1_SN_rxn4, subset = donor_id != "doublet" & donor_id != "unassigned")
+Cohort_1_SN_rxn4
+
+#calcualte pct mito
+
+Cohort_1_SN_rxn1@meta.data$pct_intronic = Cohort_1_SN_rxn1$pct_intronic *100
+Cohort_1_SN_rxn2@meta.data$pct_intronic = Cohort_1_SN_rxn2$pct_intronic *100 
+Cohort_1_SN_rxn3@meta.data$pct_intronic = Cohort_1_SN_rxn3$pct_intronic *100 
+Cohort_1_SN_rxn4@meta.data$pct_intronic = Cohort_1_SN_rxn4$pct_intronic *100 
+
+
+mito_genes <- grep(pattern = "^MT-", x = rownames(Cohort_1_SN_rxn1), value = TRUE)
+length(mito_genes)
+mito_counts <- Matrix::colSums(GetAssayData(Cohort_1_SN_rxn1, assay = "RNA", slot = "counts")[mito_genes, ])
+total_counts <- Matrix::colSums(GetAssayData(Cohort_1_SN_rxn1, assay = "RNA", slot = "counts"))
+pct_mito <- (mito_counts / total_counts) * 100
+Cohort_1_SN_rxn1$pct_mito <- pct_mito
+
+
+mito_genes <- grep(pattern = "^MT-", x = rownames(Cohort_1_SN_rxn2), value = TRUE)
+length(mito_genes)
+mito_counts <- Matrix::colSums(GetAssayData(Cohort_1_SN_rxn2, assay = "RNA", slot = "counts")[mito_genes, ])
+total_counts <- Matrix::colSums(GetAssayData(Cohort_1_SN_rxn2, assay = "RNA", slot = "counts"))
+pct_mito <- (mito_counts / total_counts) * 100
+Cohort_1_SN_rxn2$pct_mito <- pct_mito
+
+
+mito_genes <- grep(pattern = "^MT-", x = rownames(Cohort_1_SN_rxn3), value = TRUE)
+length(mito_genes)
+mito_counts <- Matrix::colSums(GetAssayData(Cohort_1_SN_rxn3, assay = "RNA", slot = "counts")[mito_genes, ])
+total_counts <- Matrix::colSums(GetAssayData(Cohort_1_SN_rxn3, assay = "RNA", slot = "counts"))
+pct_mito <- (mito_counts / total_counts) * 100
+Cohort_1_SN_rxn3$pct_mito <- pct_mito
+
+mito_genes <- grep(pattern = "^MT-", x = rownames(Cohort_1_SN_rxn4), value = TRUE)
+length(mito_genes)
+mito_counts <- Matrix::colSums(GetAssayData(Cohort_1_SN_rxn4, assay = "RNA", slot = "counts")[mito_genes, ])
+total_counts <- Matrix::colSums(GetAssayData(Cohort_1_SN_rxn4, assay = "RNA", slot = "counts"))
+pct_mito <- (mito_counts / total_counts) * 100
+Cohort_1_SN_rxn4$pct_mito <- pct_mito
+```
+
+
+#merge SN libraries 
+```{r}
+sobj_list = list("SN_rxn1" = Cohort_1_SN_rxn1,
+                 "SN_rxn2" =Cohort_1_SN_rxn2, 
+                 "SN_rxn3" = Cohort_1_SN_rxn3, 
+                 "SN_rxn4"= Cohort_1_SN_rxn4)
+
+for(name in names(sobj_list)){
+     sobj =sobj_list[[name]]
+     sobj$library = name
+     sobj = RenameCells(sobj, new.name = paste(sobj$library, colnames(sobj), sep="__"))
+     sobj_list[[name]] = sobj
+     
+}
+
+sobj_list
+
+counts_list <- lapply(sobj_list, function(sobj) GetAssayData(sobj, slot = "counts"))
+
+
+merged_counts <- do.call(cbind, counts_list)
+
+
+metadata_list <- lapply(sobj_list, function(sobj) sobj@meta.data)
+metadata_list
+
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+rownames(merged_metadata) <- unlist(lapply(metadata_list, rownames))
+merged_metadata
+
+stopifnot(all(rownames(merged_metadata) == colnames(merged_counts)))
+
+# Create Seurat object
+SN_Cohort1 <- CreateSeuratObject(counts = merged_counts, meta.data = merged_metadata)
+SN_Cohort1
+SN_Cohort1@meta.data$Region = "SN"
+SN_Cohort1@meta.data
+```
+
+```{r}
+SN_Cohort1@meta.data$Sex <- ifelse(grepl("CF$", SN_Cohort1@meta.data$donor_id), "F", "M")
+table(SN_Cohort1@meta.data$Sex, SN_Cohort1$donor_id)
+SN_Cohort1@meta.data$Sex[SN_Cohort1@meta.data$donor_id == "PCMC-16-011"] = "F"
+SN_Cohort1@meta.data$Condition <- ifelse(grepl("CF$|CM$|CM2$", SN_Cohort1@meta.data$donor_id), "Control", "XDP")
+
+table(SN_Cohort1@meta.data$Condition, SN_Cohort1$donor_id)
+
+```
+
+```{r}
+SN_Cohort1
+SN_Cohort1@meta.data
+```
+
+```{r}
+SN_Cohort1
+filtered_SN_Cohort1 <- subset(SN_Cohort1, subset = pct_mito < 10)
+filtered_SN_Cohort1
+filtered_SN_Cohort1 = subset(filtered_SN_Cohort1, subset = pct_intronic >= 25) #this used to be 0.25
+filtered_SN_Cohort1
+filtered_SN_Cohort1 = subset(filtered_SN_Cohort1, subset = nUmi > 500)
+filtered_SN_Cohort1
+filtered_SN_Cohort1 = subset(filtered_SN_Cohort1, subset = prob_max > 0.9)
+filtered_SN_Cohort1
+```
+
+```{r}
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(filtered_SN_Cohort1, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+filtered_SN_Cohort1 = (filtered_SN_Cohort1
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_Cohort1$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_Cohort1$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(filtered_SN_Cohort1, group.by = "donor_id") 
+DimPlot(filtered_SN_Cohort1, group.by = "Sex")
+DimPlot(filtered_SN_Cohort1, group.by = "Condition")
+DimPlot(filtered_SN_Cohort1, group.by = "library") 
+DimPlot(filtered_SN_Cohort1, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(filtered_SN_Cohort1, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(filtered_SN_Cohort1, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(filtered_SN_Cohort1, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(filtered_SN_Cohort1, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(filtered_SN_Cohort1, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(filtered_SN_Cohort1, group.by = "RNA_snn_res.0.8", label=T)
+
+FeaturePlot(filtered_SN_Cohort1, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(filtered_SN_Cohort1, features = c("AQP4", "GINS3", "GFAP"), raster = F)
+FeaturePlot(filtered_SN_Cohort1, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(filtered_SN_Cohort1, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(filtered_SN_Cohort1, features = c("OLIG1", "MOG", "MOBP"), raster = F)
+FeaturePlot(filtered_SN_Cohort1, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(filtered_SN_Cohort1, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(filtered_SN_Cohort1, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(filtered_SN_Cohort1, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+```
+
+
+```{r}
+Idents(filtered_SN_Cohort1) = filtered_SN_Cohort1$RNA_snn_res.0.2
+
+classes = c("oligo", "microglia", "astrocyte", "opc", "neuron", "neuron", "oligo", "endothelial", "oligo", "oligo", 
+  "neuron", "microglia", "neuron", "oligo", "immune", "oligo", "neuron", "microglia", "oligo", "endothelial")
+
+
+filtered_SN_Cohort1= assignCellClasses(filtered_SN_Cohort1, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+DimPlot(filtered_SN_Cohort1, group.by = "cell_class" ,label = T, raster = FALSE)
+
+```
+
+```{r}
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN", "GAPDH","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = filtered_SN_Cohort1, features = marker_genes, group.by = "cell_class")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+
+```{r}
+qsave(SN_Cohort1, "Cohort1/sobjs/SN_Cohort1_unfiltered.qs")
+qsave(filtered_SN_Cohort1, "Cohort1/sobjs/filtered_SN_Cohort1.qs")
+```
+
+
+#SN cleaning + integration
+
+```{r}
+table(filtered_SN_Cohort1$cell_class)
+```
+
+```{r}
+temp_sobj = subset(filtered_SN_Cohort1, subset = cell_class == "opc")
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(temp_sobj, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+temp_sobj = (temp_sobj
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_SN$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_SN$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(temp_sobj, group.by = "donor_id") 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.8", label=T) 
+
+FeaturePlot(temp_sobj, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(temp_sobj, features = c("AQP4", "GINS3", "GFAP", "TH"), raster = F)
+FeaturePlot(temp_sobj, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(temp_sobj, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG1", "MOG", "MOBP", "MBP"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(temp_sobj, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(temp_sobj, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(temp_sobj, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+FeaturePlot(temp_sobj, features = c("pct_mito", "pct_intronic", "nUmi","TH"),raster=FALSE) 
+
+
+```
+
+```{r}
+marker_genes <- c("CD96", "CX3CR1", "P2RY12", "C1QB", "C1QA", "CASZ1", "FLT1", "TF", "MOBP", "MOG", "MBP", "OLIG2", "OLIG1", "ST18", "GFAP", "AQP4", "SEMA3E", "EPHA4", "PPP1R1B", "DRD2", "DRD1", "GAD2", "GAD1", "SYT1", "RBFOX3", "SLC17A6", "SLC17A7", "VCAN")
+
+Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "RNA_snn_res.0.2")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+
+
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "RNA_snn_res.0.2")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+```{r}
+table(temp_sobj$RNA_snn_res.0.2)
+```
+
+
+```{r}
+temp_sobj
+temp_sobj = subset(temp_sobj, subset = RNA_snn_res.0.2 != "2" & RNA_snn_res.0.2 != "4" & RNA_snn_res.0.2 != "5" & RNA_snn_res.0.2 != "6")
+temp_sobj
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2")
+```
+
+```{r}
+SN_astro
+SN_endo
+SN_immune
+SN_micro
+SN_oligo
+SN_opc= temp_sobj
+SN_neuron
+#
+```
+
+```{r}
+sobj_list = list(SN_astro,
+SN_endo,
+SN_immune,
+SN_micro,
+SN_oligo,
+SN_opc,
+SN_neuron)
+
+counts_list <- lapply(sobj_list, function(sobj) GetAssayData(sobj, slot = "counts"))
+
+merged_counts <- do.call(cbind, counts_list)
+
+metadata_list <- lapply(sobj_list, function(sobj) sobj@meta.data)
+
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+
+stopifnot(all(rownames(merged_metadata) == colnames(merged_counts)))
+
+# Create Seurat object
+cleaned_SN_Cohort1 <- CreateSeuratObject(counts = merged_counts, meta.data = merged_metadata)
+cleaned_SN_Cohort1
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(cleaned_SN_Cohort1, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+cleaned_SN_Cohort1 = (cleaned_SN_Cohort1
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_SN$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_SN$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(cleaned_SN_Cohort1, group.by = "donor_id") 
+DimPlot(cleaned_SN_Cohort1, group.by = "library") 
+DimPlot(cleaned_SN_Cohort1, group.by = "Condition") 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.8", label=T)
+DimPlot(cleaned_SN_Cohort1, group.by = "cell_class", label=T)
+```
+
+
+
+```{r}
+cleaned_SN_Cohort1@meta.data
+cohort_metadata = read.csv("/broad/macosko/kimkathl/XDP_Cohorts_1_2_3_metadata.csv", header = T)
+cohort_metadata
+
+meta <- cleaned_SN_Cohort1@meta.data %>%
+  mutate(cell_id = rownames(.))
+
+cohort_metadata_joined <- meta %>%
+  left_join(cohort_metadata, by = c("donor_id" = "Donor"))
+
+rownames(cohort_metadata_joined) <- cohort_metadata_joined$cell_id
+cohort_metadata_joined$cell_id <- NULL  
+
+cleaned_SN_Cohort1@meta.data <- cohort_metadata_joined
+cleaned_SN_Cohort1@meta.data 
+
+cleaned_SN_Cohort1@meta.data$Sex = cleaned_SN_Cohort1@meta.data$Sex.x
+cleaned_SN_Cohort1@meta.data$Sex.x = NULL
+cleaned_SN_Cohort1@meta.data$Sex.y = NULL
+
+cleaned_SN_Cohort1@meta.data$Condition = cleaned_SN_Cohort1@meta.data$Condition.x
+cleaned_SN_Cohort1@meta.data$Condition.x = NULL
+cleaned_SN_Cohort1@meta.data$Condition.y = NULL
+cleaned_SN_Cohort1@meta.data
+```
+
+
+```{r}
+library(lme4)
+sobj = cleaned_SN_Cohort1
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age_of_Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age_of_Death", "Sex") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("XDP vs. Control: SN Cohort 1") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Cell Classes") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+```{r}
+qsave(cleaned_SN_Cohort1, "Cohort1/sobjs/cleaned_SN_Cohort1.qs")
+```
+
+
+#Cohort 2
+```{r}
+Cohort_2_SN_rxn1 = sn_cohort2_list[["sn_rxn1"]]
+Cohort_2_SN_rxn2 = sn_cohort2_list[["sn_rxn2"]]
+Cohort_2_SN_rxn1
+Cohort_2_SN_rxn2
+```
+
+```{r}
+Cohort_2_SN_rxn1 = subset(Cohort_2_SN_rxn1, subset = donor_id != "doublet" & donor_id != "unassigned")
+Cohort_2_SN_rxn1
+
+Cohort_2_SN_rxn2 = subset(Cohort_2_SN_rxn2, subset = donor_id != "doublet" & donor_id != "unassigned")
+Cohort_2_SN_rxn2
+
+
+#calcualte pct mito
+
+Cohort_2_SN_rxn1@meta.data$pct_intronic = Cohort_2_SN_rxn1$pct_intronic *100
+Cohort_2_SN_rxn2@meta.data$pct_intronic = Cohort_2_SN_rxn2$pct_intronic *100 
+
+mito_genes <- grep(pattern = "^MT-", x = rownames(Cohort_2_SN_rxn1), value = TRUE)
+length(mito_genes)
+mito_counts <- Matrix::colSums(GetAssayData(Cohort_2_SN_rxn1, assay = "RNA", slot = "counts")[mito_genes, ])
+total_counts <- Matrix::colSums(GetAssayData(Cohort_2_SN_rxn1, assay = "RNA", slot = "counts"))
+pct_mito <- (mito_counts / total_counts) * 100
+Cohort_2_SN_rxn1$pct_mito <- pct_mito
+
+
+mito_genes <- grep(pattern = "^MT-", x = rownames(Cohort_2_SN_rxn2), value = TRUE)
+length(mito_genes)
+mito_counts <- Matrix::colSums(GetAssayData(Cohort_2_SN_rxn2, assay = "RNA", slot = "counts")[mito_genes, ])
+total_counts <- Matrix::colSums(GetAssayData(Cohort_2_SN_rxn2, assay = "RNA", slot = "counts"))
+pct_mito <- (mito_counts / total_counts) * 100
+Cohort_2_SN_rxn2$pct_mito <- pct_mito
+
+```
+
+
+#merge SN libraries 
+```{r}
+sobj_list = list("SN_rxn1" = Cohort_2_SN_rxn1,
+                 "SN_rxn2" =Cohort_2_SN_rxn2)
+
+for(name in names(sobj_list)){
+     sobj =sobj_list[[name]]
+     sobj$library = name
+     sobj = RenameCells(sobj, new.name = paste(sobj$library, colnames(sobj), sep="__"))
+     sobj_list[[name]] = sobj
+     
+}
+
+sobj_list
+
+counts_list <- lapply(sobj_list, function(sobj) GetAssayData(sobj, slot = "counts"))
+
+
+merged_counts <- do.call(cbind, counts_list)
+
+
+metadata_list <- lapply(sobj_list, function(sobj) sobj@meta.data)
+metadata_list
+
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+rownames(merged_metadata) <- unlist(lapply(metadata_list, rownames))
+merged_metadata
+
+stopifnot(all(rownames(merged_metadata) == colnames(merged_counts)))
+
+# Create Seurat object
+SN_Cohort2 <- CreateSeuratObject(counts = merged_counts, meta.data = merged_metadata)
+SN_Cohort2
+SN_Cohort2@meta.data$Region = "SN"
+SN_Cohort2@meta.data
+```
+
+```{r}
+SN_Cohort2@meta.data$Sex <- ifelse(grepl("CF$", SN_Cohort2@meta.data$donor_id), "F", "M")
+table(SN_Cohort2@meta.data$Sex, SN_Cohort2$donor_id)
+SN_Cohort2@meta.data$Sex[SN_Cohort2@meta.data$donor_id == "PCMC-16-011"] = "F"
+SN_Cohort2@meta.data$Condition <- ifelse(grepl("CF$|CM$|CM2$", SN_Cohort2@meta.data$donor_id), "Control", "XDP")
+
+table(SN_Cohort2@meta.data$Condition, SN_Cohort2$donor_id)
+
+
+SN_Cohort2@meta.data
+```
+
+
+```{r}
+SN_Cohort2
+filtered_SN_Cohort2 <- subset(SN_Cohort2, subset = pct_mito < 10)
+filtered_SN_Cohort2
+filtered_SN_Cohort2 = subset(filtered_SN_Cohort2, subset = pct_intronic >= 0.25)
+filtered_SN_Cohort2
+filtered_SN_Cohort2 = subset(filtered_SN_Cohort2, subset = nUmi > 500)
+filtered_SN_Cohort2
+filtered_SN_Cohort2 = subset(filtered_SN_Cohort2, subset = prob_max > 0.9)
+filtered_SN_Cohort2
+```
+
+```{r}
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(filtered_SN_Cohort2, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+filtered_SN_Cohort2 = (filtered_SN_Cohort2
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_Cohort2$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_Cohort2$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(filtered_SN_Cohort2, group.by = "donor_id") 
+DimPlot(filtered_SN_Cohort2, group.by = "Sex")
+DimPlot(filtered_SN_Cohort2, group.by = "Condition")
+DimPlot(filtered_SN_Cohort2, group.by = "library") 
+DimPlot(filtered_SN_Cohort2, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(filtered_SN_Cohort2, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(filtered_SN_Cohort2, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(filtered_SN_Cohort2, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(filtered_SN_Cohort2, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(filtered_SN_Cohort2, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(filtered_SN_Cohort2, group.by = "RNA_snn_res.0.8", label=T)
+
+FeaturePlot(filtered_SN_Cohort2, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(filtered_SN_Cohort2, features = c("AQP4", "GINS3", "GFAP"), raster = F)
+FeaturePlot(filtered_SN_Cohort2, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(filtered_SN_Cohort2, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(filtered_SN_Cohort2, features = c("OLIG1", "MOG", "MOBP"), raster = F)
+FeaturePlot(filtered_SN_Cohort2, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(filtered_SN_Cohort2, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(filtered_SN_Cohort2, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(filtered_SN_Cohort2, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+```
+
+
+```{r}
+Idents(filtered_SN_Cohort2) = filtered_SN_Cohort2$RNA_snn_res.0.2
+
+classes = c("oligo", "astrocyte", "neuron", "microglia", "microglia", "microglia", "neuron", "ependymal", "neuron", "oligo", 
+  "neuron", "microglia", "oligo", "opc", "neuron", "oligo", "endothelial")
+
+
+filtered_SN_Cohort2= assignCellClasses(filtered_SN_Cohort2, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+DimPlot(filtered_SN_Cohort2, group.by = "cell_class" ,label = T, raster = FALSE)
+
+```
+
+```{r}
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN", "GAPDH","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = filtered_SN_Cohort2, features = marker_genes, group.by = "cell_class")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+
+```{r}
+qsave(SN_Cohort2, "Cohort2/sobjs/SN_Cohort2_unfiltered.qs")
+qsave(filtered_SN_Cohort2, "Cohort2/sobjs/filtered_SN_Cohort2.qs")
+```
+
+
+#SN cleaning + integration
+
+```{r}
+table(filtered_SN_Cohort2$cell_class)
+```
+
+```{r}
+temp_sobj = subset(filtered_SN_Cohort2, subset = cell_class == "opc")
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(temp_sobj, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+temp_sobj = (temp_sobj
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_SN$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_SN$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(temp_sobj, group.by = "donor_id") 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.8", label=T) 
+
+FeaturePlot(temp_sobj, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(temp_sobj, features = c("AQP4", "GINS3", "GFAP"), raster = F)
+FeaturePlot(temp_sobj, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(temp_sobj, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG1", "MOG", "MOBP", "MBP"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(temp_sobj, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(temp_sobj, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(temp_sobj, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+FeaturePlot(temp_sobj, features = c("pct_mito", "pct_intronic", "nUmi", "TH"),raster=FALSE) 
+
+```
+
+```{r}
+marker_genes <- c("CD96", "CX3CR1", "P2RY12", "C1QB", "C1QA", "CASZ1", "FLT1", "TF", "MOBP", "MOG", "MBP", "OLIG2", "OLIG1", "ST18", "GFAP", "AQP4", "SEMA3E", "EPHA4", "PPP1R1B", "DRD2", "DRD1", "GAD2", "GAD1", "SYT1", "RBFOX3", "SLC17A6", "SLC17A7", "VCAN")
+
+Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "RNA_snn_res.0.2")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+
+
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "RNA_snn_res.0.2")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+```{r}
+table(temp_sobj$RNA_snn_res.0.2)
+```
+
+
+```{r}
+temp_sobj
+temp_sobj = subset(temp_sobj, subset = RNA_snn_res.0.2 != "3" &  RNA_snn_res.0.2 != "4" &  RNA_snn_res.0.2 != "5" &  RNA_snn_res.0.2 != "6")
+temp_sobj
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2")
+```
+```{r}
+temp_sobj$cell_class[temp_sobj$RNA_snn_res.0.3 == "7"] = "immune"
+```
+
+
+```{r}
+SN_astro
+SN_endo
+SN_ependymal
+SN_micro
+SN_oligo
+SN_opc= temp_sobj
+1SN_neuron
+#
+```
+
+```{r}
+sobj_list = list(SN_astro,
+SN_endo,
+SN_ependymal,
+SN_micro,
+SN_oligo,
+SN_opc,
+SN_neuron)
+
+counts_list <- lapply(sobj_list, function(sobj) GetAssayData(sobj, slot = "counts"))
+
+merged_counts <- do.call(cbind, counts_list)
+
+metadata_list <- lapply(sobj_list, function(sobj) sobj@meta.data)
+
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+
+stopifnot(all(rownames(merged_metadata) == colnames(merged_counts)))
+
+# Create Seurat object
+cleaned_SN_Cohort2 <- CreateSeuratObject(counts = merged_counts, meta.data = merged_metadata)
+cleaned_SN_Cohort2
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(cleaned_SN_Cohort2, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+cleaned_SN_Cohort2 = (cleaned_SN_Cohort2
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_SN$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_SN$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(cleaned_SN_Cohort2, group.by = "donor_id") 
+DimPlot(cleaned_SN_Cohort2, group.by = "library") 
+DimPlot(cleaned_SN_Cohort2, group.by = "Condition") 
+DimPlot(cleaned_SN_Cohort2, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(cleaned_SN_Cohort2, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(cleaned_SN_Cohort2, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(cleaned_SN_Cohort2, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(cleaned_SN_Cohort2, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(cleaned_SN_Cohort2, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(cleaned_SN_Cohort2, group.by = "RNA_snn_res.0.8", label=T)
+DimPlot(cleaned_SN_Cohort2, group.by = "cell_class", label=T)
+```
+
+
+```{r}
+cleaned_SN_Cohort2@meta.data
+cohort_metadata = read.csv("/broad/macosko/kimkathl/XDP_Cohorts_1_2_3_metadata.csv", header = T)
+cohort_metadata
+
+meta <- cleaned_SN_Cohort2@meta.data %>%
+  mutate(cell_id = rownames(.))
+
+cohort_metadata_joined <- meta %>%
+  left_join(cohort_metadata, by = c("donor_id" = "Donor"))
+
+rownames(cohort_metadata_joined) <- cohort_metadata_joined$cell_id
+cohort_metadata_joined$cell_id <- NULL  
+
+cleaned_SN_Cohort2@meta.data <- cohort_metadata_joined
+cleaned_SN_Cohort2@meta.data 
+
+cleaned_SN_Cohort2@meta.data$Sex = cleaned_SN_Cohort2@meta.data$Sex.x
+cleaned_SN_Cohort2@meta.data$Sex.x = NULL
+cleaned_SN_Cohort2@meta.data$Sex.y = NULL
+
+cleaned_SN_Cohort2@meta.data$Condition = cleaned_SN_Cohort2@meta.data$Condition.x
+cleaned_SN_Cohort2@meta.data$Condition.x = NULL
+cleaned_SN_Cohort2@meta.data$Condition.y = NULL
+cleaned_SN_Cohort2@meta.data
+```
+
+
+```{r}
+library(lme4)
+sobj = cleaned_SN_Cohort2
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age_of_Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age_of_Death", "Sex") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("XDP vs. Control: SN Cohort 2") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Cell Classes") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+```{r}
+qsave(cleaned_SN_Cohort2, "Cohort2/sobjs/cleaned_SN_Cohort2.qs")
+```
+
+
+#Cohort 3
+```{r}
+Cohort_3_SN_rxn1 = sn_cohort3_list[["sn_rxn1"]]
+Cohort_3_SN_rxn2 = sn_cohort3_list[["sn_rxn2"]]
+Cohort_3_SN_rxn1
+Cohort_3_SN_rxn2
+```
+
+```{r}
+Cohort_3_SN_rxn1 = subset(Cohort_3_SN_rxn1, subset = donor_id != "doublet" & donor_id != "unassigned")
+Cohort_3_SN_rxn1
+
+Cohort_3_SN_rxn2 = subset(Cohort_3_SN_rxn2, subset = donor_id != "doublet" & donor_id != "unassigned")
+Cohort_3_SN_rxn2
+
+
+#calcualte pct mito
+
+Cohort_3_SN_rxn1@meta.data$pct_intronic = Cohort_3_SN_rxn1$pct_intronic *100
+Cohort_3_SN_rxn2@meta.data$pct_intronic = Cohort_3_SN_rxn2$pct_intronic *100 
+
+mito_genes <- grep(pattern = "^MT-", x = rownames(Cohort_3_SN_rxn1), value = TRUE)
+length(mito_genes)
+mito_counts <- Matrix::colSums(GetAssayData(Cohort_3_SN_rxn1, assay = "RNA", slot = "counts")[mito_genes, ])
+total_counts <- Matrix::colSums(GetAssayData(Cohort_3_SN_rxn1, assay = "RNA", slot = "counts"))
+pct_mito <- (mito_counts / total_counts) * 100
+Cohort_3_SN_rxn1$pct_mito <- pct_mito
+
+
+mito_genes <- grep(pattern = "^MT-", x = rownames(Cohort_3_SN_rxn2), value = TRUE)
+length(mito_genes)
+mito_counts <- Matrix::colSums(GetAssayData(Cohort_3_SN_rxn2, assay = "RNA", slot = "counts")[mito_genes, ])
+total_counts <- Matrix::colSums(GetAssayData(Cohort_3_SN_rxn2, assay = "RNA", slot = "counts"))
+pct_mito <- (mito_counts / total_counts) * 100
+Cohort_3_SN_rxn2$pct_mito <- pct_mito
+
+```
+
+
+#merge SN libraries 
+```{r}
+sobj_list = list("SN_rxn1" = Cohort_3_SN_rxn1,
+                 "SN_rxn2" =Cohort_3_SN_rxn2)
+
+for(name in names(sobj_list)){
+     sobj =sobj_list[[name]]
+     sobj$library = name
+     sobj = RenameCells(sobj, new.name = paste(sobj$library, colnames(sobj), sep="__"))
+     sobj_list[[name]] = sobj
+     
+}
+
+sobj_list
+
+counts_list <- lapply(sobj_list, function(sobj) GetAssayData(sobj, slot = "counts"))
+
+
+merged_counts <- do.call(cbind, counts_list)
+
+
+metadata_list <- lapply(sobj_list, function(sobj) sobj@meta.data)
+metadata_list
+
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+rownames(merged_metadata) <- unlist(lapply(metadata_list, rownames))
+merged_metadata
+
+stopifnot(all(rownames(merged_metadata) == colnames(merged_counts)))
+
+# Create Seurat object
+SN_Cohort3 <- CreateSeuratObject(counts = merged_counts, meta.data = merged_metadata)
+SN_Cohort3
+SN_Cohort3@meta.data$Region = "SN"
+SN_Cohort3@meta.data
+```
+
+```{r}
+SN_Cohort3@meta.data$Sex <- ifelse(grepl("CF$", SN_Cohort3@meta.data$donor_id), "F", "M")
+table(SN_Cohort3@meta.data$Sex, SN_Cohort3$donor_id)
+SN_Cohort3@meta.data$Sex[SN_Cohort3@meta.data$donor_id == "PCMC-16-011"] = "F"
+SN_Cohort3@meta.data$Condition <- ifelse(grepl("CF$|CM$|CM2$", SN_Cohort3@meta.data$donor_id), "Control", "XDP")
+
+table(SN_Cohort3@meta.data$Condition, SN_Cohort3$donor_id)
+
+
+SN_Cohort3@meta.data
+```
+
+
+```{r}
+SN_Cohort3
+filtered_SN_Cohort3 <- subset(SN_Cohort3, subset = pct_mito < 10)
+filtered_SN_Cohort3
+filtered_SN_Cohort3 = subset(filtered_SN_Cohort3, subset = pct_intronic >= 0.25)
+filtered_SN_Cohort3
+filtered_SN_Cohort3 = subset(filtered_SN_Cohort3, subset = nUmi > 500)
+filtered_SN_Cohort3
+filtered_SN_Cohort3 = subset(filtered_SN_Cohort3, subset = prob_max > 0.9)
+filtered_SN_Cohort3
+```
+
+```{r}
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(filtered_SN_Cohort3, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+filtered_SN_Cohort3 = (filtered_SN_Cohort3
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_Cohort3$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_Cohort3$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(filtered_SN_Cohort3, group.by = "donor_id") 
+DimPlot(filtered_SN_Cohort3, group.by = "Sex")
+DimPlot(filtered_SN_Cohort3, group.by = "Condition")
+DimPlot(filtered_SN_Cohort3, group.by = "library") 
+DimPlot(filtered_SN_Cohort3, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(filtered_SN_Cohort3, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(filtered_SN_Cohort3, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(filtered_SN_Cohort3, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(filtered_SN_Cohort3, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(filtered_SN_Cohort3, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(filtered_SN_Cohort3, group.by = "RNA_snn_res.0.8", label=T)
+
+FeaturePlot(filtered_SN_Cohort3, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(filtered_SN_Cohort3, features = c("AQP4", "GINS3", "GFAP"), raster = F)
+FeaturePlot(filtered_SN_Cohort3, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(filtered_SN_Cohort3, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(filtered_SN_Cohort3, features = c("OLIG1", "MOG", "MOBP"), raster = F)
+FeaturePlot(filtered_SN_Cohort3, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(filtered_SN_Cohort3, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(filtered_SN_Cohort3, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(filtered_SN_Cohort3, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+```
+
+
+```{r}
+Idents(filtered_SN_Cohort3) = filtered_SN_Cohort3$RNA_snn_res.0.2
+
+classes = c("oligo", "astrocyte", "microglia", "oligo", "neuron", "oligo", "opc", "neuron", "neuron", "oligo", 
+  "oligo", "opc", "endothelial", "astrocyte", "immune", "microglia", "neuron", "neuron")
+
+filtered_SN_Cohort3= assignCellClasses(filtered_SN_Cohort3, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+DimPlot(filtered_SN_Cohort3, group.by = "cell_class" ,label = T, raster = FALSE)
+
+```
+
+```{r}
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN", "GAPDH","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = filtered_SN_Cohort3, features = marker_genes, group.by = "cell_class")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+
+```{r}
+qsave(SN_Cohort3, "Cohort3/sobjs/SN_Cohort3_unfiltered.qs")
+qsave(filtered_SN_Cohort3, "Cohort3/sobjs/filtered_SN_Cohort3.qs")
+```
+
+
+#SN cleaning + integration
+
+```{r}
+table(filtered_SN_Cohort3$cell_class)
+```
+
+```{r}
+temp_sobj = subset(filtered_SN_Cohort3, subset = cell_class == "opc")
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(temp_sobj, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+temp_sobj = (temp_sobj
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_SN$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_SN$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(temp_sobj, group.by = "donor_id") 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.8", label=T) 
+
+FeaturePlot(temp_sobj, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(temp_sobj, features = c("AQP4", "GINS3", "GFAP"), raster = F)
+FeaturePlot(temp_sobj, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(temp_sobj, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG1", "MOG", "MOBP", "MBP"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(temp_sobj, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(temp_sobj, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(temp_sobj, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+FeaturePlot(temp_sobj, features = c("pct_mito", "pct_intronic", "nUmi", "TH"),raster=FALSE) 
+
+```
+
+```{r}
+marker_genes <- c("CD96", "CX3CR1", "P2RY12", "C1QB", "C1QA", "CASZ1", "FLT1", "TF", "MOBP", "MOG", "MBP", "OLIG2", "OLIG1", "ST18", "GFAP", "AQP4", "SEMA3E", "EPHA4", "PPP1R1B", "DRD2", "DRD1", "GAD2", "GAD1", "SYT1", "RBFOX3", "SLC17A6", "SLC17A7", "VCAN")
+
+Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "RNA_snn_res.0.2")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+
+
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "RNA_snn_res.0.2")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+```{r}
+table(temp_sobj$RNA_snn_res.0.2)
+```
+
+
+```{r}
+temp_sobj
+temp_sobj = subset(temp_sobj, subset = RNA_snn_res.0.2!= "2" & RNA_snn_res.0.2!= "3"  & RNA_snn_res.0.2!= "4")
+temp_sobj
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2")
+```
+
+```{r}
+SN_astro
+SN_endo
+SN_immune 
+SN_micro
+SN_oligo
+SN_opc= temp_sobj
+SN_neuron
+#
+```
+
+```{r}
+sobj_list = list(SN_astro,
+SN_endo,
+SN_immune,
+SN_micro,
+SN_oligo,
+SN_opc,
+SN_neuron)
+```
+
+
+```{r}
+counts_list <- lapply(sobj_list, function(sobj) GetAssayData(sobj, slot = "counts"))
+
+merged_counts <- do.call(cbind, counts_list)
+
+metadata_list <- lapply(sobj_list, function(sobj) sobj@meta.data)
+
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+
+stopifnot(all(rownames(merged_metadata) == colnames(merged_counts)))
+
+# Create Seurat object
+cleaned_SN_Cohort3 <- CreateSeuratObject(counts = merged_counts, meta.data = merged_metadata)
+cleaned_SN_Cohort3
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(cleaned_SN_Cohort3, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+cleaned_SN_Cohort3 = (cleaned_SN_Cohort3
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_SN$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_SN$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(cleaned_SN_Cohort3, group.by = "donor_id") 
+DimPlot(cleaned_SN_Cohort3, group.by = "library") 
+DimPlot(cleaned_SN_Cohort3, group.by = "Condition") 
+DimPlot(cleaned_SN_Cohort3, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(cleaned_SN_Cohort3, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(cleaned_SN_Cohort3, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(cleaned_SN_Cohort3, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(cleaned_SN_Cohort3, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(cleaned_SN_Cohort3, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(cleaned_SN_Cohort3, group.by = "RNA_snn_res.0.8", label=T)
+DimPlot(cleaned_SN_Cohort3, group.by = "cell_class", label=T)
+```
+
+
+
+
+```{r}
+cleaned_SN_Cohort3@meta.data
+cohort_metadata = read.csv("/broad/macosko/kimkathl/XDP_Cohorts_1_2_3_metadata.csv", header = T)
+cohort_metadata
+
+meta <- cleaned_SN_Cohort3@meta.data %>%
+  mutate(cell_id = rownames(.))
+
+cohort_metadata_joined <- meta %>%
+  left_join(cohort_metadata, by = c("donor_id" = "Donor"))
+
+rownames(cohort_metadata_joined) <- cohort_metadata_joined$cell_id
+cohort_metadata_joined$cell_id <- NULL  
+
+cleaned_SN_Cohort3@meta.data <- cohort_metadata_joined
+cleaned_SN_Cohort3@meta.data 
+
+cleaned_SN_Cohort3@meta.data$Sex = cleaned_SN_Cohort3@meta.data$Sex.x
+cleaned_SN_Cohort3@meta.data$Sex.x = NULL
+cleaned_SN_Cohort3@meta.data$Sex.y = NULL
+
+cleaned_SN_Cohort3@meta.data$Condition = cleaned_SN_Cohort3@meta.data$Condition.x
+cleaned_SN_Cohort3@meta.data$Condition.x = NULL
+cleaned_SN_Cohort3@meta.data$Condition.y = NULL
+cleaned_SN_Cohort3@meta.data
+```
+
+
+```{r}
+library(lme4)
+sobj = cleaned_SN_Cohort3
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age_of_Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age_of_Death", "Sex") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("XDP vs. Control: SN Cohort 3") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Cell Classes") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+```{r}
+qsave(cleaned_SN_Cohort3, "Cohort3/sobjs/cleaned_SN_Cohort3.qs")
+```
+
+
+
+#Merging all cohorts
+
+```{r}
+cleaned_SN_Cohort1 = qread("Cohort1/sobjs/cleaned_SN_Cohort1.qs")
+cleaned_SN_Cohort2= qread("Cohort2/sobjs/cleaned_SN_Cohort2.qs")
+cleaned_SN_Cohort3 = qread("Cohort3/sobjs/cleaned_SN_Cohort3.qs")
+cleaned_SN_Cohort1@meta.data
+cleaned_SN_Cohort2@meta.data 
+cleaned_SN_Cohort3@meta.data
+```
+#edit 5/11 - pct_intronic filtering to 25 not 0.25
+```{r}
+cleaned_SN_Cohort1 = subset(cleaned_SN_Cohort1, subset = pct_intronic >= 25)
+cleaned_SN_Cohort2 = subset(cleaned_SN_Cohort2, subset = pct_intronic >= 25)
+cleaned_SN_Cohort3= subset(cleaned_SN_Cohort3, subset = pct_intronic >= 25)
+
+cleaned_SN_Cohort1@meta.data
+cleaned_SN_Cohort2@meta.data 
+cleaned_SN_Cohort3@meta.data
+#roughly 4000,3000,1000 cells removed
+```
+
+```{r}
+sobj_list = list(cleaned_SN_Cohort1, cleaned_SN_Cohort2, cleaned_SN_Cohort3)
+
+for (i in seq_along(sobj_list)) {
+  sobj_list[[i]] <- RenameCells(sobj_list[[i]], add.cell.id = paste0("cohort", i))
+}
+sobj_list
+```
+
+```{r}
+counts_list <- lapply(sobj_list, function(sobj) GetAssayData(sobj, slot = "counts"))
+merged_counts <- do.call(cbind, counts_list)
+
+metadata_list <- lapply(sobj_list, function(sobj) sobj@meta.data)
+
+# Get all unique column names from both metadata dataframes
+all_cols <- unique(unlist(lapply(metadata_list, colnames)))
+all_cols
+# Ensure each metadata dataframe has all columns, filling missing ones with NA
+metadata_list <- lapply(metadata_list, function(df) {
+  df[, setdiff(all_cols, colnames(df))] <- NA
+  df <- df[, all_cols]  # Reorder columns to match
+  return(df)
+})
+
+# Now merge metadata
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+
+stopifnot(all(rownames(merged_metadata) == colnames(merged_counts)))
+
+# Create Seurat object
+All_XDP_Cohorts_SN <- CreateSeuratObject(counts = merged_counts, meta.data = merged_metadata)
+All_XDP_Cohorts_SN
+```
+
+```{r}
+All_XDP_Cohorts_SN@meta.data$library_cohort = paste0(All_XDP_Cohorts_SN$library, "_cohort_", All_XDP_Cohorts_SN$Cohort)
+
+table(All_XDP_Cohorts_SN$library_cohort)
+```
+#21-036B missing from metadata
+```{r}
+All_XDP_Cohorts_SN$Brain_bank[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = "SCF"
+All_XDP_Cohorts_SN$Cohort[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = "2"
+All_XDP_Cohorts_SN$Year_collected[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = 2021
+All_XDP_Cohorts_SN$Age_of_Onset[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = 34
+All_XDP_Cohorts_SN$Age_of_Death[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = 59
+All_XDP_Cohorts_SN$Disease_duration[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = 25
+All_XDP_Cohorts_SN$RQS[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = 5.82
+All_XDP_Cohorts_SN$DV200[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = 0.74
+All_XDP_Cohorts_SN$MQS_numerical[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = 5
+All_XDP_Cohorts_SN$MQS[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = "A"
+All_XDP_Cohorts_SN$Immediate.Cause.of.Death[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = "Cerebal Centrusion"
+All_XDP_Cohorts_SN$Infection_related_death[All_XDP_Cohorts_SN$donor_id == "SCF_21_036B"] = "No"
+
+```
+
+
+```{r}
+library(sctransform)
+options(future.globals.maxSize = 400 * 1024^3)  
+All_XDP_Cohorts_SN = SCTransform(All_XDP_Cohorts_SN, vars.to.regress = "pct_mito", verbose = FALSE)
+DefaultAssay(All_XDP_Cohorts_SN) = "SCT"
+All_XDP_Cohorts_SN
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(All_XDP_Cohorts_SN, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+All_XDP_Cohorts_SN = (All_XDP_Cohorts_SN
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_caudate$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_caudate$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(All_XDP_Cohorts_SN, group.by = "donor_id", raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Condition", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Cohort", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class_merged", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.2", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.3", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.4", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.5", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.6", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.7", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.8", label=T, raster = F)
+```
+
+
+```{r}
+library(harmony)
+All_XDP_Cohorts_SN = (All_XDP_Cohorts_SN
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.05)
+    %>% FindClusters(res=0.1)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% FindClusters(res=0.6)
+    %>% FindClusters(res=0.7)
+    %>% FindClusters(res=0.8)    
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+All_XDP_Cohorts_SN
+All_XDP_Cohorts_SN@meta.data
+DimPlot(All_XDP_Cohorts_SN, group.by = "donor_id", raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.05", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.1", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.2", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.3", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.4", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.5", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.6", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.7", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.8", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "library", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Cohort", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "library_cohort", raster = F)
+
+DimPlot(All_XDP_Cohorts_SN, group.by = "Condition", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", label=T, raster = F)
+```
+
+
+```{r}
+FeaturePlot(All_XDP_Cohorts_SN, features = c("SYT1", "AQP4", "C1QA","FLT1"),raster=FALSE)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("OLIG1", "OLIG2", "MOG" ,"CD96"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("MBP", "MOBP", "WIF1", "TNC"),raster=FALSE)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("RBFOX3", "CX3CR1", "GFAP" ,"AQP4"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("GAD1", "GAD2", "SLC17A7" ,"SLC17A6"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("pct_mito", "pct_intronic", "nUmi", "TH"),raster=FALSE) 
+
+FeaturePlot(All_XDP_Cohorts_SN, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("FLT1", "DCN", "RGS5"), raster = F)
+
+FeaturePlot(All_XDP_Cohorts_SN, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+
+```
+
+```{r}
+Idents(All_XDP_Cohorts_SN) = All_XDP_Cohorts_SN$SCT_snn_res.0.1
+
+classes = c("oligo", "microglia", "astrocyte", "neuron", "opc", "neuron", "oligo", "endothelial", "neuron", "immune", 
+  "neuron", "neuron", "ependymal")
+
+
+All_XDP_Cohorts_SN= assignCellClasses(All_XDP_Cohorts_SN, classes=classes, cluster_col="SCT_snn_res.0.1", class_col = "final_cell_class_merged_harmony")
+
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class_merged_harmony" ,label = T, raster = FALSE)
+Idents(All_XDP_Cohorts_SN) = "final_cell_class_merged_harmony"
+```
+
+```{r}
+marker_genes <- c("CD96", "CX3CR1", "P2RY12", "C1QB", "C1QA", "CASZ1", "FLT1", "TF", "MOBP", "MOG", "MBP", "OLIG2", "OLIG1", "ST18", "GFAP", "AQP4", "SEMA3E", "EPHA4", "PPP1R1B", "DRD2", "DRD1", "GAD2", "GAD1", "SYT1", "RBFOX3", "SLC17A6", "SLC17A7", "VCAN")
+
+Dotplot = DotPlot(object = All_XDP_Cohorts_SN, features = marker_genes, group.by = "final_cell_class_merged_harmony")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+
+```
+
+
+```{r}
+qsave(All_XDP_Cohorts_SN, "All_XDP_Cohorts_SN_CaH_Put_sct.qs")
+```
+
+
+```{r}
+All_XDP_Cohorts_SN@meta.data
+```
+

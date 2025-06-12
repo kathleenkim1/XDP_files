@@ -1,0 +1,131 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+head(caudate_sobj)
+```
+
+```{r}
+total_cells_cah = as.data.frame(table(caudate_sobj$donor_id))
+
+total_cells_cah$Donor = total_cells_cah$Var1
+total_cells_cah$total_cells_in_village =total_cells_cah$Freq
+
+total_cells_cah$Var1 = NULL
+total_cells_cah$Freq = NULL
+
+total_cells_cah
+```
+
+
+```{r}
+total_neurons_num= as.data.frame(table(caudate_neurons_filtered$donor_id))
+total_neurons_num$Donor = total_neurons_num$Var1 
+total_neurons_num$total_cells_in_neuron = total_neurons_num$Freq 
+total_neurons_num$Var1= NULL
+total_neurons_num$Freq =NULL
+
+total_neurons_num
+```
+
+
+```{r}
+total_cah_neurons = as.data.frame(table(caudate_neurons_filtered$cell_class, caudate_neurons_filtered$donor_id))
+
+total_cah_neurons$cluster = total_cah_neurons$Var1
+total_cah_neurons$Donor = total_cah_neurons$Var2
+total_cah_neurons$cells_per_cluster = total_cah_neurons$Freq
+
+total_cah_neurons$Var1 = NULL
+total_cah_neurons$Var2 = NULL
+total_cah_neurons$Freq = NULL
+
+total_cah_neurons
+```
+```{r}
+total_cah_neurons = merge(total_cah_neurons, total_cells_cah, by = "Donor")
+total_cah_neurons = merge(total_cah_neurons, total_neurons_num, by = "Donor")
+total_cah_neurons
+```
+
+```{r}
+total_cah_neurons$percentage_in_neurons = (total_cah_neurons$cells_per_cluster/total_cah_neurons$total_cells_in_neuron) *100
+
+total_cah_neurons$percentage_in_village = (total_cah_neurons$cells_per_cluster/total_cah_neurons$total_cells_in_village) *100
+
+total_cah_neurons
+```
+
+
+
+```{r}
+cell_type_barplot = function(data, x, y, label, xlab, ylab,title){
+
+median_cells = median(y)
+
+ggplot(data, aes(x=x, y = y,fill=total_cah_neurons$Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = label), vjust = -0.3, color = "black", size = 3) + xlab(xlab) + ylab(ylab) + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_hline(yintercept = median_cells, linetype = "dashed", color = "black") + ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f",median_cells))) +geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+
+#added sprintf("%0.2f" for propotions
+}
+```
+
+
+```{r}
+total_cah_neurons$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", total_cah_neurons$Donor), "control", "XDP")
+total_cah_neurons
+
+total_cah_neurons<- total_cah_neurons %>% arrange(desc(condition))
+total_cah_neurons
+```
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+total_cah_neurons$Donor = factor(total_cah_neurons$Donor, levels = x_order)
+```
+
+
+```{r}
+cell_type_barplot(total_cah_neurons,total_cah_neurons$Donor, total_cah_neurons$cluster, caudate_cells_df$astrocyte_cells, "Donors from Caudate Village", "Number of Astrocytes Cells","Astrocytes")
+```
+
+
+```{r}
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$endothelial_cells, caudate_cells_df$endothelial_cells, "Donors from Caudate Village", "Number of Endothelial Cells", "Endothelial")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$ependymal_cells, caudate_cells_df$ependymal_cells, "Donors from Caudate Village", "Number of Ependymal Cells", "Ependymal")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$immune_cells, caudate_cells_df$immune_cells, "Donors from Caudate Village", "Number of Immune Cells", "Immune")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$interneuron_cells, caudate_cells_df$interneuron_cells, "Donors from Caudate Village", "Number of Interneuron Cells", "Interneuron")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$microglia_cells, caudate_cells_df$microglia_cells, "Donors from Caudate Village", "Number of Microglia Cells", "Microglia")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$oligo_cells, caudate_cells_df$oligo_cells, "Donors from Caudate Village", "Number of Oligo Cells", "Oligo")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$opc_cells, caudate_cells_df$opc_cells, "Donors from Caudate Village", "Number of OPC Cells", "OPC")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$SPN_cells, caudate_cells_df$SPN_cells, "Donors from Caudate Village", "Number of SPN Cells", "SPN")
+```
+
+
+
+
+```{r}
+caudate_sobj = qread("Cellbender_seurat/Bennet_caudate_clean.qs")
+putamen_sobj = qread("Cellbender_seurat/Bennet_putamen_clean.qs")
+
+caudate_sobj
+putamen_sobj
+```
+
+
+```{r}
+caudate_neurons = subset(caudate_sobj, subset = cell_class == "neuron")
+caudate_neurons
+head(caudate_neurons)
+```
+
+

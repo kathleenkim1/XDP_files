@@ -1,0 +1,533 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+merged_caudate = qread("Cellbender_seurat/redo2_merged_caudate.qs")
+merged_putamen = qread("Cellbender_seurat/redo2_merged_putamen.qs")
+
+merged_caudate
+merged_putamen
+```
+
+
+#filtering step: pct_mitochondrial <10, pct intronic >= 0.25 #should be & not either
+```{r}
+filtered_merged_caudate <- subset(merged_caudate, subset = pct_mito < 10 & pct_intronic >= 0.25)
+filtered_merged_putamen <- subset(merged_putamen, subset = pct_mito < 10 & pct_intronic >= 0.25)
+```
+
+
+
+```{r}
+cells_per_donor_per_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library))
+cells_per_donor_per_rxn
+
+
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+
+```
+
+```{r}
+filtered_merged_caudate@meta.data
+```
+
+
+
+
+```{r}
+table(filtered_merged_caudate@meta.data$donor_id, 
+```
+
+
+
+
+
+```{r}
+cells_per_donor_per_rxn = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id, filtered_merged_putamen@meta.data$library))
+cells_per_donor_per_rxn
+
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+
+```
+
+
+```{r}
+median_umis_per_donor <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+
+ggplot(median_umis_per_donor, aes(x=donor_id, y = mUMI, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median UMIs") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,12500) 
+```
+
+```{r}
+median_umis_per_donor <-filtered_merged_putamen@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+
+ggplot(median_umis_per_donor, aes(x=donor_id, y = mUMI, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median UMIs") + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ ylim(0,12500)
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+total_donors_cells_caudate = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_caudate$Var1 <- factor(total_donors_cells_caudate$Var1, levels = total_donors_cells_caudate$Var1[order(total_donors_cells_caudate$Freq, decreasing = TRUE)])
+
+
+ggplot(total_donors_cells_caudate, aes(x=total_donors_cells_caudate$Var1, y = total_donors_cells_caudate$Freq)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_caudate$Freq), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+```{r}
+total_donors_cells_putamen = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_putamen$Var1 <- factor(total_donors_cells_putamen$Var1, levels = total_donors_cells_putamen$Var1[order(total_donors_cells_putamen$Freq, decreasing = TRUE)])
+
+
+ggplot(total_donors_cells_putamen, aes(x=total_donors_cells_putamen$Var1, y = total_donors_cells_putamen$Freq)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_putamen$Freq), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Putamen Village") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+#calculate how many cells are being filtered out from EACH donor
+
+```{r}
+#prefilter
+prefilter_total_donors_cells_caudate = as.data.frame(table(merged_caudate@meta.data$donor_id)) #merged_caudate@meta.data$library))
+prefilter_total_donors_cells_caudate
+
+prefilter_total_donors_cells_putamen = as.data.frame(table(merged_putamen@meta.data$donor_id)) #merged_putamen@meta.data$library))
+prefilter_total_donors_cells_putamen
+```
+
+```{r}
+total_donors_cells_caudate$filtered_cells =  prefilter_total_donors_cells_caudate$Freq - total_donors_cells_caudate$Freq
+total_donors_cells_caudate
+
+total_donors_cells_putamen$filtered_cells =  prefilter_total_donors_cells_putamen$Freq - total_donors_cells_putamen$Freq
+total_donors_cells_putamen
+
+```
+```{r}
+
+ggplot(total_donors_cells_caudate, aes(x=total_donors_cells_caudate$Var1, y = total_donors_cells_caudate$filtered_cells)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_caudate$filtered_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Filterd Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,90)
+
+ggplot(total_donors_cells_putamen, aes(x=total_donors_cells_putamen$Var1, y = total_donors_cells_putamen$filtered_cells)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_putamen$filtered_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Putamen Village") + ylab("Number of Filtered Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,90)
+```
+```{r}
+total_donors_cells_caudate_per_rxn
+```
+
+
+```{r}
+total_donors_cells_caudate_per_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate$library))
+
+#install.packages("forcats")
+library(forcats)
+
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_per_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_Freq = sum(Freq))
+
+# Reorder Var1 based on total_Freq
+total_donors_cells_caudate_per_rxn <- total_donors_cells_caudate_per_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_Freq[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>%
+  mutate(Var1 = fct_reorder(Var1, -total_Freq))
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_caudate_per_rxn, aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_Freq, label = total_Freq), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Number of Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+total_donors_cells_putamen_per_rxn = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id, filtered_merged_putamen$library))
+total_donors_cells_putamen_per_rxn
+```
+
+
+```{r}
+#install.packages("forcats")
+#library(forcats)
+
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_per_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_Freq = sum(Freq))
+
+# Reorder Var1 based on total_Freq
+total_donors_cells_putamen_per_rxn <- total_donors_cells_putamen_per_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_Freq[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>%
+  mutate(Var1 = fct_reorder(Var1, -total_Freq))
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_per_rxn, aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_Freq, label = total_Freq), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Number of Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r}
+total_donors_cells_caudate_by_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library))
+total_donors_cells_caudate_by_rxn
+
+total_donors_cells_putamen_by_rxn = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id, filtered_merged_putamen@meta.data$library))
+total_donors_cells_putamen_by_rxn
+```
+
+
+```{r}
+#prefilter
+prefilter_caudate_by_rxn = as.data.frame(table(merged_caudate@meta.data$donor_id, merged_caudate@meta.data$library))
+prefilter_caudate_by_rxn
+
+prefilter_putamen_by_rxn = as.data.frame(table(merged_putamen@meta.data$donor_id, merged_putamen@meta.data$library))
+prefilter_putamen_by_rxn
+```
+
+
+
+
+```{r}
+total_donors_cells_caudate_by_rxn$filtered_cells = prefilter_caudate_by_rxn$Freq - total_donors_cells_caudate_by_rxn$Freq
+total_donors_cells_caudate_by_rxn
+
+total_donors_cells_putamen_by_rxn$filtered_cells =  prefilter_putamen_by_rxn$Freq - total_donors_cells_putamen_by_rxn$Freq
+total_donors_cells_putamen_by_rxn
+
+```
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+summary_data
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_caudate_by_rxn <- total_donors_cells_caudate_by_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_caudate_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+total_donors_cells_putamen
+```
+
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+
+# Reorder Var1 based on total_filtered_cells
+#total_donors_cells_putamen_by_rxn <- total_donors_cells_putamen_by_rxn %>%
+ # mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+#summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+#summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+as.data.frame(table(filtered_merged_caudate$Condition))
+cells_per_condition_per_regions = as.data.frame(table(filtered_merged_caudate$Condition))
+as.data.frame(table(filtered_merged_putamen$Condition))
+Put = as.data.frame(table(filtered_merged_putamen$Condition))
+```
+
+```{r}
+cells_per_condition_per_regions$Conditions = cells_per_condition_per_regions$Var1
+cells_per_condition_per_regions$Caudate = cells_per_condition_per_regions$Freq
+cells_per_condition_per_regions$Var1 = NULL
+cells_per_condition_per_regions$Freq = NULL
+cells_per_condition_per_regions$Brain_Region = "Caudate"
+cells_per_condition_per_regions
+
+```
+```{r}
+Put$Conditions = Put$Var1
+Put$Caudate = Put$Freq
+Put$Var1 = NULL
+Put$Freq = NULL
+Put$Brain_Region = "Putamen"
+Put
+```
+
+
+```{r}
+cells_per_condition_per_regions = rbind(cells_per_condition_per_regions, Put)
+cells_per_condition_per_regions$Num_Cells = cells_per_condition_per_regions$Caudate
+cells_per_condition_per_regions$Caudate = NULL
+cells_per_condition_per_regions
+```
+
+
+
+```{r}
+ggplot(cells_per_condition_per_regions, aes(x = Brain_Region, y = Num_Cells, fill = Conditions)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Num_Cells), vjust = -0.3, color = "black", size = 4, position = position_stack(vjust = 0.5)) + xlab("Brain Region") + ylab("Number of Cells") 
+```
+
+
+
+
+
+
+
+
+```{r}
+median_genes_per_donor_caudate <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor_caudate
+
+median_genes_per_donor_putamen <-filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor_putamen
+```
+
+
+
+
+```{r}
+median_umis_per_donor_caudate <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor_caudate
+
+median_umis_per_donor_putamen <-filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor_putamen
+```
+
+```{r}
+donor_data= read.csv("Cellbender_seurat/Donor_metadata.csv")
+donor_data
+```
+
+```{r}
+total_donors_cells_caudate
+```
+
+
+```{r}
+total_donors_cells_caudate = merge(donor_data, total_donors_cells_caudate, by.x= "Donor.ID", by.y = "Var1")
+total_donors_cells_caudate
+
+total_donors_cells_putamen = merge(donor_data, total_donors_cells_putamen, by.x= "Donor.ID", by.y = "Var1")
+total_donors_cells_putamen
+```
+
+
+```{r}
+total_donors_cells_caudate$median_genes_per_cell = median_genes_per_donor_caudate$median_genes
+total_donors_cells_putamen$median_genes_per_cell = median_genes_per_donor_putamen$median_genes
+
+total_donors_cells_caudate$mUMIs = median_umis_per_donor_caudate$mUMI
+total_donors_cells_putamen$mUMIs = median_umis_per_donor_putamen$mUMI
+
+total_donors_cells_caudate
+total_donors_cells_putamen
+```
+
+
+```{r}
+cor.test(total_donors_cells_caudate$Freq, total_donors_cells_caudate$MQS_numerical, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$Freq, total_donors_cells_putamen$MQS_numerical, method = "spearman", exact =FALSE)
+
+cor.test(total_donors_cells_caudate$mUMIs, total_donors_cells_caudate$MQS_numerical, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$mUMIs, total_donors_cells_putamen$MQS_numerical, method = "spearman", exact =FALSE)
+
+cor.test(total_donors_cells_caudate$median_genes_per_cell, total_donors_cells_caudate$MQS_numerical, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$median_genes_per_cell, total_donors_cells_putamen$MQS_numerical, method = "spearman", exact =FALSE)
+```
+
+
+```{r}
+cor.test(total_donors_cells_caudate$RQS, total_donors_cells_caudate$mUMIs, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$RQS, total_donors_cells_putamen$mUMIs, method = "spearman", exact =FALSE)
+
+cor.test(total_donors_cells_caudate$DV200, total_donors_cells_caudate$mUMIs, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$DV200, total_donors_cells_putamen$mUMIs, method = "spearman", exact =FALSE)
+```
+
+
+```{r}
+cor.test(total_donors_cells_caudate$Freq, total_donors_cells_putamen$Freq, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_caudate$median_genes_per_cell, total_donors_cells_putamen$median_genes_per_cell, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_caudate$mUMIs, total_donors_cells_putamen$mUMIs, method = "spearman", exact =FALSE)
+
+```
+
+
+
+```{r}
+cortest <- cor.test(total_donors_cells_caudate$Freq, total_donors_cells_putamen$Freq, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_caudate, aes(x =total_donors_cells_caudate$Freq, y = total_donors_cells_putamen$Freq,  color = total_donors_cells_caudate$Donor.ID)) + 
+  geom_point() +  labs(x="Nuclei from CaH" , y= "Nuclei from Put") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate vs Putamen: number of nuclei", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+```
+
+
+```{r}
+cortest <- cor.test(total_donors_cells_caudate$RQS, total_donors_cells_caudate$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_caudate, aes(x =total_donors_cells_caudate$RQS, y = total_donors_cells_caudate$mUMIs,  color = total_donors_cells_caudate$Donor.ID)) + 
+  geom_point() +  labs(x="CaH RQS" , y= "CaH mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate: RQS vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+
+
+
+cortest <- cor.test(total_donors_cells_caudate$DV200, total_donors_cells_caudate$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_caudate, aes(x =total_donors_cells_caudate$DV200, y = total_donors_cells_caudate$mUMIs,  color = total_donors_cells_caudate$Donor.ID)) + 
+  geom_point() +  labs(x="CaH DV200" , y= "CaH mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate: DV200 vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+
+
+
+
+cortest <- cor.test(total_donors_cells_caudate$MQS_numerical, total_donors_cells_caudate$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_caudate, aes(x =total_donors_cells_caudate$MQS_numerical, y = total_donors_cells_caudate$mUMIs,  color = total_donors_cells_caudate$Donor.ID)) + 
+  geom_point() +  labs(x="CaH Purkinje MQS" , y= "CaH mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate: Purkinje MQS vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+```
+
+
+
+```{r}
+cortest <- cor.test(total_donors_cells_putamen$RQS, total_donors_cells_putamen$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_putamen, aes(x =total_donors_cells_putamen$RQS, y = total_donors_cells_putamen$mUMIs,  color = total_donors_cells_putamen$Donor.ID)) + 
+  geom_point() +  labs(x="Put RQS" , y= "Put mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Putamen: RQS vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+
+
+
+cortest <- cor.test(total_donors_cells_putamen$DV200, total_donors_cells_putamen$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_putamen, aes(x =total_donors_cells_putamen$DV200, y = total_donors_cells_putamen$mUMIs,  color = total_donors_cells_putamen$Donor.ID)) + 
+  geom_point() +  labs(x="Put DV200" , y= "Put mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Putamen: DV200 vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+
+
+
+
+cortest <- cor.test(total_donors_cells_putamen$MQS_numerical, total_donors_cells_putamen$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_putamen, aes(x =total_donors_cells_putamen$MQS_numerical, y = total_donors_cells_putamen$mUMIs,  color = total_donors_cells_putamen$Donor.ID)) + 
+  geom_point() +  labs(x="Put Purkinje MQS" , y= "Put mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Putamen: Purkinje MQS vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+```
+```{r}
+total_donors_cells_putamen
+```
+
+
+
+
+
+
+

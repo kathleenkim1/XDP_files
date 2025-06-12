@@ -1,0 +1,822 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+normalizeScalePcaClusterUmap = function(
+    sobj,
+    subset_col="donor_id",
+    n_hvgs_orig=2500,
+    n_dims_use=20,
+    resolutions=c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)){
+    # this function takes a Seurat object, normalizes the data, scales the data, runs PCA, finds neighbors, clusters, and runs UMAP
+    # it then returns the Seurat object
+    hvgs = getSeuratVarFeatureIntersectByCol(sobj, subset_col=subset_col, original_nfeatures=n_hvgs_orig)
+    sobj = (sobj
+        %>% NormalizeData() # log normalizes raw counts
+        %>% ScaleData(features=hvgs, split.by=subset_col) # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+        %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+        %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+    )
+    for(res in resolutions){
+        sobj = sobj %>% FindClusters(resolution = res) # finds clusters at a variety of resolutions
+    }
+    sobj = sobj %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+    return(sobj)
+}
+
+getSeuratVarFeatureIntersectByCol = function(
+   seurat_obj,
+   subset_col,
+   original_nfeatures,
+   n_subsets_to_cover=NULL
+){
+  
+   hvgs = list()
+
+
+   unique_ids = unique(seurat_obj@meta.data[[subset_col]])
+
+
+   if (is.null(n_subsets_to_cover)){
+       n_subsets_to_cover = floor(length(unique_ids)/2)
+   }
+
+
+   i=1
+   for (id in unique_ids) {
+       print(paste("Subset", id, "--", i, "of", length(unique_ids)))
+       i = i + 1
+      
+       seurat_subset = seurat_obj[, seurat_obj[[subset_col]] == id]
+      
+       if (ncol(seurat_subset) < 2){next}
+      
+       suppressWarnings({
+           seurat_subset = FindVariableFeatures(
+               seurat_subset, nfeatures=original_nfeatures, verbose = FALSE)
+       })
+      
+       hvgs[[id]] = getSeuratVarFeatures(seurat_subset)
+      
+   }
+
+
+   common_hvgs = getCommonStrings(hvgs, n_subsets_to_cover)
+   print(paste("Number of HVGs in common across", n_subsets_to_cover, "--", length(common_hvgs)))
+
+
+   return(common_hvgs)
+}
+
+getSeuratVarFeatures = function(sobj){
+    # the magical incantation that returns the slot of the attribute of the slot that actually holds the list of variable feature -_-
+    return(sobj@assays$RNA@var.features)
+}
+
+getCommonStrings <- function(list_of_lists, n) {
+  # Create an empty list to store string occurrences
+  string_occurrences <- list()
+
+  # Iterate over each sublist
+  for (sublist in list_of_lists) {
+    # For each string in the sublist, increment its count in string_occurrences
+    for (string in unique(sublist)) {
+      if (!is.null(string_occurrences[[string]])) {
+        string_occurrences[[string]] <- string_occurrences[[string]] + 1
+      } else {
+        string_occurrences[[string]] <- 1
+      }
+    }
+  }
+
+  # Filter the strings that occur at least n times
+  common_strings <- names(string_occurrences)[string_occurrences >= n]
+
+  return(common_strings)
+}
+
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+```
+
+```{r}
+library(qs)
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+
+```{r}
+BICAN_3P_V8_CaH = qread("BICAN_3P_V8_CaH.qs")
+BICAN_5P_V8_CaH = qread("BICAN_5P_V8_CaH.qs")
+
+BICAN_3P_V8_CaH
+BICAN_5P_V8_CaH
+```
+
+```{r}
+DimPlot(BICAN_3P_V8_CaH, label = TRUE)
+```
+
+#Findallmarkers on BICAN: SPN vs non-SPNs 
+```{r}
+BICAN_3P_V8_CaH_neurons = subset(BICAN_3P_V8_CaH, subset = predClass == "SPN" | predClass == "interneuron")
+BICAN_3P_V8_CaH_neurons
+```
+```{r}
+DimPlot(BICAN_3P_V8_CaH_neurons, label =TRUE)
+BICAN_3P_V8_CaH_neurons = normalizeScalePcaClusterUmap(BICAN_3P_V8_CaH_neurons, subset_col = "DONOR", resolutions = c(0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1))
+
+Idents(BICAN_3P_V8_CaH_neurons) = BICAN_3P_V8_CaH_neurons@meta.data$predClass
+DimPlot(BICAN_3P_V8_CaH_neurons, label =TRUE)
+```
+
+```{r}
+table(BICAN_3P_V8_CaH_neurons$predClass)
+```
+
+```{r}
+head(BICAN_3P_V8_CaH_neurons)
+```
+
+```{r}
+Idents(BICAN_3P_V8_CaH_neurons) = BICAN_3P_V8_CaH_neurons@meta.data$predClass
+DimPlot(BICAN_3P_V8_CaH_neurons, group.by = "RNA_snn_res.0.2")
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("CASZ1", "CHAT"))
+```
+```{r}
+DimPlot(BICAN_3P_V8_CaH_neurons, group.by = "RNA_snn_res.0.01")
+DimPlot(BICAN_3P_V8_CaH_neurons, group.by = "RNA_snn_res.0.05")
+DimPlot(BICAN_3P_V8_CaH_neurons, group.by = "RNA_snn_res.0.1")
+DimPlot(BICAN_3P_V8_CaH_neurons, group.by = "RNA_snn_res.0.15")
+DimPlot(BICAN_3P_V8_CaH_neurons, group.by = "RNA_snn_res.0.2")
+
+```
+```{r}
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("DRD1", "DRD2"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features =c("CASZ1","CHAT"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features =c("C1QA"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("PPP1R1B", "pct_mt"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("GAD1", "GAD2"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("VIP", "CALB2"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("SLC17A7", "SLC17A6"))
+```
+
+
+```{r}
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("DRD1", "DRD2"))
+#Patch
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("SEMA5B", "MFGE8")) 
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("KREMEN1", "PDE1C")) 
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("LYPD1")) 
+#matrix
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("ID4", "SGK1")) 
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("EPHA4", "SV2B")) 
+ #Coexpression is exopatch
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("ID4", "OPRM1"))
+#first 2 is D1 patch,
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("NECAB1", "COL11A1")) 
+#next is D2 patch
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("ASIC4")) 
+
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("TSHZ1", "TAC1", "NNAT")) #patch
+ 
+```
+```{r}
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("pct_mt"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons, features = c("PPP1R1B", "CASZ1")) 
+```
+
+```{r}
+subcluster = c("D1_SPN_matrix","D2_SPN_matrix", "D1_SPN_patch", "D2_SPN_patch", "interneuron_1", "eSPN", "SPN-junk", "interneuron_2", "interneuron_3","D2_SPN_patch","cholinergic", "D1_SPN_matrix")
+
+BICAN_3P_V8_CaH_neurons= assignCellClasses(BICAN_3P_V8_CaH_neurons, classes=subcluster, cluster_col="RNA_snn_res.0.2", class_col = "subcluster")
+
+Idents(BICAN_3P_V8_CaH_neurons) <- "subcluster"
+DimPlot(BICAN_3P_V8_CaH_neurons, label = TRUE)
+```
+
+
+#Get rid of the SPN junk cluster
+```{r}
+BICAN_3P_V8_CaH_neurons
+DimPlot(BICAN_3P_V8_CaH_neurons, label = TRUE)
+BICAN_3P_V8_CaH_neurons_filtered = subset(BICAN_3P_V8_CaH_neurons, subset = subcluster != "SPN-junk")
+BICAN_3P_V8_CaH_neurons_filtered
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+```
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered@meta.data$sub_class = BICAN_3P_V8_CaH_neurons_filtered@meta.data$subcluster
+BICAN_3P_V8_CaH_neurons_filtered@meta.data$SPN_class = BICAN_3P_V8_CaH_neurons_filtered@meta.data$subcluster
+BICAN_3P_V8_CaH_neurons_filtered@meta.data
+unique(BICAN_3P_V8_CaH_neurons_filtered@meta.data$sub_class)
+```
+
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered$sub_class[BICAN_3P_V8_CaH_neurons_filtered$sub_class == "interneuron_1"] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered$sub_class[BICAN_3P_V8_CaH_neurons_filtered$sub_class == "eSPN"] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered$sub_class[BICAN_3P_V8_CaH_neurons_filtered$sub_class == "interneuron_2"] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered$sub_class[BICAN_3P_V8_CaH_neurons_filtered$sub_class == "interneuron_3"] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered$sub_class[BICAN_3P_V8_CaH_neurons_filtered$sub_class == "cholinergic"] = "non-SPN"
+```
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "D1_SPN_matrix"] = "SPN"
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "D2_SPN_matrix"] = "SPN"
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "D1_SPN_patch"] = "SPN"
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "D2_SPN_patch"] = "SPN"
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "interneuron_1"] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "eSPN"] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "interneuron_2"] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "interneuron_3"] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered$SPN_class[BICAN_3P_V8_CaH_neurons_filtered$SPN_class == "cholinergic"] = "non-SPN"
+```
+
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered@meta.data$D1_D2 = BICAN_3P_V8_CaH_neurons_filtered@meta.data$sub_class
+BICAN_3P_V8_CaH_neurons_filtered$D1_D2[BICAN_3P_V8_CaH_neurons_filtered$D1_D2 == "D1_SPN_matrix"] = "D1_SPN"
+BICAN_3P_V8_CaH_neurons_filtered$D1_D2[BICAN_3P_V8_CaH_neurons_filtered$D1_D2 == "D2_SPN_matrix"] = "D2_SPN"
+BICAN_3P_V8_CaH_neurons_filtered$D1_D2[BICAN_3P_V8_CaH_neurons_filtered$D1_D2 == "D1_SPN_patch"] = "D1_SPN"
+BICAN_3P_V8_CaH_neurons_filtered$D1_D2[BICAN_3P_V8_CaH_neurons_filtered$D1_D2 == "D2_SPN_patch"] = "D2_SPN"
+
+BICAN_3P_V8_CaH_neurons_filtered@meta.data$patch_matrix = BICAN_3P_V8_CaH_neurons_filtered@meta.data$sub_class
+BICAN_3P_V8_CaH_neurons_filtered$patch_matrix[BICAN_3P_V8_CaH_neurons_filtered$patch_matrix == "D1_SPN_matrix"] = "matrix"
+BICAN_3P_V8_CaH_neurons_filtered$patch_matrix[BICAN_3P_V8_CaH_neurons_filtered$patch_matrix == "D2_SPN_matrix"] = "matrix"
+BICAN_3P_V8_CaH_neurons_filtered$patch_matrix[BICAN_3P_V8_CaH_neurons_filtered$patch_matrix == "D1_SPN_patch"] = "patch"
+BICAN_3P_V8_CaH_neurons_filtered$patch_matrix[BICAN_3P_V8_CaH_neurons_filtered$patch_matrix == "D2_SPN_patch"] = "patch"
+
+BICAN_3P_V8_CaH_neurons_filtered@meta.data
+```
+
+
+```{r}
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "subcluster"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "sub_class"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "SPN_class"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "D1_D2"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "patch_matrix"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+```
+
+
+```{r}
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "SPN_class"
+BICAN_SPN_vs_non_markers = FindAllMarkers(BICAN_3P_V8_CaH_neurons_filtered, only.pos = TRUE)#,  min.pct = 0.2, logfc.threshold = 1.25)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "sub_class"
+BICAN_SPN_classes_vs_non_markers= FindAllMarkers(BICAN_3P_V8_CaH_neurons_filtered, only.pos = TRUE)
+
+BICAN_SPN_vs_non_markers
+BICAN_SPN_classes_vs_non_markers
+```
+```{r}
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "D1_D2"
+BICAN_D1_D2_vs_non_markers= FindAllMarkers(BICAN_3P_V8_CaH_neurons_filtered, only.pos = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "patch_matrix"
+BICAN_patch_matrix_vs_non_markers= FindAllMarkers(BICAN_3P_V8_CaH_neurons_filtered, only.pos = TRUE)
+
+qsave(BICAN_D1_D2_vs_non_markers, "SPN_Scores/BICAN_D1_D2_vs_non_markers")
+qsave(BICAN_patch_matrix_vs_non_markers, "SPN_Scores/BICAN_patch_matrix_vs_non_markers")
+```
+
+
+```{r}
+BICAN_D1_D2_vs_non_markers =  qread("SPN_Scores/BICAN_D1_D2_vs_non_markers")
+BICAN_patch_matrix_vs_non_markers =  qread("SPN_Scores/BICAN_patch_matrix_vs_non_markers")
+```
+
+```{r}
+qsave(BICAN_SPN_vs_non_markers, "SPN_Scores/BICAN_SPN_vs_non_markers.qs")
+qsave(BICAN_SPN_classes_vs_non_markers, "SPN_Scores/BICAN_SPN_classes_vs_non_markers.qs")
+qsave(BICAN_3P_V8_CaH_neurons_filtered, "SPN_Scores/BICAN_3P_V8_CaH_neurons_filtered.qs")
+```
+
+```{r}
+BICAN_SPN_vs_non_markers= qread("SPN_Scores/BICAN_SPN_vs_non_markers.qs")
+BICAN_SPN_classes_vs_non_markers =  qread("SPN_Scores/BICAN_SPN_classes_vs_non_markers.qs")
+BICAN_3P_V8_CaH_neurons_filtered =  qread("SPN_Scores/BICAN_3P_V8_CaH_neurons_filtered.qs")
+```
+
+```{r}
+BICAN_SPN_vs_non_markers #SPN vs nonSPN
+BICAN_SPN_classes_vs_non_markers #D1 matrix, D1 patch, D2 matrix, D2 patch vs nonSPN
+BICAN_D1_D2_vs_non_markers #D1, D2 vs non SPNS
+BICAN_patch_matrix_vs_non_markers# patch, matrix vs nonSPNS
+```
+
+
+```{r}
+BICAN_SPN_vs_non_markers_filtered = subset(BICAN_SPN_vs_non_markers, subset = pct.1 >0.7 & pct.2 <0.2 & cluster != "non-SPN")
+BICAN_SPN_classes_vs_non_markers_filtered= subset(BICAN_SPN_classes_vs_non_markers, subset = pct.1 >0.7 & pct.2 <0.2 & cluster != "non-SPN")
+BICAN_D1_D2_vs_non_markers_filtered = subset(BICAN_D1_D2_vs_non_markers, subset = pct.1 >0.7 & pct.2 <0.2 & cluster != "non-SPN")
+BICAN_patch_matrix_vs_non_markers_filtered= subset(BICAN_patch_matrix_vs_non_markers, subset = pct.1 >0.7 & pct.2 <0.2 & cluster != "non-SPN")
+
+BICAN_SPN_vs_non_markers_filtered
+BICAN_SPN_classes_vs_non_markers_filtered
+BICAN_D1_D2_vs_non_markers_filtered
+BICAN_patch_matrix_vs_non_markers_filtered
+```
+
+
+```{r}
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "sub_class"
+D1_matrix_markers <- FindMarkers(object = BICAN_3P_V8_CaH_neurons_filtered, ident.1 = "D1_SPN_matrix", ident.2 = "non-SPN")
+D1_patch_markers <- FindMarkers(object = BICAN_3P_V8_CaH_neurons_filtered, ident.1 = "D1_SPN_patch", ident.2 = "non-SPN")
+D2_matrix_markers <- FindMarkers(object = BICAN_3P_V8_CaH_neurons_filtered, ident.1 = "D2_SPN_matrix", ident.2 = "non-SPN")
+D2_patch_markers <- FindMarkers(object = BICAN_3P_V8_CaH_neurons_filtered, ident.1 = "D2_SPN_patch", ident.2 = "non-SPN")
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "D1_D2"
+D1_markers <- FindMarkers(object = BICAN_3P_V8_CaH_neurons_filtered, ident.1 = "D1_SPN", ident.2 = "non-SPN")
+D2_markers <- FindMarkers(object = BICAN_3P_V8_CaH_neurons_filtered, ident.1 = "D2_SPN", ident.2 = "non-SPN")
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "patch_matrix"
+patch_markers <- FindMarkers(object = BICAN_3P_V8_CaH_neurons_filtered, ident.1 = "patch", ident.2 = "non-SPN")
+matrix_markers <- FindMarkers(object = BICAN_3P_V8_CaH_neurons_filtered, ident.1 = "matrix", ident.2 = "non-SPN")
+
+
+D1_matrix_markers
+D1_patch_markers
+D2_matrix_markers
+D2_patch_markers
+
+D1_markers
+D2_markers
+patch_markers
+matrix_markers
+```
+
+
+```{r}
+#moved to SPN_Scores
+qsave(D1_matrix_markers, "D1_matrix_markers.qs")
+qsave(D1_patch_markers, "D1_patch_markers.qs")
+qsave(D2_matrix_markers, "D2_matrix_markers.qs")
+qsave(D2_patch_markers, "D2_patch_markers.qs") 
+
+qsave(D1_markers, "D1_markers.qs")
+qsave(D2_markers, "D2_markers.qs")
+qsave(patch_markers, "patch_markers.qs")
+qsave(matrix_markers, "matrix_markers.qs")
+```
+
+```{r}
+D1_matrix_markers= qread("SPN_Scores/D1_matrix_markers.qs")
+D1_patch_markers= qread("SPN_Scores/D1_patch_markers.qs")
+D2_matrix_markers= qread("SPN_Scores/D2_matrix_markers.qs")
+D2_patch_markers= qread("SPN_Scores/D2_patch_markers.qs") 
+
+D1_markers= qread("SPN_Scores/D1_markers.qs")
+D2_markers =qread("SPN_Scores/D2_markers.qs")
+patch_markers= qread("SPN_Scores/patch_markers.qs")
+matrix_markers= qread("SPN_Scores/matrix_markers.qs")
+```
+
+```{r}
+D1_matrix_markers_filtered = subset(D1_matrix_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+D1_patch_markers_filtered= subset(D1_patch_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+D2_matrix_markers_filtered= subset(D2_matrix_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+D2_patch_markers_filtered= subset(D2_patch_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+
+D1_markers_filtered= subset(D1_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+D2_markers_filtered= subset(D2_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+patch_markers_filtered= subset(patch_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+matrix_markers_filtered= subset(matrix_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+
+D1_matrix_markers_filtered
+D1_patch_markers_filtered
+D2_matrix_markers_filtered
+D2_patch_markers_filtered
+
+D1_markers_filtered
+D2_markers_filtered
+patch_markers_filtered
+matrix_markers_filtered
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+BICAN_3P_V8_CaH_markers = FindAllMarkers(BICAN_3P_V8_CaH_neurons)#, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+BICAN_3P_V8_CaH_markers
+qsave(BICAN_3P_V8_CaH_markers, "BICAN_3P_V8_CaH_markers.qs")
+BICAN_3P_V8_CaH_markers = qread("BICAN_3P_V8_CaH_markers.qs")
+BICAN_3P_V8_CaH_markers
+```
+
+```{r}
+CaH_SPN_markers_from_SPN = subset(BICAN_3P_V8_CaH_markers, subset= cluster =="SPN")
+CaH_SPN_markers_from_SPN1 =subset(CaH_SPN_markers_from_SPN, subset = pct.2 < 0.2)
+CaH_SPN_markers_from_SPN2 =subset(CaH_SPN_markers_from_SPN1, subset = pct.1 > 0.7)
+
+CaH_SPN_markers_from_SPN
+CaH_SPN_markers_from_SPN1
+CaH_SPN_markers_from_SPN2
+```
+
+
+```{r}
+CaH_SPN_markers_from_non = subset(BICAN_3P_V8_CaH_markers, subset= cluster =="non-SPN")
+CaH_SPN_markers_from_non1 =subset(CaH_SPN_markers_from_non, subset = pct.2 > 0.6)
+CaH_SPN_markers_from_non2 =subset(CaH_SPN_markers_from_non1, subset = pct.1 < 0.2)
+
+CaH_SPN_markers_from_non
+CaH_SPN_markers_from_non1
+CaH_SPN_markers_from_non2
+```
+
+
+
+```{r}
+BICAN_3P_V8_CaH_markers[BICAN_3P_V8_CaH_markers$gene == "PPP1R1B",]
+```
+
+
+
+
+
+
+#SPN SCORING
+
+```{r}
+caudate_neurons = qread("Current_subclusters/caudate_neuron.qs")
+putamen_neurons= qread("Current_subclusters/putamen_neuron.qs")
+
+caudate_neurons
+putamen_neurons
+```
+```{r}
+caudate_neurons@meta.data$sub_class = caudate_neurons@meta.data$cell_class
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_2"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_matrix_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "SPN"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_2"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_3"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_2"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_patch"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_1"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "eSPN"] = "eSPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_5"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "cholinergic"] = "cholinergic"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_4"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+caudate_neurons@meta.data
+```
+
+#putamen
+```{r}
+putamen_neurons@meta.data$sub_class = putamen_neurons@meta.data$cell_class
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_matrix"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_2"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_4"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_matrix_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "glutamatergic"] = "glutamatergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_5"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_patch"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "eSPN"] = "eSPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_3"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_1"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_2"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "cholinergic"] = "cholinergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_7"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+putamen_neurons@meta.data
+```
+
+```{r}
+SPN_cah= subset(caudate_neurons, subset = sub_class == "SPN")
+non_SPN_cah = subset(caudate_neurons, subset = sub_class != "SPN")
+
+SPN_put= subset(putamen_neurons, subset = sub_class == "SPN")
+non_SPN_put= subset(putamen_neurons, subset = sub_class != "SPN")
+
+
+SPN_cah
+non_SPN_cah
+
+SPN_put
+non_SPN_put
+```
+
+#SC Transform SPNs and other neurons- did SCtransform on all neurons first before I subsetted
+```{r}
+library(sctransform)
+caudate_neurons_transformed = SCTransform(caudate_neurons, vars.to.regress = "pct_mito", verbose = FALSE)
+DefaultAssay(caudate_neurons_transformed) = "SCT"
+
+SPN_cah_transformed= subset(caudate_neurons, subset = sub_class == "SPN")
+non_SPN_cah_transformed= subset(caudate_neurons, subset = sub_class != "SPN")
+SPN_cah_transformed
+non_SPN_cah_transformed
+
+putamen_neurons_transformed = SCTransform(putamen_neurons, vars.to.regress = "pct_mito", verbose = FALSE)
+DefaultAssay(putamen_neurons_transformed) = "SCT"
+
+SPN_put_transformed= subset(putamen_neurons, subset = sub_class == "SPN")
+non_SPN_put_transformed= subset(putamen_neurons, subset = sub_class != "SPN")
+
+SPN_put_transformed
+non_SPN_put_transformed
+```
+
+
+
+
+#SPN-ness score
+#BICAN- SPN vs nonSPNs
+```{r}
+head(caudate_neurons)
+```
+
+
+```{r}
+features = BICAN_SPN_vs_non_markers_filtered$gene
+Idents(caudate_neurons) = "sub_class"
+DotPlot(caudate_neurons, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+CaH_SPN_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, SPN_cah_transformed)
+
+CaH_non_SPN_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, non_SPN_cah_transformed)
+```
+
+```{r}
+CaH_SPN_summary_expr_data
+CaH_non_SPN_summary_expr_data
+```
+
+```{r}
+CaH_SPN_summary_expr_data$cell_type = "SPN"
+CaH_nonSPN_summary_expr_data$cell_type = "non-SPN" 
+
+head(CaH_SPN_summary_expr_data)
+head(CaH_nonSPN_summary_expr_data)
+
+CaH_Transcriptional_DE = rbind(CaH_SPN_summary_expr_data, CaH_nonSPN_summary_expr_data)
+CaH_Transcriptional_DE
+```
+```{r}
+min(CaH_Transcriptional_DE$total_expression)
+max(CaH_Transcriptional_DE$total_expression)
+median(CaH_Transcriptional_DE$total_expression)
+
+```
+
+```{r}
+library(gridExtra)
+options(repr.plot.width=24, repr.plot.height=16)
+plots = list()
+donors = c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006","SCF-19-009", "SCF-19-014", "SCF-19-018",  "SCF-20-023",  "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM")
+for (donor in donors) {
+test = CaH_Transcriptional_DE[CaH_Transcriptional_DE$donor_id == donor,]
+plots[[donor]] = plot_overlapping_density_histogram(df = test,
+hist_col = "total_expression",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(0,70,1),
+title= paste("CaH SPNs vs non-SPNs: ", donor),
+xlab = "CaH SPN Score",
+fig_filename = NULL)
+}
+layout_matrix <- rbind(
+c(1, 2, 3, 4, 5),
+c(6, 7, 8, 9, 10),
+c(11, 12, 13, NA, NA),
+c(14, 15, 16, 17, NA)
+)
+# Arrange the plots according to the custom layout
+grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+# Save the arranged plots to a PNG file
+ggsave(filename = "SPN_SCORE_Output/CaH_BICAN_SPNvnonSPN_donors.png", plot = grid_plots, width = 30, height = 16)
+
+```
+
+
+
+```{r}
+CaH_Transcriptional_DE$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", CaH_Transcriptional_DE$donor_id), "Control", "XDP")
+CaH_Transcriptional_DE
+
+XDP = CaH_Transcriptional_DE[CaH_Transcriptional_DE$Condition == "XDP",]
+plot_overlapping_density_histogram(df = XDP, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,60,1),
+    title= paste("CaH SPNs vs non-SPNs: XDP"),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)
+
+Control = CaH_Transcriptional_DE[CaH_Transcriptional_DE$Condition == "Control",]
+plot_overlapping_density_histogram(df = Control, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,60,1),
+    title= paste("CaH SPNs vs non-SPNs: Control "),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)
+```
+
+```{r}
+head(caudate_neurons)
+```
+
+
+
+
+
+
+#plotting pct change on x axis, plotting logfc on y
+
+```{r}
+Cah_markers = final
+Cah_markers$pct.1_divided_pct.2 = Cah_markers$pct.1/Cah_markers$pct.2
+Cah_markers
+```
+
+```{r}
+significant_genes = unique(rownames(Cah_markers))
+
+CaH_SPN_exp = FetchData(SPN_cah_transformed, vars = significant_genes)
+CaH_SPN_exp
+
+metadata <- SPN_cah_transformed@meta.data
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+CaH_SPN_expr_data <- CaH_SPN_exp %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+CaH_SPN_expr_data_long <- CaH_SPN_expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+CaH_SPN_expr_data_long
+
+
+
+CaH_nonSPN_exp = FetchData(nonSPN_cah_transformed, vars = significant_genes)
+CaH_nonSPN_exp
+
+
+metadata <- nonSPN_cah_transformed@meta.data
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+CaH_nonSPN_expr_data <- CaH_nonSPN_exp %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+CaH_nonSPN_expr_data_long <- CaH_nonSPN_expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+CaH_nonSPN_expr_data_long
+```
+
+```{r}
+Cah_markers$gene = rownames(Cah_markers)
+CaH_SPNs = merge(CaH_SPN_expr_data_long, Cah_markers, by = "gene")
+CaH_SPNs$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", CaH_SPNs$donor_id), "Control", "XDP")
+CaH_SPNs
+```
+
+```{r}
+summarized_expr_data_TEST <- CaH_SPNs %>%
+  group_by(donor_id, gene) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data_TEST
+
+summarized_expr_data_TEST = merge(summarized_expr_data_TEST, Cah_markers, by = "gene")
+summarized_expr_data_TEST$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", summarized_expr_data_TEST$donor_id), "Control", "XDP")
+summarized_expr_data_TEST
+```
+
+```{r}
+TEST = subset(summarized_expr_data_TEST, summarized_expr_data_TEST)
+
+ggplot(data=summarized_expr_data_TEST, aes(x= pct.1_divided_pct.2, y= avg_log2FC, color = donor_id)) + geom_point() +  geom_text(aes(label = gene), vjust = -0.5, hjust = 0.5)
+```
+
+
+
+```{r}
+CaH_SPNs_test = subset(CaH_SPNs, CaH_SPNs$donor_id == "SCF-22-054CM")
+
+ggplot(data= CaH_SPNs, aes(x=gene , y=expression, fill = gene)) + geom_boxplot()
+```
+
+
+
+```{r}
+CaH_Transcriptional_DE
+```
+
+
+
+
+
+
+
+
+
+
+
+
+#PUTAMEN SPN-ness score
+#Findallmarkers on controls: SPN vs non-SPNs 
+```{r}
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "eSPN"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "cholinergic"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "glutamatergic"] = "non-SPN"
+
+Idents(putamen_neurons) = "sub_class"
+DimPlot(putamen_neurons, label = TRUE)
+```
+
+```{r}
+putamen_controls = subset(putamen_neurons, subset = Condition == "Control")
+putamen_controls
+Idents(putamen_controls) = "sub_class"
+DimPlot(putamen_controls, label = TRUE)
+```
+```{r}
+Idents(putamen_controls) = putamen_controls$sub_class
+putamen_controls_markers = FindAllMarkers(putamen_controls)
+                                          #, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+putamen_controls_markers
+```
+
+
+
+
+
+
+

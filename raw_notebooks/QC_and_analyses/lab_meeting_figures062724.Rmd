@@ -1,0 +1,2136 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(Seurat)
+library(ggplot2)
+library(qs)
+```
+
+
+#from Repeat_lengths file
+```{r}
+donor_metadata = read.csv("Cellbender_seurat/Donor_metadata_updated.csv")
+donor_metadata
+```
+```{r}
+ggplot(donor_metadata, aes(factor(donor_metadata$Condition), fill = factor(donor_metadata$Condition))) + geom_bar() + xlab("Condition") + geom_text(stat = "count", aes(label = ..count..), vjust = -0.5) +
+  ylab("Number of Donors") +
+  labs(fill = "Condition")
+```
+
+
+```{r}
+ggplot(donor_metadata, aes(factor(donor_metadata$Age.of.Death), fill = factor(donor_metadata$Condition))) + geom_bar() + xlab("Age at Death") +
+  ylab("Number of Donors") +
+  labs(fill = "Condition") #+ facet_wrap("Sex")
+```
+
+```{r}
+merged_caudate = qread("Cellbender_seurat/redo2_merged_caudate.qs")
+merged_putamen = qread("Cellbender_seurat/redo2_merged_putamen.qs")
+
+merged_caudate
+merged_putamen
+```
+
+#filtering step: pct_mitochondrial <10, pct intronic >= 0.25 #should be & not either
+```{r}
+filtered_merged_caudate <- subset(merged_caudate, subset = pct_mito < 10 & pct_intronic >= 0.25)
+filtered_merged_putamen <- subset(merged_putamen, subset = pct_mito < 10 & pct_intronic >= 0.25)
+
+filtered_merged_caudate
+filtered_merged_putamen
+```
+```{r}
+caudate_cell = as.data.frame(table(filtered_merged_caudate@meta.data$Condition))
+caudate_cell$Condition = caudate_cell$Var1
+caudate_cell$Var1 = NULL
+caudate_cell$Village = "Caudate"
+putamen_cell = as.data.frame(table(filtered_merged_putamen@meta.data$Condition))
+putamen_cell$Condition = putamen_cell$Var1
+putamen_cell$Var1 = NULL
+putamen_cell$Village = "Putamen"
+cells_villages = rbind(caudate_cell, putamen_cell)
+```
+
+```{r}
+total_freq_per_village <- aggregate(Freq ~ Village, data = cells_villages, FUN = sum)
+total_freq_per_village
+```
+
+
+```{r}
+ ggplot(cells_villages, aes(x = Village, y = Freq, fill = Condition)) +
+  geom_bar(stat = "identity") +  # Stacked bars
+  geom_text(aes(label = Freq), position = position_stack(vjust = 0.5), size = 3, color = "white") +  # Add labels on stacked bars
+  geom_text(data = total_freq_per_village, aes(label = Freq, y = Freq), vjust = -0.5, size = 4) +  # Add labels at the top of bars
+  labs(title = "Frequency Distribution by Village and Condition", x = "Village", y = "Frequency", fill = "Condition") +
+  theme_minimal()
+
+```
+
+
+```{r}
+ggplot(cells_villages, aes(x = Village, y = Freq, fill = Condition)) +
+  geom_bar(stat = "identity", position = "stack") +  # Stacked bars
+  labs(title = "Frequency Distribution by Village and Condition", x = "Village", y = "Frequency", fill = "Condition") +
+  theme_minimal()
+```
+
+
+```{r}
+per_donor = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+per_donor
+```
+
+
+```{r}
+cells_per_donor_per_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library))
+cells_per_donor_per_rxn = merge(cells_per_donor_per_rxn, per_donor, by = "Var1" )
+cells_per_donor_per_rxn
+```
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-23-068CM","SCF-22-054CM","SCF-22-058CF",
+            "SCF-20-025", "SCF-18-003","SCF_22-043","SCF_20-024","SCF-18-004", "SCF-18-006","SCF-20-023", "SCF-21-030","PCMC-16-012","SCF-19-009","SCF-19-014", "PCMC-16-011","SCF-19-018")
+
+cells_per_donor_per_rxn$Var1 = factor(cells_per_donor_per_rxn$Var1, levels = x_order)
+
+ggplot(cells_per_donor_per_rxn, aes(x = Var1, y = Freq.x, fill = Var2)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") +  geom_text(data = cells_per_donor_per_rxn, aes(x = Var1, y = Freq.y, label = Freq.y), vjust = -0.2, size = 3, nudge_y = 0.5) + ylab("Number of Cells") +
+ labs(fill = "Library")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#putamen
+```{r}
+per_donor = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+per_donor
+
+cells_per_donor_per_rxn = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id, filtered_merged_putamen@meta.data$library))
+cells_per_donor_per_rxn = merge(cells_per_donor_per_rxn, per_donor, by = "Var1" )
+cells_per_donor_per_rxn
+
+x_order = c("SCF_21-037CM2","SCF-23-068CM","SCF-22-054CM","SCF-22-058CF",
+            "SCF-20-025", "SCF_22-043","SCF-20-023","SCF-18-003",  "SCF_20-024","SCF-18-006","SCF-19-009",  "SCF-21-030", "SCF-19-014","SCF-18-004","SCF-19-018", "PCMC-16-011", "PCMC-16-012")
+
+cells_per_donor_per_rxn$Var1 = factor(cells_per_donor_per_rxn$Var1, levels = x_order)
+
+ggplot(cells_per_donor_per_rxn, aes(x = Var1, y = Freq.x, fill = Var2)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") +  geom_text(data = cells_per_donor_per_rxn, aes(x = Var1, y = Freq.y, label = Freq.y), vjust = -0.2, size = 3, nudge_y = 0.5) + ylab("Number of Cells") +
+ labs(fill = "Library")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+# mean_nUmi = filtered_merged_caudate@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_UMI = mean(nUmi, na.rm = TRUE))
+# mean_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+# mean_nGenes = filtered_merged_caudate@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_nGenes = mean(nFeature_RNA, na.rm = TRUE))
+# mean_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+# mean_reads_per_umi = filtered_merged_caudate@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_reads_per_umi = mean((nRead/nUmi), na.rm = TRUE))
+# mean_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+# mean_pct_intronic = filtered_merged_caudate@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_pct_intronic = mean(pct_intronic, na.rm = TRUE))
+# mean_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+# mean_pct_mito = filtered_merged_caudate@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_pct_mito = mean(pct_mito, na.rm = TRUE))
+# mean_pct_mito
+```
+```{r}
+library(gridExtra)
+caudate_library_qc_df_list = list(median_nUmi, median_nGenes, median_reads_per_umi, median_pct_intronic,  median_pct_mito)
+caudate_library_qc_df = reduce(caudate_library_qc_df_list, left_join, by = "donor_id")
+caudate_library_qc_df
+
+caudate_library_qc_df[, -1] <- round(caudate_library_qc_df[, -1], digits = 2)
+caudate_library_qc_df
+table_grob = tableGrob(caudate_library_qc_df)
+ggsave("caudate_donor_qc_df.png", table_grob, width = 15, height = 6, dpi = 300)
+```
+
+
+```{r}
+library(purrr)
+# List of data frames to merge
+df_list <- list(median_nUmi, median_nGenes,median_reads_per_umi, median_pct_intronic, median_pct_mito )
+
+# Merge all data frames on the common column Donor.ID
+merged_df <- reduce(df_list, function(x, y) merge(x, y, by = "donor_id"))
+
+# Print the merged data frame
+print(merged_df)
+
+```
+
+
+```{r}
+qc_graphs = function(data, y, xlab, ylab, title){
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+data$donor_id = factor(data$donor_id, levels = x_order)
+median = median(y)
+
+ggplot(data, aes(x = donor_id, y = y, fill = donor_id)) +
+  geom_bar(stat = "identity") + xlab(xlab) + ylab(ylab)+ labs(fill = "donor_id")+ ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f", median)))+geom_hline(yintercept = median, linetype = "dashed", color = "black") +
+  geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+qc_graphs(merged_df, merged_df$median_UMI, "Donors", "median UMI", "CaH Village: median UMI")
+qc_graphs(merged_df, merged_df$median_nGenes, "Donors", "median nGenes", "CaH Village: median nGenes")
+qc_graphs(merged_df, merged_df$median_reads_per_umi, "Donors", "median reads/UMI", "CaH Village: median reads/UMI")
+qc_graphs(merged_df, merged_df$median_pct_intronic, "Donors", "median pct intronic", "CaH Village: median pct intronic")
+qc_graphs(merged_df, merged_df$median_pct_mito, "Donors", "median pct mito", "CaH Village: median pct mito")
+```
+#putamen
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+# mean_nUmi = filtered_merged_putamen@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_UMI = mean(nUmi, na.rm = TRUE))
+# mean_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+# mean_nGenes = filtered_merged_putamen@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_nGenes = mean(nFeature_RNA, na.rm = TRUE))
+# mean_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+# mean_reads_per_umi = filtered_merged_putamen@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_reads_per_umi = mean((nRead/nUmi), na.rm = TRUE))
+# mean_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+# mean_pct_intronic = filtered_merged_putamen@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_pct_intronic = mean(pct_intronic, na.rm = TRUE))
+# mean_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+# mean_pct_mito = filtered_merged_putamen@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_pct_mito = mean(pct_mito, na.rm = TRUE))
+# mean_pct_mito
+
+# List of data frames to merge
+df_list <- list(median_nUmi, median_nGenes,median_reads_per_umi, median_pct_intronic, median_pct_mito )
+
+# Merge all data frames on the common column Donor.ID
+merged_df <- reduce(df_list, function(x, y) merge(x, y, by = "donor_id"))
+
+# Print the merged data frame
+print(merged_df)
+```
+
+```{r}
+putamen_library_qc_df_list = list(median_nUmi, median_nGenes, median_reads_per_umi, median_pct_intronic,  median_pct_mito)
+putamen_library_qc_df = reduce(putamen_library_qc_df_list, left_join, by = "donor_id")
+putamen_library_qc_df
+
+putamen_library_qc_df[, -1] <- round(putamen_library_qc_df[, -1], digits = 2)
+putamen_library_qc_df
+table_grob = tableGrob(putamen_library_qc_df)
+ggsave("putamen_donor_qc_df.png", table_grob, width = 15, height = 6, dpi = 300)
+```
+
+```{r}
+qc_graphs(merged_df, merged_df$median_UMI, "Donors", "median UMI", "Put Village: median UMI")
+qc_graphs(merged_df, merged_df$median_nGenes, "Donors", "median nGenes", "Put Village: median nGenes")
+qc_graphs(merged_df, merged_df$median_reads_per_umi, "Donors", "median reads/UMI", "Put Village: median reads/UMI")
+qc_graphs(merged_df, merged_df$median_pct_intronic, "Donors", "median pct intronic", "Put Village: median pct intronic")
+qc_graphs(merged_df, merged_df$median_pct_mito, "Donors", "median pct mito", "Put Village: median pct mito")
+```
+
+
+
+#Volcano plots
+```{r}
+Microglia_DE = read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__mg__20240529.csv")
+Astrocyte_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__astro__20240529.csv")
+Oligo_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__oligo__20240529.csv")
+OPC_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__opc__20240529.csv")
+Ependymal_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__ependymal__20240529.csv")
+Endo_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__endo__20240529.csv")
+Immune_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__immune__20240529.csv")
+Neuron_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__neuron__20240529.csv")
+
+ALL_SPN_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Caudate Neurons - 20240603 - All SPN.csv")
+ALL_IN_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Caudate Neurons - 20240603 - All IN.csv")
+D1_SPN_matrix_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Caudate Neurons - 20240603 - SPN_D1_Matrix.csv")
+D1_SPN_patch_DE= read.csv("~/GSEA/de/SPN_DE/XDP DE - Caudate Neurons - 20240603 - SPN_D1_patch.csv")
+D2_SPN_matrix_DE= read.csv("~/GSEA/de/SPN_DE/XDP DE - Caudate Neurons - 20240603 - SPN_D2_Matrix.csv")
+D2_SPN_patch_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Caudate Neurons - 20240603 - SPN_D2_Patch1.csv")
+
+
+Microglia_DE
+Astrocyte_DE
+Oligo_DE
+OPC_DE
+Ependymal_DE
+Endo_DE
+Immune_DE
+Neuron_DE
+ALL_SPN_DE
+ALL_IN_DE
+D1_SPN_matrix_DE
+D1_SPN_patch_DE
+D2_SPN_matrix_DE
+D2_SPN_patch_DE
+
+```
+```{r}
+Volcano <- function(data, title){
+
+  data$Significant <- data$adj.P.Val < 0.05
+
+  significant_data <- subset(data, Significant == TRUE)
+
+  top_upregulated <- significant_data[order(significant_data$logFC, decreasing = TRUE), ][1:5, ]
+  top_downregulated <- significant_data[order(significant_data$logFC), ][1:5, ]
+  top_genes <- rbind(top_upregulated, top_downregulated)
+
+  # Calculate the fraction of significantly expressed genes
+  fraction_significant <- sum(data$Significant) / nrow(data)
+
+  # Create the volcano plot
+  volcano_plot <- ggplot(data, aes(x = logFC, y = -log10(adj.P.Val))) +
+    geom_point(aes(color = Significant), alpha = 0.3) +
+    scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red")) +
+    geom_hline(yintercept = -log10(0.05), linetype = "dotted", color = "blue") +
+    geom_vline(xintercept = c(-1, 1), linetype = "dotted", color = "blue") +
+    geom_text_repel(
+      data = top_genes, 
+      aes(label = gene),
+      color = "black",
+      nudge_y = 0.15,
+      segment.color = "grey50",
+      max.overlaps = Inf
+    ) +
+    labs(
+      title = title,
+      subtitle = paste("Fraction of significantly expressed genes:", round(fraction_significant, 3)),
+      x = "Log2 Fold Change",
+      y = "-Log10(Adjusted p-value)"
+    ) +
+    theme_minimal()
+
+  # Display the plot
+  print(volcano_plot)
+}
+
+```
+
+
+```{r}
+Volcano(Microglia_DE, "Caudate Microglia DE")
+Volcano(Astrocyte_DE, "Caudate Astrocyte DE")
+Volcano(Oligo_DE, "Caudate Oligo DE")
+Volcano(OPC_DE, "Caudate OPC DE")
+Volcano(Ependymal_DE, "Caudate Ependymal DE")
+Volcano(Endo_DE, "Caudate Endothelial DE")
+Volcano(Immune_DE, "Caudate Immune DE")
+Volcano(Neuron_DE, "Caudate Neuron DE")
+Volcano(ALL_SPN_DE, "Caudate SPN DE")
+Volcano(ALL_IN_DE, "Caudate Interneuron DE")
+Volcano(D1_SPN_matrix_DE, "Caudate D1 SPN matrix DE")
+Volcano(D1_SPN_patch_DE, "Caudate D1 SPN patch DE")
+Volcano(D2_SPN_matrix_DE, "Caudate D2 SPN matrix DE")
+Volcano(D2_SPN_patch_DE, "Caudate D2 SPN patch DE")
+```
+
+#Putamen volcano
+
+```{r}
+Microglia_DE = read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__mg__20240529.csv")
+Astrocyte_DE= read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__astro__20240529.csv")
+Oligo_DE= read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__oligo__20240529.csv")
+OPC_DE= read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__opc__20240529.csv")
+Endo_DE= read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__endo__20240529.csv")
+Neuron_DE= read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__neuron__20240529.csv")
+
+ALL_SPN_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - All SPN.csv")
+ALL_IN_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - All IN.csv")
+ALL_eSPN_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - All eSPN.csv")
+D1_SPN_matrix_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D1_matrix.csv")
+D1_SPN_patch1_DE= read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D1_patch1.csv")
+D1_SPN_patch2_DE= read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D1_patch2.csv")
+D2_SPN_matrix_DE= read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D2_matrix.csv")
+D2_SPN_patch1_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D2_patch1.csv")
+D2_SPN_patch2_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D2_patch2.csv")
+
+Microglia_DE
+Astrocyte_DE
+Oligo_DE
+OPC_DE
+Ependymal_DE
+Endo_DE
+Immune_DE
+Neuron_DE
+ALL_SPN_DE
+ALL_IN_DE
+ALL_eSPN_DE
+D1_SPN_matrix_DE
+D1_SPN_patch1_DE
+D1_SPN_patch2_DE
+D2_SPN_matrix_DE
+D2_SPN_patch1_DE
+D2_SPN_patch2_DE
+
+```
+
+```{r}
+Volcano(Microglia_DE, "Putamen Microglia DE")
+Volcano(Astrocyte_DE, "Putamen Astrocyte DE")
+Volcano(Oligo_DE, "Putamen Oligo DE")
+Volcano(OPC_DE, "Putamen OPC DE")
+Volcano(Ependymal_DE, "Putamen Ependymal DE")
+Volcano(Endo_DE, "Putamen Endothelial DE")
+Volcano(Immune_DE, "Putamen Immune DE")
+Volcano(Neuron_DE, "Putamen Neuron DE")
+Volcano(ALL_SPN_DE, "Putamen SPN DE")
+Volcano(ALL_IN_DE, "Putamen Interneuron DE")
+Volcano(ALL_eSPN_DE, "Putamen eSPN DE")
+Volcano(D1_SPN_matrix_DE, "Putamen D1 SPN matrix DE")
+Volcano(D1_SPN_patch1_DE, "Putamen D1 SPN patch 1 DE")
+Volcano(D1_SPN_patch2_DE, "Putamen D1 SPN patch 2 DE")
+Volcano(D2_SPN_matrix_DE, "Putamen D2 SPN matrix DE")
+Volcano(D2_SPN_patch1_DE, "Putamen D2 SPN patch 1 DE")
+Volcano(D2_SPN_patch2_DE, "Putamen D2 SPN patch 2 DE")
+```
+
+
+
+#SPN proportions
+```{r}
+library(qs)
+caudate_neurons = qread("Current_subclusters/caudate_neuron.qs")
+putamen_neurons= qread("Current_subclusters/putamen_neuron.qs")
+
+caudate_neurons
+putamen_neurons
+```
+```{r}
+unique(caudate_neurons$cell_class)
+```
+
+
+```{r}
+caudate_neurons@meta.data$sub_class = caudate_neurons@meta.data$cell_class
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_1"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_2"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_1"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_matrix_1"] = "D2_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "SPN"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_2"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_1"] = "D2_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_3"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_2"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_patch"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_1"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "eSPN"] = "eSPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_5"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "cholinergic"] = "cholinergic"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_4"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+caudate_neurons@meta.data
+```
+
+```{r}
+cells_per_donor = as.data.frame(table(caudate_neurons@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(caudate_neurons@meta.data$sub_class, caudate_neurons@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+            
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+```{r}
+unique(caudate_neurons@meta.data$sub_class)
+```
+
+
+```{r}
+sobj = caudate_neurons
+model_cols = c("donor_id", "sub_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$sub_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/caudate_neurons_masc_df_practice.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Neuron Subcluster Enrichment XDP vs. Control: Caudate") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+#putamen
+```{r}
+unique(putamen_neurons$cell_class)
+```
+```{r}
+putamen_neurons@meta.data$sub_class = putamen_neurons@meta.data$cell_class
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_matrix"] = "D2_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_2"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_4"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_matrix_1"] = "D1_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "glutamatergic"] = "glutamatergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_5"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_1"] = "D1_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_patch"] = "D1_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_1"] = "D2_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "eSPN"] = "eSPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_3"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_1"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_2"] = "D2_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "cholinergic"] = "cholinergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_7"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+putamen_neurons@meta.data
+```
+
+```{r}
+cells_per_donor = as.data.frame(table(putamen_neurons@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(putamen_neurons@meta.data$sub_class, putamen_neurons@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+            
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Putamen Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+
+```{r}
+sobj = putamen_neurons
+model_cols = c("donor_id", "sub_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$sub_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/putamen_neurons_masc_df_practice.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Neuron Subcluster Enrichment XDP vs. Control: Putamen") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+
+
+
+#caudate orignal (the gene expression here does all caudate neuorns not just SPN)
+```{r}
+# Load necessary libraries
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+seurat_obj = caudate_neurons
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("TAF1", "HLA-A", "HLA-B", "GLI3", "TESPA1", "PTPN7", "SEZ6L", "ATP2B4", "VSNL1")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+
+# Aggregate the expression data by donor to get mean expression values
+agg_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(mean_expression = mean(expression, na.rm = TRUE), .groups = 'drop')
+agg_expr_data$gene <- factor(agg_expr_data$gene, levels = genes_of_interest)
+
+# Check the first few rows of the aggregated data frame
+head(agg_expr_data)
+
+# Define the function for the scatter plot
+ScatterPlotGenesOfInterest <- function(data, genes_of_interest, title) {
+  # Subset the data for the genes of interest
+  subset_data <- data %>%
+    filter(gene %in% genes_of_interest)
+  
+#x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+  
+#Repeat Length
+#x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+#Age of onset
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-21-030", "SCF-19-014", "SCF-18-003", "SCF-19-018", "PCMC-16-012", "SCF-20-023", "SCF_20-024", "SCF-18-004", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011")
+
+#Age of death
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "SCF-19-018", "SCF-18-003", "PCMC-16-012", "SCF-20-023", "SCF-21-030", "SCF_20-024", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011", "SCF-18-004")
+
+#Disease Duration
+x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "PCMC-16-011", "SCF-20-023", "SCF-20-025", "SCF-18-006", "SCF-19-009", "SCF_22-043", "SCF-19-018", "PCMC-16-012", "SCF_20-024", "SCF-18-003", "SCF-21-030", "SCF-18-004")
+            
+subset_data$donor_id = factor(subset_data$donor_id, levels = x_order)
+  
+  # Create the scatter plot
+  scatter_plot <- ggplot(subset_data, aes(x = donor_id, y = mean_expression, color = gene)) +
+    geom_point(alpha = 0.6) + geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+
+    geom_jitter(width = 0.2, height = 0, alpha = 0.6) + # Jitter points to avoid overlap
+    facet_wrap(~gene, scales = "free_y") +  # Create separate plots for each gene
+    labs(
+      title = title,
+      x = "Donor",
+      y = "Mean Expression"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)  # Rotate x-axis labels for better readability
+    )
+  
+  # Display the plot
+  print(scatter_plot)
+}
+
+# Call the function with the aggregated data and genes of interest
+ScatterPlotGenesOfInterest(agg_expr_data, genes_of_interest, "Putamen: Genes of Interest Across Donors")
+
+
+```
+
+#putamen
+```{r}
+# Load necessary libraries
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+seurat_obj = putamen_neurons
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("TAF1", "HLA-A", "HLA-B", "GLI3", "TESPA1", "PTPN7", "SEZ6L", "ATP2B4", "VSNL1")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+
+# Aggregate the expression data by donor to get mean expression values
+agg_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(mean_expression = mean(expression, na.rm = TRUE), .groups = 'drop')
+agg_expr_data$gene <- factor(agg_expr_data$gene, levels = genes_of_interest)
+
+# Check the first few rows of the aggregated data frame
+head(agg_expr_data)
+
+# Call the function with the aggregated data and genes of interest
+ScatterPlotGenesOfInterest(agg_expr_data, genes_of_interest, "Putamen: Genes of Interest Across Donors")
+
+```
+
+
+
+#GSEA on all SPNs for CaH and Put
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/GSEA"
+DE_SUBDIR= "de/"
+
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "gsea")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+     # add the paths to the gene sets you want to use here
+    kegg_2021_human = "GSEA/genesets/KEGG_2021_Human.txt",
+    go_process = "GSEA/genesets/GO_Biological_Process_2021.txt",
+    go_function = "GSEA/genesets/GO_Molecular_Function_2021.txt",
+    disgenet = "GSEA/genesets/DisGeNET.txt",
+    msigdb_hallmark = "GSEA/genesets/MSigDB_Hallmark_2020.txt",
+    #neural_activity = "GSEA/genesets/neural_activity_arranged.txt",
+    wikipathways = "GSEA/genesets/WikiPathways_2019_Human.txt",
+    #tf_perturbations = "GSEA/genesets/TF_Perturbations_Followed_by_Expression.txt",
+    jensen_diseases = "GSEA/genesets/Jensen_DISEASES.txt"
+    #X_chromsome_positional= "GSEA/genesets/allchrome.txt",  
+    #Xlinked_recessive = "GSEA/genesets/Xlinked_RESS.txt",
+    #Xlinked_dominant = "GSEA/genesets/Xlinked_DOM.txt",
+    #similar_diseases = "GSEA/genesets/similardiseases.txt"
+)
+
+
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+   # if (! grepl("trend", de_slogan)){next}
+
+    #if (strsplit(de_slogan, "__")[[1]][[2]] != "opc"){next}
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$gene)
+    anno=anno[match(dataDE$gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="logFC", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_logfc.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+```{r}
+Caudate_All_SPNs = read.delim("GSEA/de/gsea/CopyOfXDP DE - Caudate Neurons - 20240603 - All SPN.csv__gsea_logfc.tsv", header = TRUE)
+Putamen_All_SPNs = read.delim("GSEA/de/gsea/CopyOfXDP DE - Putamen Neurons - 20240603 - All SPN.csv__gsea_logfc.tsv", header= TRUE)
+
+Caudate_All_SPNs
+Putamen_All_SPNs
+
+Caudate_All_SPNs_filtered = Caudate_All_SPNs[Caudate_All_SPNs$gene_set != "disgenet", ]
+Putamen_All_SPNs_filtered = Putamen_All_SPNs[Putamen_All_SPNs$gene_set != "disgenet", ]
+
+Caudate_All_SPNs_filtered
+Putamen_All_SPNs_filtered
+```
+
+#gsea with leading edge annotations
+```{r}
+plot_gsea_result_hdot = function(
+    df,
+    title=NULL,
+    xlim=c(-4, 4),
+    fig_filename = NULL,
+    leading_edge_n=10,
+    leading_edge_linebreak_n=5,
+    top_n=10) {
+    #takes in a df with the following columns: NES, pathway, size, leading_edge
+    # along with a title, xlim, fig_filename (nullable)
+    # leading_edge_n is the max number of leading_edge genes to be annotated
+    # leading_edge_linebreak_n is the number of leading_edge genes to be displayed before a line break
+    # top_n is the number of pathways to be displayed on the plot for each direction
+    # (i.e. max rows is 2*top_n for up- and down-regulated genesets)
+    # the df is filtered to the top_n pathways by NES above 0 and below 0
+    # Y axis: pathway. every 30 characters, replace the next space with a \n and then start over
+    # X axis: NES, appearing as an open circle. If NES > 0, this circle is blue, < 0 red. The size of the circle relates to the Gene Set Size.
+    # The plot is annotated on the right with the leading_edge_top_n.
+    # first, turn the leading edge into something we can read by taking the first `leading_edge_n` elemnets
+    # separating them with `, ` and finally adding line breaks
+    df_pos = df[df$NES > 0,]
+    df_neg = df[df$NES < 0,]
+    df_pos = df_pos[order(df_pos$NES, decreasing = TRUE),]
+    df_neg = df_neg[order(df_neg$NES, decreasing = FALSE),]
+    df = rbind(df_pos[1:top_n,], df_neg[1:top_n,])
+    df = df[order(df$NES),]
+    df = df[!is.na(df$NES),]
+    # Function to insert line breaks every `n` entries
+    insert_line_breaks = function(text, n = leading_edge_linebreak_n) {
+        parts = strsplit(text, ",\\s*")[[1]]
+        if (length(parts) <= n) {
+            return(text)
+        }
+        new_text = ""
+        for (i in seq_along(parts)) {
+            new_text = paste0(new_text, parts[i])
+            if (i < length(parts)) {
+                new_text = paste0(new_text, ",")
+            }
+            if (i %% n == 0 && i != length(parts)) {
+                new_text = paste0(new_text, "\n")
+            } else if (i != length(parts)) {
+                new_text = paste0(new_text, " ")
+            }
+        }
+        return(new_text)
+    }
+    df$leading_edge_top_n = sapply(df$leadingEdge, function(x){
+        edge_list = strsplit(x, ",")[[1]]
+        len = length(edge_list)
+        if (len > leading_edge_n){
+            len=leading_edge_n
+        }
+        return(insert_line_breaks(paste(edge_list[1:len], collapse=", ")))
+    })
+    if (is.null(title)){
+        title = "GSEA NES by Pathway"
+    }
+    # Format the pathway names to include newline every 30 characters
+    df$pathway = gsub("(.{30}\\s)", "\\1\n", df$pathway, perl = TRUE)
+    df$NES_direction = ifelse(df$NES > 0, "NES > 0", "NES < 0")
+    # Create the plot
+    p = ggplot(df, aes(x = NES, y = reorder(pathway, NES))) +
+        geom_point(aes(size = size, color = NES_direction), shape = 1) +
+        scale_color_manual(name = "NES Direction", values = c("NES > 0" = "blue", "NES < 0" = "red")) +
+        scale_size_continuous(name = "Size") +
+        geom_vline(xintercept = 0, linetype = "dotted", color = "black") +
+        labs(title = title, x = "NES", y = "Pathway") +
+        xlim(xlim) +
+        theme(
+            panel.grid.major = element_line(color = "gray", linetype = "dotted"),
+            panel.grid.minor = element_blank(),
+            legend.position = "left",
+            plot.title = element_text(size = 14),
+            plot.caption = element_text(hjust = 0.1),
+            plot.title.position = "plot",
+            axis.line = element_line(color = "black"),
+            axis.ticks = element_line(color = "black"),
+            axis.text = element_text(size = 13),
+            axis.title = element_text(size = 13),
+            axis.text.y.right = element_text(hjust = 1)
+        )
+        # Create a secondary y-axis with leading_edge_top_n labels
+    p = p + geom_text(aes(y = reorder(pathway, NES), x = Inf, label = leading_edge_top_n),
+                      hjust = -0.1, size = 4) +
+        coord_cartesian(clip = 'off') +
+        theme(
+            plot.margin = margin(5.5, 340, 5.5, 5.5),  # Increase right margin to make space for secondary labels
+            axis.text.y.right = element_text(hjust = 1)
+        )
+    # Save the plot to file if a filename is provided
+    if (!is.null(fig_filename)) {
+        ggsave(fig_filename, plot = p, width = 5, height = 2*nrow(df)/3)
+    }
+    # Print the plot to the R console
+    print(p)
+}
+```
+
+
+```{r}
+plot_gsea_result_hdot(Caudate_All_SPNs, title = "Caudate SPNs", leading_edge_n=5)
+plot_gsea_result_hdot(Putamen_All_SPNs, title = "Putamen SPNs", leading_edge_n=5)
+
+plot_gsea_result_hdot(Caudate_All_SPNs_filtered, title = "Caudate SPNs", leading_edge_n=5, top_n = 12)
+plot_gsea_result_hdot(Putamen_All_SPNs_filtered, title = "Putamen SPNs", leading_edge_n=5, top_n = 12)
+```
+
+
+#doing scatter plots for genes of interest on only spns expression: this ended up being per donor and mean expression...not super helpful
+```{r}
+caudate_neurons@meta.data$sub_class = caudate_neurons@meta.data$cell_class
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_2"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_matrix_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "SPN"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_2"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_3"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_2"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_patch"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_1"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "eSPN"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_5"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "cholinergic"] = "cholinergic"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_4"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+caudate_neurons_SPN = subset(caudate_neurons, subset = sub_class == "SPN")
+caudate_neurons_SPN@meta.data
+
+caudate_neurons_interneuron = subset(caudate_neurons, subset = sub_class == "interneuron")
+```
+
+```{r}
+# Load necessary libraries
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+seurat_obj = caudate_neurons_SPN
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("TAF1", "GLI3", "TESPA1", "CCDC178", "THSD4", "TCF7L1", "VSNL1", "ATP2B4", "ATP8B4", "KCNT2", "ADARB2", "MAML2", "STXBP6", "FBXL7", "SEZ6L", "RNF152", "NELL1", "HLA-A", "HLA-B", "HLA-C", "B2M")  
+                    
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+expr_data
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+expr_data
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+
+# Aggregate the expression data by donor to get mean expression values
+agg_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(mean_expression = mean(expression, na.rm = TRUE), .groups = 'drop')
+
+agg_expr_data$gene <- factor(agg_expr_data$gene, levels = genes_of_interest)
+
+caudate_expression = agg_expr_data
+caudate_expression
+```
+
+```{r}
+putamen_neurons@meta.data$sub_class = putamen_neurons@meta.data$cell_class
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_matrix"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_2"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_4"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_matrix_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "glutamatergic"] = "glutamatergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_5"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_patch"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "eSPN"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_3"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_1"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_2"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "cholinergic"] = "cholinergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_7"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+putamen_neurons_SPN = subset(putamen_neurons, subset = sub_class == "SPN")
+putamen_neurons_SPN@meta.data
+
+putamen_neurons_interneuron = subset(putamen_neurons, subset = sub_class == "interneuron")
+```
+
+```{r}
+seurat_obj = putamen_neurons_SPN
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("TAF1", "GLI3", "TESPA1", "CCDC178", "THSD4", "TCF7L1", "VSNL1", "ATP2B4", "ATP8B4", "KCNT2", "ADARB2", "MAML2", "STXBP6", "FBXL7", "SEZ6L", "RNF152", "NELL1", "HLA-A", "HLA-B", "HLA-C", "B2M")  
+                    
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+expr_data
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+expr_data
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+
+# Aggregate the expression data by donor to get mean expression values
+agg_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(mean_expression = mean(expression, na.rm = TRUE), .groups = 'drop')
+
+agg_expr_data$gene <- factor(agg_expr_data$gene, levels = genes_of_interest)
+
+putamen_expression = agg_expr_data
+putamen_expression
+```
+```{r}
+cah_put_expression= left_join(caudate_expression, putamen_expression, by = c("donor_id", "gene"))
+cah_put_expression
+
+cah_put_expression$caudate_mean_expression = cah_put_expression$mean_expression.x
+cah_put_expression$putamen_mean_expression = cah_put_expression$mean_expression.y
+
+cah_put_expression$mean_expression.x = NULL
+cah_put_expression$mean_expression.y= NULL
+cah_put_expression
+```
+
+```{r}
+library(ComplexHeatmap)
+
+heatmap_matrix <- as.matrix(cah_put_expression)
+
+gene_order <- c("TAF1", "GLI3", "TESPA1", "CCDC178", "THSD4", "TCF7L1", "VSNL1", "ATP2B4", "ATP8B4", "KCNT2", "ADARB2", "MAML2", "STXBP6", "FBXL7", "SEZ6L", "RNF152", "NELL1", "HLA-A", "HLA-B", "HLA-C", "B2M") 
+
+# Reorder rows of the matrix based on gene order
+heatmap_matrix_reordered <- heatmap_matrix[gene_order, ]
+
+# Create the heatmap
+Heatmap(heatmap_matrix_reordered, 
+        name = "Expression", 
+        col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+        cluster_rows = FALSE, cluster_columns = FALSE  # Disable row clustering
+)
+
+```
+
+
+
+#actual
+```{r}
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(ComplexHeatmap)
+library(circlize)
+
+# Define genes of interest
+genes_of_interest <- c("TAF1", "GLI3", "TESPA1", "CCDC178", "THSD4", "TCF7L1", "VSNL1", "ATP2B4", "ATP8B4", "KCNT2", "ADARB2", "MAML2", "STXBP6", "FBXL7", "SEZ6L", "RNF152", "NELL1", "HLA-A", "HLA-B", "HLA-C", "B2M")
+
+Caudate_All_SPNs_DE = read.csv("GSEA/de/CopyOfXDP DE - Caudate Neurons - 20240603 - All SPN.csv", header= TRUE)
+Putamen_All_SPNs_DE =read.csv("GSEA/de/CopyOfXDP DE - Putamen Neurons - 20240603 - All SPN.csv", header= TRUE)
+Caudate_All_SPNs_DE
+Putamen_All_SPNs_DE
+
+caudate_expr = Caudate_All_SPNs_DE[Caudate_All_SPNs_DE$gene %in% genes_of_interest,]
+putamen_expr = Putamen_All_SPNs_DE[Putamen_All_SPNs_DE$gene %in% genes_of_interest,]
+
+caudate_expr
+putamen_expr
+```
+
+
+```{r}
+# Combine expression data into one data frame
+caudate_expr <- caudate_expr  %>%
+  mutate(region = "Caudate")
+
+caudate_expr
+
+putamen_expr <- putamen_expr%>%
+  mutate(region = "Putamen")
+putamen_expr
+
+combined_expr = merge(caudate_expr, putamen_expr, by = "gene")
+combined_expr
+
+combined_expr$caudate_logfc = combined_expr$logFC.x
+combined_expr$putamen_logfc = combined_expr$logFC.y
+combined_expr$logFC.x = NULL
+combined_expr$logFC.y = NULL
+combined_expr
+
+combined_expr$adj.P.Val.x = NULL
+combined_expr$adj.P.Val.y = NULL
+combined_expr$region.x = NULL
+combined_expr$region.y = NULL
+combined_expr
+```
+
+```{r}
+rownames(combined_expr)= combined_expr$gene
+combined_expr$gene = NULL
+combined_expr
+
+combined_expr$Caudate_SPN =combined_expr$caudate_logfc 
+combined_expr$Putamen_SPN =combined_expr$putamen_logfc
+combined_expr$caudate_logfc=NULL
+combined_expr$putamen_logfc=NULL
+
+combined_expr
+```
+
+
+```{r}
+# Convert to matrix
+heatmap_matrix <- as.matrix(combined_expr)
+heatmap_matrix
+
+ gene_order <-c("TAF1", "GLI3", "TESPA1", "CCDC178", "THSD4", "TCF7L1", "VSNL1", "ATP2B4", "ATP8B4", "KCNT2", "ADARB2", "MAML2", "STXBP6", "FBXL7", "SEZ6L", "RNF152", "NELL1", "HLA-A", "HLA-B", "HLA-C", "B2M")
+# 
+# # Reorder rows of the matrix based on gene order
+ heatmap_matrix_reordered <- heatmap_matrix[gene_order, ]
+
+# Create the heatmap
+Heatmap(heatmap_matrix_reordered, 
+        name = "LogFC  ", 
+        col = colorRamp2(c(-3.5, 0, 3.5), c("blue", "gray95", "red")),
+        cluster_rows = FALSE, cluster_columns = FALSE  # Disable row clustering
+)
+
+
+```
+
+#chatgpt heatmap example
+```{r}
+library(ComplexHeatmap)
+library(circlize)  # for color mapping
+
+# Generate example data
+set.seed(123)
+mat <- matrix(rnorm(100), 10, 10)
+rownames(mat) <- paste0("Gene", 1:10)
+colnames(mat) <- paste0("Sample", 1:10)
+
+# Create a data frame for row annotations
+row_ha <- rowAnnotation(
+  Condition = sample(c("Control", "Treatment"), 10, replace = TRUE),
+  Sex = sample(c("Male", "Female"), 10, replace = TRUE)
+)
+
+# Create a data frame for column annotations
+col_ha <- HeatmapAnnotation(
+  Age = sample(20:70, 10, replace = TRUE),
+  Disease = sample(c("Yes", "No"), 10, replace = TRUE)
+)
+
+# Create the heatmap
+Heatmap(mat, 
+        name = "Expression", 
+        top_annotation = col_ha, 
+        left_annotation = row_ha, 
+        col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+)
+
+```
+
+
+
+
+#histograms
+```{r}
+caudate_neurons_SPN
+putamen_neurons_SPN
+caudate_neurons_interneuron
+putamen_neurons_interneuron
+```
+
+```{r}
+XDP_SPN_CaH = subset(caudate_neurons_SPN, subset = Condition == "XDP")
+Control_SPN_CaH= subset(caudate_neurons_SPN, subset = Condition == "Control")
+
+XDP_SPN_Put = subset(putamen_neurons_SPN, subset = Condition == "XDP")
+Control_SPN_Put= subset(putamen_neurons_SPN, subset = Condition == "Control")
+
+XDP_Interneuron_CaH= subset(caudate_neurons_interneuron, subset = Condition == "XDP")
+Control_Interneuron_CaH= subset(caudate_neurons_interneuron, subset = Condition == "Control")
+
+XDP_Interneuron_Put= subset(putamen_neurons_interneuron, subset = Condition == "XDP")
+Control_Interneuron_Put= subset(putamen_neurons_interneuron, subset = Condition == "Control")
+
+XDP_SPN_CaH
+Control_SPN_CaH
+XDP_SPN_Put
+Control_SPN_Put
+XDP_Interneuron_CaH
+Control_Interneuron_CaH
+XDP_Interneuron_Put
+Control_Interneuron_Put
+```
+
+
+```{r}
+TAF1correlation = function(sobj, csv){
+sobj_counts = as.matrix(sobj@assays$RNA@counts)
+sobj_taf1 = FetchData(sobj, c("TAF1"))$TAF1
+
+gene_names = rownames(sobj_counts)
+correlations = numeric(length(gene_names))
+p_values = numeric(length(gene_names))
+
+
+for (i in seq_along(gene_names)) {
+  gene_expr = sobj_counts[i, ]
+  result = cor.test(gene_expr, sobj_taf1, method = "spearman")
+  correlations[i] = result$estimate
+  p_values[i] = result$p.value
+}
+
+sobj_corr_df = data.frame(
+  gene = gene_names,
+  spearman_correlation = correlations,
+  p_value = p_values
+)
+# Display the data frame
+print(sobj_corr_df)
+
+
+sobj_corr_df_filtered = na.omit(sobj_corr_df)
+rownames(sobj_corr_df_filtered) = sobj_corr_df_filtered$gene 
+sobj_avg_exp = rowMeans(sobj_counts)
+sobj_avg_exp = as.data.frame(sobj_avg_exp)
+sobj_avg_exp$gene = rownames(sobj_avg_exp)
+sobj_df = merge(sobj_corr_df_filtered, sobj_avg_exp, by ="gene")
+sobj_df <- sobj_df[sobj_df$gene != "TAF1",]
+print(sobj_df)
+rownames(sobj_df) = sobj_df$gene 
+
+
+write.csv(sobj_df, csv)
+}
+```
+
+
+```{r}
+# TAF1correlation(XDP_SPN_CaH, "presentation/XDP_SPN_CaH.csv")
+# TAF1correlation(Control_SPN_CaH, "presentation/Control_SPN_CaH.csv")
+# TAF1correlation(XDP_SPN_Put, "presentation/XDP_SPN_Put.csv")
+# TAF1correlation(Control_SPN_Put, "presentation/Control_SPN_Put.csv")
+# TAF1correlation(XDP_Interneuron_CaH, "presentation/XDP_Interneuron_CaH.csv")
+# TAF1correlation(Control_Interneuron_CaH, "presentation/Control_Interneuron_CaH.csv")
+# TAF1correlation(XDP_Interneuron_Put, "presentation/XDP_Interneuron_Put.csv")
+# TAF1correlation(Control_Interneuron_Put, "presentation/Control_Interneuron_Put.csv")
+```
+
+
+```{r}
+XDP_SPN_CaH = read.csv("presentation/XDP_SPN_CaH.csv")
+Control_SPN_CaH = read.csv("presentation/Control_SPN_CaH.csv")
+XDP_SPN_Put = read.csv("presentation/XDP_SPN_Put.csv")
+Control_SPN_Put= read.csv("presentation/Control_SPN_Put.csv")
+XDP_Interneuron_CaH= read.csv("presentation/XDP_Interneuron_CaH.csv")
+Control_Interneuron_CaH = read.csv("presentation/Control_Interneuron_CaH.csv")
+XDP_Interneuron_Put = read.csv("presentation/XDP_Interneuron_Put.csv")
+Control_Interneuron_Put=read.csv("presentation/Control_Interneuron_Put.csv")
+
+XDP_SPN_CaH$X = NULL
+Control_SPN_CaH$X = NULL
+XDP_SPN_Put$X = NULL
+Control_SPN_Put$X = NULL
+XDP_Interneuron_CaH$X = NULL
+Control_Interneuron_CaH$X = NULL
+XDP_Interneuron_Put$X = NULL
+Control_Interneuron_Put$X = NULL
+
+XDP_SPN_CaH$class = "XDP_SPN_CaH"
+Control_SPN_CaH$class= "Control_SPN_CaH"
+XDP_SPN_Put$class = "XDP_SPN_Put" 
+Control_SPN_Put$class= "Control_SPN_Put"
+XDP_Interneuron_CaH$class = "XDP_Non_SPN_CaH"
+Control_Interneuron_CaH$class= "Control_Non_SPN_CaH"
+XDP_Interneuron_Put$class = "XDP_Non_SPN_Put"
+Control_Interneuron_Put$class="Control_Non_SPN_Put"
+
+XDP_SPN_CaH
+Control_SPN_CaH
+XDP_SPN_Put
+Control_SPN_Put
+XDP_Interneuron_CaH
+Control_Interneuron_CaH
+XDP_Interneuron_Put
+Control_Interneuron_Put
+
+merged_XDP_CaH = rbind(XDP_SPN_CaH,XDP_Interneuron_CaH)
+merged_XDP_Put= rbind(XDP_SPN_Put,XDP_Interneuron_Put)
+merged_Control_CaH= rbind(Control_SPN_CaH,Control_Interneuron_CaH)
+merged_Control_Put= rbind(Control_SPN_Put,Control_Interneuron_Put)
+
+```
+
+```{r}
+plot_overlapping_density_histogram = function(
+    df, 
+    hist_col,
+    fill_col,
+    colors = c("blue", "red"),
+    alpha=0.5,
+    breaks=seq(0, 16, 1),
+    title= NULL,
+    xlab = NULL,
+    fig_filename = NULL
+
+){
+    # hist_col is the column you're making a histogram of (e.g. nUMI)
+    # fill_col is the column you're coloring by (e.g. cell_class)
+    # if fig_filename is not null, the plot will be saved to that file
+     
+    if (is.null(xlab)){
+        xlab = hist_col
+    }
+
+    if (is.null(title)){
+        title = paste0("Density Histogram of ", xlab, " by ", fill_col)
+    }
+
+
+    p = (
+        ggplot(df, aes_string(x=hist_col, fill=fill_col)) 
+        + geom_histogram(aes(y=..density..), alpha=alpha, position="identity", breaks=breaks)
+        + labs(title=title, x=xlab, y="Density")    
+        + theme(
+                plot.title = element_text(size=16),
+                axis.line = element_line(color = "black"),  # Add axis lines
+                axis.ticks = element_line(color = "black"),  # Add axis ticks
+                axis.text = element_text(size = 14),  # Increase tick label font size
+                axis.title = element_text(size = 15)  # Increase axis label font size
+            ) 
+        + scale_fill_manual(values=colors)   
+    )
+
+    if (!is.null(fig_filename)){
+        ggsave(fig_filename, p, width=8, height=6)
+    }
+
+    return(p)
+}
+```
+
+
+
+```{r}
+plot_overlapping_density_histogram(df = merged_XDP_CaH, 
+    hist_col = "spearman_correlation",
+    fill_col = "class",
+    colors = c("blue", "red"),
+    alpha=0.5,
+    breaks=seq(-0.3, 0.5, 0.01),
+    title= "XDP CaH",
+    xlab = "TAF1 Spearman Coefficient",
+    fig_filename = NULL)
+
+plot_overlapping_density_histogram(df = merged_XDP_Put, 
+    hist_col = "spearman_correlation",
+    fill_col = "class",
+    colors = c("blue", "red"),
+    alpha=0.5,
+    breaks=seq(-0.3, 0.5, 0.01),
+    title= "XDP Put",
+    xlab = "TAF1 Spearman Coefficient",
+    fig_filename = NULL)
+
+plot_overlapping_density_histogram(df = merged_Control_CaH, 
+    hist_col = "spearman_correlation",
+    fill_col = "class",
+    colors = c("blue", "red"),
+    alpha=0.5,
+    breaks=seq(-0.3, 0.5, 0.01),
+    title= "Control CaH",
+    xlab = "TAF1 Spearman Coefficient",
+    fig_filename = NULL)
+
+plot_overlapping_density_histogram(df = merged_Control_Put, 
+    hist_col = "spearman_correlation",
+    fill_col = "class",
+    colors = c("blue", "red"),
+    alpha=0.5,
+    breaks=seq(-0.3, 0.5, 0.01),
+    title= "Control Put",
+    xlab = "TAF1 Spearman Coefficient",
+    fig_filename = NULL)
+```
+```{r}
+merged_XDP_CaH1 = merge(XDP_SPN_CaH,XDP_Interneuron_CaH, by = "gene")
+head(merged_XDP_CaH1)
+```
+
+#ignore...looks correlated to me
+```{r}
+sobj_df = merged_XDP_CaH1
+title= "XDP SPN"
+
+ggplot(sobj_df, aes(x = spearman_correlation.x, y = spearman_correlation.y)) +
+  geom_point(aes(x = spearman_correlation.x, y = spearman_correlation.y), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title)  
+
+```
+
+#redo taf1 vs de genes for spns
+```{r}
+Caudate_All_SPNs_DE
+Putamen_All_SPNs_DE
+
+XDP_SPN_CaH
+XDP_SPN_Put
+```
+
+
+```{r}
+Caudate_All_SPNs_DE_TAF= merge(Caudate_All_SPNs_DE,XDP_SPN_CaH, by = "gene") 
+Putamen_All_SPNs_DE_TAF= merge(Putamen_All_SPNs_DE,XDP_SPN_Put, by = "gene") 
+Caudate_All_SPNs_DE_TAF = Caudate_All_SPNs_DE_TAF[Caudate_All_SPNs_DE_TAF$adj.P.Val < 0.05,]
+Caudate_All_SPNs_DE_TAF = Caudate_All_SPNs_DE_TAF[Caudate_All_SPNs_DE_TAF$p_value < 0.05,]
+Caudate_All_SPNs_DE_TAF
+Putamen_All_SPNs_DE_TAF = Putamen_All_SPNs_DE_TAF[Putamen_All_SPNs_DE_TAF$adj.P.Val < 0.05,]
+Putamen_All_SPNs_DE_TAF = Putamen_All_SPNs_DE_TAF[Putamen_All_SPNs_DE_TAF$p_value < 0.05,]
+Putamen_All_SPNs_DE_TAF
+
+write.csv(Caudate_All_SPNs_DE_TAF, "GSEA/de/SPN_de/Caudate_All_SPNs_DE_TAF.csv")
+write.csv(Putamen_All_SPNs_DE_TAF, "GSEA/de/SPN_de/Putamen_All_SPNs_DE_TAF.csv")
+```
+
+
+
+#change around the logfc and stuff
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/GSEA"
+DE_SUBDIR= "de/SPN_de"
+
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+
+
+#example
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "gsea")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+    kegg_2021_human = "GSEA/genesets/KEGG_2021_Human.txt",
+    go_process = "GSEA/genesets/GO_Biological_Process_2021.txt",
+    go_function = "GSEA/genesets/GO_Molecular_Function_2021.txt",
+    disgenet = "GSEA/genesets/DisGeNET.txt",
+    msigdb_hallmark = "GSEA/genesets/MSigDB_Hallmark_2020.txt",
+    #neural_activity = "GSEA/genesets/neural_activity_arranged.txt",
+    wikipathways = "GSEA/genesets/WikiPathways_2019_Human.txt",
+    #tf_perturbations = "GSEA/genesets/TF_Perturbations_Followed_by_Expression.txt",
+    jensen_diseases = "GSEA/genesets/Jensen_DISEASES.txt"
+    #X_chromsome_positional= "GSEA/genesets/allchrome.txt",  
+    #Xlinked_recessive = "GSEA/genesets/Xlinked_RESS.txt",
+    #Xlinked_dominant = "GSEA/genesets/Xlinked_DOM.txt",
+    #similar_diseases = "GSEA/genesets/similardiseases.txt"
+)
+
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+    #if (! grepl("trend", de_slogan)){next}
+
+    #if (strsplit(de_slogan, "__")[[1]][[2]] != "opc"){next}
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$gene)
+    anno=anno[match(dataDE$gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="spearman_correlation", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_taf1correlation.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+```{r}
+Cahdetaf = read.delim("GSEA/de/SPN_de/gsea/Caudate_All_SPNs_DE_TAF.csv__gsea_taf1correlation.tsv", header=TRUE)
+Putdetaf = read.delim("GSEA/de/SPN_de/gsea/Putamen_All_SPNs_DE_TAF.csv__gsea_taf1correlation.tsv", header=TRUE)
+```
+
+
+#gsea with leading edge annotations
+```{r}
+plot_gsea_result_hdot = function(
+    df,
+    title=NULL,
+    xlim=c(-4, 4),
+    fig_filename = NULL,
+    leading_edge_n=10,
+    leading_edge_linebreak_n=5,
+    top_n=10) {
+    #takes in a df with the following columns: NES, pathway, size, leading_edge
+    # along with a title, xlim, fig_filename (nullable)
+    # leading_edge_n is the max number of leading_edge genes to be annotated
+    # leading_edge_linebreak_n is the number of leading_edge genes to be displayed before a line break
+    # top_n is the number of pathways to be displayed on the plot for each direction
+    # (i.e. max rows is 2*top_n for up- and down-regulated genesets)
+    # the df is filtered to the top_n pathways by NES above 0 and below 0
+    # Y axis: pathway. every 30 characters, replace the next space with a \n and then start over
+    # X axis: NES, appearing as an open circle. If NES > 0, this circle is blue, < 0 red. The size of the circle relates to the Gene Set Size.
+    # The plot is annotated on the right with the leading_edge_top_n.
+    # first, turn the leading edge into something we can read by taking the first `leading_edge_n` elemnets
+    # separating them with `, ` and finally adding line breaks
+    df_pos = df[df$NES > 0,]
+    df_neg = df[df$NES < 0,]
+    df_pos = df_pos[order(df_pos$NES, decreasing = TRUE),]
+    df_neg = df_neg[order(df_neg$NES, decreasing = FALSE),]
+    df = rbind(df_pos[1:top_n,], df_neg[1:top_n,])
+    df = df[order(df$NES),]
+    df = df[!is.na(df$NES),]
+    # Function to insert line breaks every `n` entries
+    insert_line_breaks = function(text, n = leading_edge_linebreak_n) {
+        parts = strsplit(text, ",\\s*")[[1]]
+        if (length(parts) <= n) {
+            return(text)
+        }
+        new_text = ""
+        for (i in seq_along(parts)) {
+            new_text = paste0(new_text, parts[i])
+            if (i < length(parts)) {
+                new_text = paste0(new_text, ",")
+            }
+            if (i %% n == 0 && i != length(parts)) {
+                new_text = paste0(new_text, "\n")
+            } else if (i != length(parts)) {
+                new_text = paste0(new_text, " ")
+            }
+        }
+        return(new_text)
+    }
+    df$leading_edge_top_n = sapply(df$leadingEdge, function(x){
+        edge_list = strsplit(x, ",")[[1]]
+        len = length(edge_list)
+        if (len > leading_edge_n){
+            len=leading_edge_n
+        }
+        return(insert_line_breaks(paste(edge_list[1:len], collapse=", ")))
+    })
+    if (is.null(title)){
+        title = "GSEA NES by Pathway"
+    }
+    # Format the pathway names to include newline every 30 characters
+    df$pathway = gsub("(.{30}\\s)", "\\1\n", df$pathway, perl = TRUE)
+    df$NES_direction = ifelse(df$NES > 0, "NES > 0", "NES < 0")
+    # Create the plot
+    p = ggplot(df, aes(x = NES, y = reorder(pathway, NES))) +
+        geom_point(aes(size = size, color = NES_direction), shape = 1) +
+        scale_color_manual(name = "NES Direction", values = c("NES > 0" = "blue", "NES < 0" = "red")) +
+        scale_size_continuous(name = "Size") +
+        geom_vline(xintercept = 0, linetype = "dotted", color = "black") +
+        labs(title = title, x = "NES", y = "Pathway") +
+        xlim(xlim) +
+        theme(
+            panel.grid.major = element_line(color = "gray", linetype = "dotted"),
+            panel.grid.minor = element_blank(),
+            legend.position = "left",
+            plot.title = element_text(size = 14),
+            plot.caption = element_text(hjust = 0.1),
+            plot.title.position = "plot",
+            axis.line = element_line(color = "black"),
+            axis.ticks = element_line(color = "black"),
+            axis.text = element_text(size = 13),
+            axis.title = element_text(size = 13),
+            axis.text.y.right = element_text(hjust = 1)
+        )
+        # Create a secondary y-axis with leading_edge_top_n labels
+    p = p + geom_text(aes(y = reorder(pathway, NES), x = Inf, label = leading_edge_top_n),
+                      hjust = -0.1, size = 4) +
+        coord_cartesian(clip = 'off') +
+        theme(
+            plot.margin = margin(5.5, 340, 5.5, 5.5),  # Increase right margin to make space for secondary labels
+            axis.text.y.right = element_text(hjust = 1)
+        )
+    # Save the plot to file if a filename is provided
+    if (!is.null(fig_filename)) {
+        ggsave(fig_filename, plot = p, width = 5, height = 2*nrow(df)/3)
+    }
+    # Print the plot to the R console
+    print(p)
+}
+```
+
+
+
+```{r}
+plot_gsea_result_hdot(Cahdetaf, title = "Caudate SPN", leading_edge_n=5)
+plot_gsea_result_hdot(Putdetaf, title = "Putamen SPN", leading_edge_n=5)
+
+```
+
+
+
+
+
+
+
+
+```{r}
+Caudate_All_SPNs_DE
+Putamen_All_SPNs_DE
+merged_All_SPNs_DE = merge(Caudate_All_SPNs_DE,Putamen_All_SPNs_DE, by = "gene")
+merged_All_SPNs_DE
+```
+
+```{r}
+
+regression <- lm(logFC.y ~ logFC.x, data=merged_All_SPNs_DE)
+
+slope <- coef(regression)[2]
+
+ggplot(merged_All_SPNs_DE, aes(x=logFC.x, y=logFC.y)) + geom_point(size=1, alpha = 0.3) + geom_abline(intercept=0, slope=1, linetype ="dashed", color ="gray", labs(x="CaH LogFC", y= "Put LogFC")) +  geom_smooth(method = "lm", se = FALSE, color = "red") + 
+  annotate("text", x = max(merged_All_SPNs_DE$logFC.x) - 1, y = max(merged_All_SPNs_DE$logFC.y) - 1, 
+           label = paste0("Slope = ", round(slope, 2)), color = "red") + xlab("Caudate SPN logFC") + ylab("Putamen SPN logFC") 
+```
+
+#PVALUE sigs
+```{r}
+merged_All_SPNs_DE_filter = merged_All_SPNs_DE[merged_All_SPNs_DE$adj.P.Val.x < 0.05,]
+merged_All_SPNs_DE_filter
+merged_All_SPNs_DE_filter= merged_All_SPNs_DE_filter[merged_All_SPNs_DE_filter$adj.P.Val.y < 0.05,]
+merged_All_SPNs_DE_filter
+```
+
+
+```{r}
+regression <- lm(logFC.y ~ logFC.x, data=merged_All_SPNs_DE_filter)
+
+slope <- coef(regression)[2]
+
+ggplot(merged_All_SPNs_DE_filter, aes(x=logFC.x, y=logFC.y)) + geom_point(size=1, alpha = 0.3) + geom_abline(intercept=0, slope=1, linetype ="dashed", color ="gray", labs(x="CaH LogFC", y= "Put LogFC")) +  geom_smooth(method = "lm", se = FALSE, color = "red") + 
+  annotate("text", x = max(merged_All_SPNs_DE_filter$logFC.x) - 1, y = max(merged_All_SPNs_DE_filter$logFC.y) - 1, 
+           label = paste0("Slope = ", round(slope, 2)), color = "red") + xlab("Caudate SPN logFC") + ylab("Putamen SPN logFC") 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

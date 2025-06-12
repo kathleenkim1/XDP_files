@@ -1,0 +1,487 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+caudate_neuron= qread("Subclustering/caudate_neurons_integrated_subcluster.qs")
+putamen_neuron= qread("Subclustering/putamen_neurons_integrated_subcluster.qs")
+```
+
+```{r}
+caudate_neuron_final = subset(caudate_neuron, subset = cell_class != "spn_delete")
+caudate_neuron_final = subset(caudate_neuron_final, subset = cell_class != "interneuron_6delete")
+```
+
+```{r}
+caudate_neuron_final@meta.data
+unique(caudate_neuron_final$cell_class)
+```
+
+```{r}
+caudate_neuron_final@meta.data$general_class = caudate_neuron_final@meta.data$cell_class
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_matrix_1"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN_patch_2"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_2"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "eSPN"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_3"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_1"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN_patch_1"] = "SPN"
+
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_2"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_5"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_6"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_3"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_1"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_4"] = "interneuron"
+
+caudate_neuron_final@meta.data
+
+```
+
+caudate_astrocyte = subset(caudate_sobj, subset = cell_class == "astro")
+#subset for SPN, interneurons, XDP vs Control
+```{r}
+XDP_SPN = subset(caudate_neuron_final, subset = general_class == "SPN" & Condition == "XDP")
+Control_SPN= subset(caudate_neuron_final, subset = general_class == "SPN" & Condition == "Control")
+
+XDP_Interneuron= subset(caudate_neuron_final, subset = general_class == "interneuron" & Condition == "XDP")
+Control_Interneuron= subset(caudate_neuron_final, subset = general_class == "interneuron" & Condition == "Control")
+
+XDP_SPN@meta.data
+Control_SPN@meta.data
+XDP_Interneuron@meta.data
+Control_Interneuron@meta.data
+
+XDP_SPN
+Control_SPN
+XDP_Interneuron
+Control_Interneuron
+```
+
+```{r}
+DimPlot(XDP_SPN, group.by = "Condition")
+DimPlot(XDP_SPN, group.by = "cell_class")
+FeaturePlot(XDP_SPN, features = c("TAF1"))
+
+DimPlot(Control_SPN, group.by = "Condition")
+DimPlot(Control_SPN, group.by = "cell_class")
+FeaturePlot(Control_SPN, features = c("TAF1"))
+
+DimPlot(XDP_Interneuron, group.by = "Condition")
+DimPlot(XDP_Interneuron, group.by = "cell_class")
+FeaturePlot(XDP_Interneuron, features = c("TAF1"))
+
+DimPlot(Control_Interneuron, group.by = "Condition")
+DimPlot(Control_Interneuron, group.by = "cell_class")
+FeaturePlot(Control_Interneuron, features = c("TAF1"))
+```
+
+
+```{r}
+Taf1corr = function(sobj, title){
+#Get gene expression data for all + taf1
+sobj_counts = as.matrix(sobj@assays$RNA@counts)
+sobj_taf1 =  FetchData(sobj, c("TAF1"))$TAF1
+#correlation coefficient for taf1 
+sobj_corr = as.data.frame(cor(t(sobj_counts), sobj_taf1, method = "spearman"))
+#rename rownames to Gene
+sobj_corr$Gene = rownames(sobj_corr)
+#calculate average expression and make into dataframe
+sobj_avg_exp = rowMeans(sobj_counts)
+sobj_avg_exp = as.data.frame(sobj_avg_exp)
+sobj_avg_exp$Gene = rownames(sobj_avg_exp)
+#new dataframe for all the data
+
+sobj_corr$Taf1 = sobj_corr$V1
+sobj_corr$V1 = NULL
+
+sobj_df = merge(sobj_corr, sobj_avg_exp, by ="Gene")
+sobj_df <- sobj_df[sobj_df$Gene != "TAF1",]
+print(sobj_df)
+# Alternative approach using base R
+top_5 <- sobj_df[order(sobj_df$Taf1, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = Taf1, y = sobj_avg_exp)) +
+  geom_point() +
+  geom_point(aes(x = Taf1, y = sobj_avg_exp), color = "red") + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = Gene), vjust = -1, color = "black")
+}
+```
+
+```{r}
+Taf1corr(XDP_SPN, "XDP SPN")
+Taf1corr(Control_SPN, "Control SPN")
+Taf1corr(XDP_Interneuron, "XDP interneuron")
+Taf1corr(Control_Interneuron, "Control interneuron")
+```
+
+
+```{r}
+Taf1corrdf = function(sobj, csv){
+
+sobj_counts = as.matrix(sobj@assays$RNA@counts)
+sobj_taf1 =  FetchData(sobj, c("TAF1"))$TAF1
+#correlation coefficient for taf1 
+sobj_corr = as.data.frame(cor(t(sobj_counts), sobj_taf1, method = "spearman"))
+#rename rownames to Gene
+sobj_corr$Gene = rownames(sobj_corr)
+#calculate average expression and make into dataframe
+sobj_avg_exp = rowMeans(sobj_counts)
+sobj_avg_exp = as.data.frame(sobj_avg_exp)
+sobj_avg_exp$Gene = rownames(sobj_avg_exp)
+#new dataframe for all the data
+
+sobj_corr$Taf1 = sobj_corr$V1
+sobj_corr$V1 = NULL
+
+sobj_df = merge(sobj_corr, sobj_avg_exp, by ="Gene")
+sobj_df <- sobj_df[sobj_df$Gene != "TAF1",]
+print(sobj_df)
+write.csv(sobj_df, csv)
+}
+
+```
+
+```{r}
+Taf1corrdf(XDP_SPN, "GSEA/de/caudate_neurons/XDP_SPN_df.csv")
+Taf1corrdf(Control_SPN, "GSEA/de/caudate_neurons/Control_SPN_df.csv")
+Taf1corrdf(XDP_Interneuron, "GSEA/de/caudate_neurons/XDP_interneuron_df.csv")
+Taf1corrdf(Control_Interneuron, "GSEA/de/caudate_neurons/Control_interneuron_df.csv")
+```
+
+```{r}
+XDP_SPN_df = read.csv("GSEA/de/caudate_neurons/XDP_SPN_df.csv")
+Control_SPN_df = read.csv("GSEA/de/caudate_neurons/Control_SPN_df.csv")
+XDP_interneuron_df = read.csv("GSEA/de/caudate_neurons/XDP_interneuron_df.csv")
+Control_interneuron_df = read.csv("GSEA/de/caudate_neurons/Control_interneuron_df.csv")
+
+XDP_SPN_df$X = NULL
+Control_SPN_df$X = NULL
+XDP_interneuron_df$X = NULL
+Control_interneuron_df$X = NULL
+
+XDP_SPN_df
+Control_SPN_df
+XDP_interneuron_df
+Control_interneuron_df
+```
+
+#change around the logfc and stuff
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/GSEA"
+DE_SUBDIR= "de/caudate_neurons"
+
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+
+
+#example
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "final_gsea")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+    kegg_2021_human = "GSEA/genesets/KEGG_2021_Human.txt",
+    go_process = "GSEA/genesets/GO_Biological_Process_2021.txt",
+    go_function = "GSEA/genesets/GO_Molecular_Function_2021.txt",
+    disgenet = "GSEA/genesets/DisGeNET.txt",
+    msigdb_hallmark = "GSEA/genesets/MSigDB_Hallmark_2020.txt",
+    neural_activity = "GSEA/genesets/neural_activity_arranged.txt",
+    wikipathways = "GSEA/genesets/WikiPathways_2019_Human.txt",
+    #tf_perturbations = "GSEA/genesets/TF_Perturbations_Followed_by_Expression.txt",
+    jensen_diseases = "GSEA/genesets/Jensen_DISEASES.txt",
+    X_chromsome_positional= "GSEA/genesets/allchrome.txt",  
+    Xlinked_recessive = "GSEA/genesets/Xlinked_RESS.txt",
+    Xlinked_dominant = "GSEA/genesets/Xlinked_DOM.txt",
+    similar_diseases = "GSEA/genesets/similardiseases.txt"
+)
+
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+    #if (! grepl("trend", de_slogan)){next}
+
+    #if (strsplit(de_slogan, "__")[[1]][[2]] != "opc"){next}
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$Gene)
+    anno=anno[match(dataDE$Gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="Taf1", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_taf1correlation.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+
+```{r}
+caudate_neurons_types = list("XDP_SPN_df", "Control_SPN_df", "XDP_interneuron_df", "Control_interneuron_df")
+caudate_neurons_gsea_list = list()
+
+# Loop through each cell type and read the corresponding file into a dataframe
+for (cell_type in caudate_neurons_types) {
+  # Construct the file name
+  gsea_file_name <- paste("~/GSEA/de/caudate_neurons/final_gsea/", cell_type, ".csv__gsea_taf1correlation.tsv", sep = "")
+  
+  # Print the file name to verify the path
+  print(paste("Trying to read file:", gsea_file_name))
+  
+  # Check if the file exists
+  if (file.exists(gsea_file_name)) {
+    # Read the file into a dataframe
+    gsea_file <- read.delim(gsea_file_name, header = TRUE)
+    
+    # Store the dataframe in the list with the cell type as the name
+    caudate_neurons_gsea_list[[cell_type]] <- gsea_file
+  } else {
+    print(paste("File does not exist:", gsea_file_name))
+  }
+}
+
+
+```
+
+```{r}
+caudate_neurons_gsea_list
+```
+
+
+```{r}
+XDP_SPN_gsea_df = caudate_neurons_gsea_list[["XDP_SPN_df"]]
+Control_SPN_gsea_df = caudate_neurons_gsea_list[["Control_SPN_df"]]
+XDP_interneuron_gsea_df = caudate_neurons_gsea_list[["XDP_interneuron_df"]]
+Control_interneuron_gsea_df = caudate_neurons_gsea_list[["Control_interneuron_df"]]
+
+```
+
+
+```{r}
+Dot_plot = function(cell_type_df, title){
+
+top10_gsea_pos <- cell_type_df[order(cell_type_df$NES, decreasing =TRUE), ][1:10, ]
+top10_gsea_pos
+
+top10_gsea_neg <- cell_type_df[order(cell_type_df$NES), ][1:10, ]
+top10_gsea_neg
+
+top20_gsea <- rbind(top10_gsea_pos, top10_gsea_neg)
+top20_gsea
+
+ggplot(top20_gsea, aes(x = reorder(pathway, NES), y = NES, color = NES > 0)) +
+    geom_point(aes(size = padj), shape = 21, stroke = 1.5) +
+    coord_flip() +  # Flip coordinates for better readability
+    scale_color_manual(values = c("red", "blue")) +  # Custom colors for positive and negative NES
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(size = 14),  # X-axis text size
+        axis.text.y = element_text(size = 14),  # Y-axis text size
+        axis.title.x = element_text(size = 16),  # X-axis title size
+        axis.title.y = element_text(size = 16),  # Y-axis title size
+        plot.title = element_text(size = 18, face = "bold"),  # Plot title size and bold
+        legend.title = element_text(size = 16),  # Legend title size
+        legend.text = element_text(size = 14)  # Legend text size
+    ) +
+    labs(title = title ,
+         x = "Gene Set",
+         y = "NES",
+         size = "adjusted p-value",
+         color = "NES > 0")
+}
+```
+
+#without taf1
+```{r}
+Dot_plot(XDP_SPN_gsea_df, "XDP SPNs: Top 10 Gene Sets by NES +/-")
+Dot_plot(Control_SPN_gsea_df, "Control SPNs: Top 10 Gene Sets by NES +/-")
+Dot_plot(XDP_interneuron_gsea_df, "XDP Interneurons: Top 10 Gene Sets by NES +/-")
+Dot_plot(Control_interneuron_gsea_df, "Control Interneurons: Top 10 Gene Sets by NES +/-")
+```
+
+
+
+
+```{r}
+# access all genes
+caudate_neuron_counts = caudate_neuron@assays$RNA@counts
+dim(caudate_neuron_counts)
+
+head(caudate_neuron_counts)
+
+caudate_neuron_taf1 = FetchData(caudate_neuron, c("TAF1"))$TAF1
+caudate_neuron_taf1
+
+hist(caudate_neuron_taf1, breaks=50)
+
+head(caudate_neuron_taf1)
+```
+
+
+```{r}
+FeaturePlot(caudate_neuron, features = c("TAF1"))
+#with neurons, do 
+#correlate genes in diseases spiny neurons case vs control, interneuron 
+#correlation with taf1 against average expression
+#look for if there is a cell death program that results from this repeat expansion 
+#correlate genes with taf1 and do gsea by the rank correlation 
+#
+```
+

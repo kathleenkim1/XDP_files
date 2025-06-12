@@ -1,0 +1,716 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+#remove unassigned + doublets first
+```{r}
+CaH_rxn1_cellbender
+filtered_CaH_rxn1_cellbender_temp <- subset(CaH_rxn1_cellbender, subset = pct_mito < 10 & pct_intronic >= 0.25)
+filtered_CaH_rxn1_cellbender_temp
+```
+
+
+```{r}
+filtered_CaH_rxn1_cellbender_temp = subset(filtered_CaH_rxn1_cellbender_temp, subset = nUmi > 500)
+filtered_CaH_rxn1_cellbender_temp
+
+filtered_CaH_rxn1_cellbender_temp = subset(filtered_CaH_rxn1_cellbender_temp, subset = donor_id != "unassigned" &  donor_id != "doublet")
+filtered_CaH_rxn1_cellbender_temp
+```
+
+```{r}
+hvgs = getSeuratVarFeatureIntersectByCol(filtered_CaH_rxn1_cellbender_temp, subset_col="donor_id", original_nfeatures=2500)
+
+n_dims_use=20
+
+filtered_CaH_rxn1_cellbender_temp <- filtered_CaH_rxn1_cellbender_temp %>%
+   NormalizeData() %>%
+   { hvgs <- getSeuratVarFeatureIntersectByCol(., subset_col="donor_id", original_nfeatures=2500); . } %>%
+   ScaleData(features=hvgs, split.by="donor_id") %>%
+   { VariableFeatures(.) <- hvgs; . } %>%  # Ensure HVGs are stored
+   RunPCA(features=hvgs, npcs=n_dims_use) %>%
+   FindNeighbors(dims = 1:n_dims_use) %>%
+   FindClusters(resolution = 0.2) %>%
+   FindClusters(resolution = 0.3) %>%
+   FindClusters(resolution = 0.4) %>%
+   FindClusters(resolution = 0.5) %>%
+   FindClusters(resolution = 0.6) %>%
+   FindClusters(resolution = 0.7) %>%
+   FindClusters(resolution = 0.8) %>%
+   FindClusters(resolution = 0.9) %>%
+   FindClusters(resolution = 1) %>%
+   RunUMAP(dims = 1:n_dims_use)
+
+# Check if HVGs are retained:
+print(length(VariableFeatures(filtered_CaH_rxn1_cellbender_temp)))  # Should be ~2200+
+
+filtered_CaH_rxn1_cellbender_temp
+```
+
+```{r}
+filtered_CaH_rxn1_cellbender_temp@meta.data$GT = "Singlet"
+filtered_CaH_rxn1_cellbender_temp$GT[filtered_CaH_rxn1_cellbender_temp$donor_id == "doublet"] = "Doublet"
+
+
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "donor_id") 
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "GT") 
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "RNA_snn_res.0.8", label=T) 
+```
+
+```{r}
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("AQP4", "GINS3", "GFAP"), raster = F)
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("OLIG1", "MOG", "MOBP"), raster = F)
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(filtered_CaH_rxn1_cellbender_temp, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+```
+
+```{r}
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN", "GAPDH","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = filtered_CaH_rxn1_cellbender_temp, features = marker_genes, group.by = "RNA_snn_res.0.3")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+```{r}
+Idents(filtered_CaH_rxn1_cellbender_temp) = filtered_CaH_rxn1_cellbender_temp$RNA_snn_res.0.3
+
+classes = c("oligo", "astrocyte", "oligo", "neuron", "oligo", "microglia", "oligo", "astrocyte", "opc", "endothelial", "ependymal", "neuron", "oligo", "neuron", "neuron", "immune")
+
+
+filtered_CaH_rxn1_cellbender_temp= assignCellClasses(filtered_CaH_rxn1_cellbender_temp, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+
+DimPlot(filtered_CaH_rxn1_cellbender_temp, group.by = "cell_class" ,label = T, raster = FALSE)
+```
+
+```{r}
+DF_CaH_rxn1_temp = filtered_CaH_rxn1_cellbender_temp
+DF_CaH_rxn1_temp
+DF_CaH_rxn1_temp@meta.data
+```
+
+```{r}
+# Try running paramSweep() after explicitly setting HVGs
+#Redoing findvariable...doesn't seem right
+DF_CaH_rxn1_temp <- FindVariableFeatures(DF_CaH_rxn1_temp, selection.method = "vst", nfeatures = 2000)
+sweep.res.list_CaH_rxn1 <- paramSweep(DF_CaH_rxn1_temp, PCs = 1:10, sct = FALSE)
+```
+
+
+```{r}
+## pK Identification (no ground-truth) ---------------------------------------------------------------------------------------
+sweep.stats_CaH_rxn1 <- summarizeSweep(sweep.res.list_CaH_rxn1, GT = FALSE)
+bcmvn_CaH_rxn1 <- find.pK(sweep.stats_CaH_rxn1)
+bcmvn_CaH_rxn1
+```
+
+
+```{r}
+## pK Identification (ground-truth) ------------------------------------------------------------------------------------------
+sweep.res.list_CaH_rxn1 <- paramSweep(DF_CaH_rxn1_temp, PCs = 1:10, sct = FALSE)
+
+```
+
+
+```{r}
+gt.calls <- DF_CaH_rxn1_temp@meta.data[rownames(sweep.res.list_CaH_rxn1[[1]]), "GT"]   ## GT is a vector containing "Singlet" and "Doublet" calls recorded using sample multiplexing classification and/or in silico geneotyping results
+```
+
+
+```{r}
+sweep.stats_CaH_rxn1 <- summarizeSweep(sweep.res.list_CaH_rxn1, GT = TRUE, GT.calls = gt.calls)
+```
+
+
+```{r}
+bcmvn_CaH_rxn1 <- find.pK(sweep.stats_CaH_rxn1)
+bcmvn_CaH_rxn1
+```
+
+
+#Allegedly 8% per 10K recovered cells (17K loading)
+```{r}
+## Homotypic Doublet Proportion Estimate -------------------------------------------------------------------------------------
+homotypic.prop <- modelHomotypic(DF_CaH_rxn1_temp@meta.data$cell_class)           ## ex: annotations <- 
+nExp_poi <- round(0.035*nrow(DF_CaH_rxn1_temp@meta.data))  ## Assuming 7.5% doublet formation rate - tailor for your dataset
+nExp_poi.adj <- round(nExp_poi*(1-homotypic.prop))
+```
+
+```{r}
+DF_CaH_rxn1_temp@meta.data
+```
+
+
+```{r}
+DF_CaH_rxn1_temp <- doubletFinder(DF_CaH_rxn1_temp, 
+                             PCs = 1:10, 
+                             pN = 0.25, 
+                             pK = 0.04, #0.04 
+                             nExp = nExp_poi.adj, 
+                             reuse.pANN = FALSE, 
+                             sct = FALSE)
+DF_CaH_rxn1_temp@meta.data
+```
+
+
+
+```{r}
+table(DF_CaH_rxn1_temp$GT)
+table(DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220)
+```
+
+```{r}
+# Assuming DoubletFinder has already been run and results are stored in the metadata of seu_kidney:
+# - "DF.classifications_0.25_0.09_774" stores "Singlet" or "Doublet"
+# - "pANN_0.25_0.09_774" stores the pANN scores for each cell
+
+# First, create a new classification column that includes low-confidence and high-confidence doublets
+DF_CaH_rxn1_temp$doublet_confidence <- ifelse(
+  DF_CaH_rxn1_temp@meta.data$DF.classifications_0.25_0.04_220 == "Doublet" & 
+    DF_CaH_rxn1_temp@meta.data$pANN_0.25_0.04_220 < 0.5, "Low Confidence Doublet", 
+  ifelse(
+    DF_CaH_rxn1_temp@meta.data$DF.classifications_0.25_0.04_220 == "Doublet" & 
+      DF_CaH_rxn1_temp@meta.data$pANN_0.25_0.04_220 >= 0.5, "High Confidence Doublet", 
+    "Singlet"
+  )
+)
+
+# Now plot the cells, coloring by the doublet classification
+library(Seurat)
+DimPlot(DF_CaH_rxn1_temp, group.by = "doublet_confidence", 
+        cols = c("Singlet" = "lightgrey", "Low Confidence Doublet" = "orange", "High Confidence Doublet" = "red"))
+
+```
+
+```{r}
+library(caret)  # For confusionMatrix function
+
+# Extract classifications
+true_labels <- DF_CaH_rxn1_temp@meta.data$GT  # Ground truth labels ("Singlet" / "Doublet")
+pred_labels <- DF_CaH_rxn1_temp@meta.data$DF.classifications_0.25_0.04_220  # DoubletFinder output
+
+# Ensure factors have the same levels
+true_labels <- factor(true_labels, levels = c("Singlet", "Doublet"))
+pred_labels <- factor(pred_labels, levels = c("Singlet", "Doublet"))
+
+# Generate confusion matrix
+conf_matrix <- confusionMatrix(pred_labels, true_labels)
+print(conf_matrix)
+
+```
+
+
+
+```{r}
+library(caret)
+library(ggplot2)
+library(reshape2)  # For data manipulation
+
+# Extract classifications
+true_labels <- DF_CaH_rxn1_temp@meta.data$GT  # Ground truth labels
+pred_labels <- DF_CaH_rxn1_temp@meta.data$DF.classifications_0.25_0.04_220  # DoubletFinder results
+
+# Ensure factors have the same levels
+true_labels <- factor(true_labels, levels = c("Singlet", "Doublet"))
+pred_labels <- factor(pred_labels, levels = c("Singlet", "Doublet"))
+
+# Compute confusion matrix
+conf_matrix <- table(Predicted = pred_labels, True = true_labels)
+
+# Convert to long format for ggplot2
+conf_df <- as.data.frame(as.table(conf_matrix))
+colnames(conf_df) <- c("Predicted", "True", "Freq")
+
+ggplot(conf_df, aes(x = True, y = Predicted, fill = Freq)) +
+    geom_tile() +
+    geom_text(aes(label = Freq), color = "white", size = 6) +  # Add text labels
+    scale_fill_gradient(low = "lightblue", high = "darkblue") +  # Customize colors
+    theme_minimal() +
+    labs(title = "Doublet rate 3.5%", x = "True Label", y = "Predicted Label") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+filtered_CaH_rxn1_cellbender_temp@meta.data
+
+CaH_rxn1_cleaned_KK@meta.data
+```
+
+```{r}
+KK_doublets = setdiff(filtered_CaH_rxn1_cellbender_temp@meta.data$cell, CaH_rxn1_cleaned_KK@meta.data$cell)
+head(KK_doublets)
+length(KK_doublets)
+```
+
+
+```{r}
+filtered_CaH_rxn1_cellbender_temp@meta.data$KK_doublet = "Singlet" 
+filtered_CaH_rxn1_cellbender_temp$KK_doublet[filtered_CaH_rxn1_cellbender_temp$cell %in% KK_doublets] = "KK_doublet"
+filtered_CaH_rxn1_cellbender_temp@meta.data
+table(filtered_CaH_rxn1_cellbender_temp$KK_doublet)
+```
+
+```{r}
+filtered_CaH_rxn1_cellbender_temp@meta.data
+
+DF_CaH_rxn1_temp
+```
+
+```{r}
+DF_CaH_rxn1_temp@meta.data
+
+DF_CaH_rxn1_temp@meta.data$KK_doublet = "Singlet" 
+DF_CaH_rxn1_temp$KK_doublet[DF_CaH_rxn1_temp$cell %in% KK_doublets] = "Doublet"
+DF_CaH_rxn1_temp@meta.data
+table(DF_CaH_rxn1_temp$KK_doublet)
+
+DF_CaH_rxn1_temp@meta.data$final_doublets = "Singlet" 
+DF_CaH_rxn1_temp$final_doublets[DF_CaH_rxn1_temp$cell %in% KK_doublets] = "Doublet"
+DF_CaH_rxn1_temp$final_doublets[DF_CaH_rxn1_temp$GT == "Doublet"] = "Doublet"
+DF_CaH_rxn1_temp@meta.data
+table(DF_CaH_rxn1_temp$final_doublets)
+
+```
+
+```{r}
+table(DF_CaH_rxn1_temp$GT)
+table(DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220)
+table(DF_CaH_rxn1_temp$final_doublets)
+```
+
+```{r}
+# Assuming DoubletFinder has already been run and results are stored in the metadata of seu_kidney:
+# - "DF.classifications_0.25_0.09_774" stores "Singlet" or "Doublet"
+# - "pANN_0.25_0.09_774" stores the pANN scores for each cell
+
+# First, create a new classification column that includes low-confidence and high-confidence doublets
+DF_CaH_rxn1_temp$doublet_confidence <- ifelse(
+  DF_CaH_rxn1_temp@meta.data$DF.classifications_0.25_0.04_220 == "Doublet" & 
+    DF_CaH_rxn1_temp@meta.data$pANN_0.25_0.04_220 < 0.5, "Low Confidence Doublet", 
+  ifelse(
+    DF_CaH_rxn1_temp@meta.data$DF.classifications_0.25_0.04_220 == "Doublet" & 
+      DF_CaH_rxn1_temp@meta.data$pANN_0.25_0.04_220 >= 0.5, "High Confidence Doublet", 
+    "Singlet"
+  )
+)
+
+# Now plot the cells, coloring by the doublet classification
+library(Seurat)
+DimPlot(DF_CaH_rxn1_temp, group.by = "doublet_confidence", 
+        cols = c("Singlet" = "lightgrey", "Low Confidence Doublet" = "orange", "High Confidence Doublet" = "red"))
+
+```
+
+
+```{r}
+library(caret)
+library(ggplot2)
+library(reshape2)  # For data manipulation
+
+# Extract classifications
+true_labels <- DF_CaH_rxn1_temp@meta.data$KK_doublet  # Ground truth labels
+pred_labels <- DF_CaH_rxn1_temp@meta.data$DF.classifications_0.25_0.04_220  # DoubletFinder results
+
+# Ensure factors have the same levels
+true_labels <- factor(true_labels, levels = c("Singlet", "Doublet"))
+pred_labels <- factor(pred_labels, levels = c("Singlet", "Doublet"))
+
+# Compute confusion matrix
+conf_matrix <- table(Predicted = pred_labels, True = true_labels)
+
+# Convert to long format for ggplot2
+conf_df <- as.data.frame(as.table(conf_matrix))
+colnames(conf_df) <- c("Predicted", "True", "Freq")
+
+ggplot(conf_df, aes(x = True, y = Predicted, fill = Freq)) +
+    geom_tile() +
+    geom_text(aes(label = Freq), color = "white", size = 6) +  # Add text labels
+    scale_fill_gradient(low = "lightblue", high = "darkblue") +  # Customize colors
+    theme_minimal() +
+    labs(title = "KK Doublets vs DoubletFinder (3.5% doublet rate)", x = "True Label", y = "Predicted Label") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+DF_CaH_rxn1_temp@meta.data
+```
+
+
+
+```{r}
+true_labels <- DF_CaH_rxn1_temp@meta.data$final_doublets
+
+# Calculate ROC AUC for DoubletFinder results
+roc_curve <- roc(true_labels, DF_CaH_rxn1_temp@meta.data$pANN_0.25_0.04_220)
+auc(roc_curve)
+
+# Confusion Matrix
+table(true_labels, DF_CaH_rxn1_temp@meta.data$DF.classifications_0.25_0.04_220)
+```
+
+
+```{r}
+df <- DF_CaH_rxn1_temp@meta.data %>%
+  select(pANN_0.25_0.04_220, final_doublets) %>%  # Replace 'pANN_col' with the actual column name in metadata
+  mutate(
+    KK_binary = ifelse(final_doublets == "Doublet", 1, 0)  # Convert Vireo ground truth to 1 (doublet) / 0 (singlet)
+  )
+
+# Compute ROC Curve using pANN scores
+roc_pANN <- roc(df$KK_binary, df$pANN_0.25_0.04_220)  # pANN_col should be the column with pANN scores
+
+# Print AUC value
+auc_value <- auc(roc_pANN)
+print(paste("AUC =", round(auc_value, 3)))
+
+# Plot ROC Curve
+ggroc(roc_pANN) +
+  ggtitle(paste("Doubletfinder 3.5% vs KK (AUC =", round(auc_value, 3), ")")) +
+  theme_minimal()
+```
+
+
+
+
+
+```{r}
+table(DF_CaH_rxn1_temp$GT, DF_CaH_rxn1_temp$final_doublets, DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220)
+```
+
+
+```{r}
+DF_CaH_rxn1_temp$doublet_agreement <- paste(
+  DF_CaH_rxn1_temp$GT,
+  DF_CaH_rxn1_temp$final_doublets,
+  DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220,
+  sep = "_"
+)
+
+table(DF_CaH_rxn1_temp$doublet_agreement)
+
+
+DimPlot(DF_CaH_rxn1_temp, group.by = "doublet_agreement", cols = c("red", "green", "blue", "lightgrey"))
+```
+
+```{r}
+DF_CaH_rxn1_temp$doublet_status <- ifelse(
+  (DF_CaH_rxn1_temp$final_doublets == "Doublet" & DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220 == "Doublet"), 
+  "Both Agree", 
+  "Other"
+)
+
+DimPlot(DF_CaH_rxn1_temp, group.by = "doublet_status", cols = c("blue", "red"))
+
+```
+
+```{r}
+library(ComplexUpset)
+
+# Convert columns to binary (1 = doublet, 0 = singlet)
+doublet_matrix <- data.frame(
+  Vireo = DF_CaH_rxn1_temp$GT == "Doublet",
+  Manual = DF_CaH_rxn1_temp$final_doublets == "Doublet",
+  DoubletFinder = DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220 == "Doublet"
+)
+
+doublet_matrix
+# Make UpSet plot
+ComplexUpset::upset(doublet_matrix, names(doublet_matrix))
+
+
+```
+
+```{r}
+doublet_matrix <- data.frame(
+  #Vireo = DF_CaH_rxn1_temp$GT == "Doublet",
+  Manual = DF_CaH_rxn1_temp$final_doublets == "Doublet",
+  DoubletFinder = DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220 == "Doublet"
+)
+
+doublet_matrix
+# Make UpSet plot
+ComplexUpset::upset(doublet_matrix, names(doublet_matrix))
+
+
+```
+
+
+
+```{r}
+DF_CaH_rxn1_temp@meta.data$cell_class_vireodoublets = paste0(DF_CaH_rxn1_temp$cell_class, "_", DF_CaH_rxn1_temp$GT)
+table(DF_CaH_rxn1_temp$cell_class_vireodoublets)
+
+DF_CaH_rxn1_temp@meta.data$cell_class_KKdoublets = paste0(DF_CaH_rxn1_temp$cell_class, "_", DF_CaH_rxn1_temp$KK_doublet)
+table(DF_CaH_rxn1_temp$cell_class_KKdoublets)
+
+DF_CaH_rxn1_temp@meta.data$cell_class_DFdoublets = paste0(DF_CaH_rxn1_temp$cell_class, "_", DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220)
+table(DF_CaH_rxn1_temp$cell_class_DFdoublets)
+```
+
+
+
+```{r}
+DF_CaH_rxn1_temp@meta.data
+
+DF_CaH_rxn1_temp@meta.data$cell_class_vireodoublets = paste0(DF_CaH_rxn1_temp$cell_class, "_", DF_CaH_rxn1_temp$GT)
+a = as.data.frame(table(DF_CaH_rxn1_temp$cell_class_vireodoublets))
+a
+
+a$cell_class = a$Var1
+a$Var1 = NULL
+a$Count = a$Freq
+a$Method = "Vireo"
+a$Freq = NULL
+a
+
+DF_CaH_rxn1_temp@meta.data$cell_class_KKdoublets = paste0(DF_CaH_rxn1_temp$cell_class, "_", DF_CaH_rxn1_temp$KK_doublet)
+b = as.data.frame(table(DF_CaH_rxn1_temp$cell_class_KKdoublets))
+b$cell_class = b$Var1
+b$Var1 = NULL
+b$Count = b$Freq
+b$Method = "Manual_doublets"
+b$Freq = NULL
+b
+
+DF_CaH_rxn1_temp@meta.data$cell_class_DFdoublets = paste0(DF_CaH_rxn1_temp$cell_class, "_", DF_CaH_rxn1_temp$DF.classifications_0.25_0.04_220)
+c = as.data.frame(table(DF_CaH_rxn1_temp$cell_class_DFdoublets))
+c$cell_class = c$Var1
+c$Var1 = NULL
+c$Count = c$Freq
+c$Method = "DoubletFinder_doublets"
+c$Freq = NULL
+c
+
+a
+b
+c
+```
+```{r}
+merged_doublets = rbind(a, b, c)
+merged_doublets
+
+# Plot
+ggplot(merged_doublets, aes(x = cell_class, y = Count, fill = Method)) +
+  geom_col(position = "dodge") + # "dodge" places bars side by side
+ # labs(x = "Category", y = "Value") +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+```{r}
+DF_CaH_rxn1_temp@meta.data
+```
+
+```{r}
+DF_CaH_rxn1_temp@meta.data
+```
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+
+# Example Data
+df <- DF_CaH_rxn1_temp@meta.data %>% select(donor_id, GT, KK_doublet, 
+DF.classifications_0.25_0.04_220)
+df
+
+# Pivot to long format
+df_long <- df %>%
+  pivot_longer(cols = c("GT", "KK_doublet", "DF.classifications_0.25_0.04_220"),  # Select all method columns
+               names_to = "Detection_Method",  # New column to store method names
+               values_to = "Count")  # New column to store count values
+df_long
+
+```
+
+
+
+
+```{r}
+DimPlot(DF_CaH_rxn1_temp, group.by = "cell_class")
+
+cellclass = unique(DF_CaH_rxn1_temp@meta.data$cell_class)
+cellclass
+
+
+for (cellclass in cellclass){
+new_temp_sobj = subset(DF_CaH_rxn1_temp, subset = cell_class == cellclass)
+
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(new_temp_sobj, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+new_temp_sobj = (new_temp_sobj
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_caudate$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_caudate$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+a = DimPlot(new_temp_sobj, group.by = "cell_class", label = T)
+b = DimPlot(new_temp_sobj, group.by = "RNA_snn_res.0.5", label = T)
+c = DimPlot(new_temp_sobj, group.by = "KK_doublet", label = T)
+d = DimPlot(new_temp_sobj, group.by = "DF.classifications_0.25_0.04_471", label = T)
+
+all = a + b+c +d
+ggsave(all, filename = paste0(cellclass, ".png"), width = 16, height =8)
+}
+```
+
+
+
+
+
+```{r}
+temp_sobj = subset(DF_CaH_rxn1_temp, subset = cell_class == "neuron")
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(temp_sobj, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+temp_sobj = (temp_sobj
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_caudate$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_caudate$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(temp_sobj, group.by = "donor_id") 
+DimPlot(temp_sobj, group.by = "GT") 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.8", label=T) 
+
+FeaturePlot(temp_sobj, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(temp_sobj, features = c("AQP4", "GINS3", "GFAP"), raster = F)
+FeaturePlot(temp_sobj, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(temp_sobj, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG1", "MOG", "MOBP"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(temp_sobj, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(temp_sobj, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(temp_sobj, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+FeaturePlot(temp_sobj, features = c("pct_mito", "pct_intronic", "nUmi"),raster=FALSE) 
+
+```
+
+
+```{r}
+FeaturePlot(DF_CaH_rxn1_temp, features = c("pct_mito"),raster=FALSE) 
+FeaturePlot(DF_CaH_rxn1_temp, features = c("pct_intronic"),raster=FALSE) 
+FeaturePlot(DF_CaH_rxn1_temp, features = c("nUmi"),raster=FALSE) 
+DimPlot(DF_CaH_rxn1_temp, group.by = "KK_doublet", label = T)
+DimPlot(DF_CaH_rxn1_temp, group.by = "DF.classifications_0.25_0.04_471", label = T)
+DimPlot(DF_CaH_rxn1_temp, group.by = "GT", label = T)
+
+```
+
+
+
+```{r}
+marker_genes <- c("CD96", "CX3CR1", "P2RY12", "C1QB", "C1QA", "CASZ1", "FLT1", "TF", "MOBP", "MOG", "MBP", "OLIG2", "OLIG1", "ST18", "GFAP", "AQP4", "SEMA3E", "EPHA4", "PPP1R1B", "DRD2", "DRD1", "GAD2", "GAD1", "SYT1", "RBFOX3", "SLC17A6", "SLC17A7")
+
+Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "RNA_snn_res.0.6")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+
+
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN", "GAPDH","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "RNA_snn_res.0.6")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+```{r}
+temp_sobj= KK_CaH_rxn1_opc_clean
+```
+
+```{r}
+df = as.data.frame(table(filtered_CaH_rxn1_cellbender$cell_class,filtered_CaH_rxn1_cellbender$GT))
+df
+df$cell_class = df$Var1
+df$Var1= NULL
+df$GT = df$Var2
+df$Var2 = NULL
+df$count = df$Freq
+df$Freq = NULL
+
+df_summary <- df %>%
+  group_by(cell_class) %>%
+  summarise(total_cells = sum(count))
+df_summary
+```
+
+```{r}
+df = merge(df, df_summary, by = "cell_class")
+df
+```
+```{r}
+df$proportion = df$count/df$total_cells
+
+ggplot(df, aes(x = cell_class, y = proportion, fill = GT)) + geom_col(position = "dodge") + # "dodge" places bars side by side
+ # labs(x = "Category", y = "Value") +
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ggtitle("Proportion of Vireo Doublets by Cell Class")
+
+```
+```{r}
+DF_CaH_rxn1_temp@meta.data
+```
+
+```{r}
+
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = DF_CaH_rxn1_temp, features = marker_genes, group.by = "cell_class_KKdoublets")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() + ggtitle("KK")
+print(Dotplot)
+
+ Dotplot = DotPlot(object = DF_CaH_rxn1_temp, features = marker_genes, group.by = "cell_class_DFdoublets")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() + ggtitle("DoubletFinder")
+print(Dotplot)
+```
+

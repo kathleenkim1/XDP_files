@@ -1,0 +1,131 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+FeaturePlot(caudate_astrocyte, features= c("GFAP"))
+```
+
+
+```{r}
+astrocytes = caudate_astrocyte
+gfap_threshold <- 1 
+gfap_positive <- subset(astrocytes, subset = GFAP > gfap_threshold)
+gfap_negative <- subset(astrocytes, subset = GFAP <= gfap_threshold)
+astrocytes$GFAP_status <- ifelse(astrocytes@assays$RNA@data["GFAP", ] > gfap_threshold, "GFAP_Pos", "GFAP_Neg")
+
+FeaturePlot(astrocytes, features= c("GFAP"))
+DimPlot(astrocytes, group.by= "RNA_snn_res.0.2")
+DimPlot(astrocytes, group.by = "GFAP_status")
+Idents(astrocytes) <- "GFAP_status"
+```
+
+
+
+
+
+
+
+```{r}
+# Find markers
+gfap_markers <- FindMarkers(astrocytes, ident.1 = "GFAP_Pos", ident.2 = "GFAP_Neg")
+
+# View top markers
+head(gfap_markers)
+# Example markers (replace with actual markers from your analysis)
+markers_to_plot <- c("ALDH1A1", "AQP4", "S100B", "VIM")
+
+# Dot plot
+DotPlot(astrocytes, features = markers_to_plot, group.by = "GFAP_status")
+
+# Feature plot for GFAP
+FeaturePlot(astrocytes, features = "GFAP")
+
+```
+
+
+
+
+
+
+
+
+```{r}
+Idents(caudate_astrocyte) <- "RNA_snn_res.0.2"
+
+
+# Define the genes and clusters you want to plot
+features <- c("ALDH1A1", "AQP4","GFAP", "GINS3","C3", "CFB","S100A10", "GRIA2", "CSPG5", "VCAN") 
+
+
+
+DotPlot(caudate_astrocyte, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+classes = c("GFAP", "GFAP", "GRIA2", "GFAP", "GFAP", "GFAP")
+
+caudate_astrocyte= assignCellClasses(caudate_astrocyte, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(caudate_astrocyte) <- "cell_class"
+
+DimPlot(caudate_astrocyte, label= TRUE)
+```
+
+
+
+```{r}
+sobj = caudate_astrocyte
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/caudate_astrocyte_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Astrocyte Cell Type Enrichment XDP vs. Control: Caudate") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```

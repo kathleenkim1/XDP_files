@@ -1,0 +1,1858 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(Seurat)
+library(harmony)
+library(ggplot2)
+```
+
+```{r}
+cah = qread("UPDATED_caudate_neuron_subclustered.qs")
+put = qread("UPDATED_putamen_neuron_subclustered.qs")
+
+DimPlot(cah, label = TRUE)
+DimPlot(put, label = TRUE)
+```
+
+
+```{r}
+normalizeScalePcaClusterUmap = function(
+   sobj,
+   subset_col="donor_id",
+   n_hvgs_orig=2500,
+   n_dims_use=20,
+   resolutions=c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)){
+   # this function takes a Seurat object, normalizes the data, scales the data, runs PCA, finds neighbors,
+   # clusters at a variety of resolutions, and runs UMAP
+   # it then returns the Seurat object
+  
+   hvgs = getSeuratVarFeatureIntersectByCol(sobj, subset_col=subset_col, original_nfeatures=n_hvgs_orig)
+   sobj = (sobj
+       %>% NormalizeData()
+       %>% ScaleData(features=hvgs, split.by=subset_col)
+       %>% RunPCA(features=hvgs, npcs=n_dims_use)
+       %>% FindNeighbors(dims = 1:n_dims_use)
+   )
+   for(res in resolutions){
+       sobj = sobj %>% FindClusters(resolution = res)
+   }
+    sobj = sobj %>% RunUMAP(dims = 1:n_dims_use)
+   return(sobj)
+}
+
+#scaling
+#sobj = normalizeScalePcaClusterUmap(sobj)
+```
+
+
+```{r}
+getSeuratVarFeatureIntersectByCol = function(
+   seurat_obj,
+   subset_col,
+   original_nfeatures,
+   n_subsets_to_cover=NULL
+){
+  
+   hvgs = list()
+
+
+   unique_ids = unique(seurat_obj@meta.data[[subset_col]])
+
+
+   if (is.null(n_subsets_to_cover)){
+       n_subsets_to_cover = floor(length(unique_ids)/2)
+   }
+
+
+   i=1
+   for (id in unique_ids) {
+       print(paste("Subset", id, "--", i, "of", length(unique_ids)))
+       i = i + 1
+      
+       seurat_subset = seurat_obj[, seurat_obj[[subset_col]] == id]
+      
+       if (ncol(seurat_subset) < 2){next}
+      
+       suppressWarnings({
+           seurat_subset = FindVariableFeatures(
+               seurat_subset, nfeatures=original_nfeatures, verbose = FALSE)
+       })
+      
+       hvgs[[id]] = getSeuratVarFeatures(seurat_subset)
+      
+   }
+
+
+   common_hvgs = getCommonStrings(hvgs, n_subsets_to_cover)
+   print(paste("Number of HVGs in common across", n_subsets_to_cover, "--", length(common_hvgs)))
+
+
+   return(common_hvgs)
+}
+
+```
+
+```{r}
+getSeuratVarFeatures = function(sobj){
+    # the magical incantation that returns the slot of the attribute of the slot that actually holds the list of variable feature -_-
+    return(sobj@assays$RNA@var.features)
+}
+```
+
+```{r}
+getCommonStrings <- function(list_of_lists, n) {
+  # Create an empty list to store string occurrences
+  string_occurrences <- list()
+
+  # Iterate over each sublist
+  for (sublist in list_of_lists) {
+    # For each string in the sublist, increment its count in string_occurrences
+    for (string in unique(sublist)) {
+      if (!is.null(string_occurrences[[string]])) {
+        string_occurrences[[string]] <- string_occurrences[[string]] + 1
+      } else {
+        string_occurrences[[string]] <- 1
+      }
+    }
+  }
+
+  # Filter the strings that occur at least n times
+  common_strings <- names(string_occurrences)[string_occurrences >= n]
+
+  return(common_strings)
+}
+```
+
+```{r}
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+```
+
+```{r}
+.sconline.MASCfn = function(
+    dataset, 
+    cluster, 
+    contrast, 
+    random_effects = NULL, 
+    fixed_effects = NULL,
+    verbose = TRUE, 
+    jackknife=F,
+    statistical.test="Wald") {
+  
+  
+  #Adapted from Fonseka et al. PMID: 30333237
+  
+  # Check inputs
+  require(lme4)
+  if (is.factor(dataset[[contrast]]) == FALSE & is.numeric(dataset[[contrast]]) == FALSE) {
+    stop("Specified contrast term should be coded as a factor or numeric in the dataset")
+  }
+  
+  match.arg(statistical.test,c("LRT","Wald"))
+  
+  
+  # Convert cluster assignments to string
+  cluster = as.character(cluster)
+  # Prepend design matrix generated from cluster assignments
+  designmat = model.matrix(~ cluster + 0, data.frame(cluster = cluster))
+  dataset = cbind(designmat, dataset)
+  # Create output list to hold results
+  res = vector(mode = "list", length = length(unique(cluster)))
+  names(res) = attributes(designmat)$dimnames[[2]]
+  
+  # Create model formulas
+  if (!is.null(fixed_effects) && !is.null(random_effects)) {
+    model_rhs = paste0(c(paste0(fixed_effects, collapse = " + "),
+                          paste0("(1|", random_effects, ")", collapse = " + ")),
+                        collapse = " + ")
+    if (verbose == TRUE & statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+    }
+  } else if (!is.null(fixed_effects) && is.null(random_effects)) {
+    model_rhs = paste0(fixed_effects, collapse = " + ")
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+      # For now, do not allow models without mixed effects terms
+      
+    }
+    stop("No random effects specified")
+  } else if (is.null(fixed_effects) && !is.null(random_effects)) {
+    model_rhs = paste0("(1|", random_effects, ")", collapse = " + ")
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+    }
+  } else {
+    model_rhs = "1" # only includes intercept
+    if (verbose == TRUE&statistical.test=="LRT") {
+      message(paste("Using null model:", "cluster ~", model_rhs))
+      
+    }
+    stop("No random or fixed effects specified")
+  }
+  
+  # Initialize list to store model objects for each cluster
+  cluster_models = vector(mode = "list",
+                           length = length(attributes(designmat)$dimnames[[2]]))
+  names(cluster_models) = attributes(designmat)$dimnames[[2]]
+  
+  # Run nested mixed-effects models for each cluster
+  for (i in seq_along(attributes(designmat)$dimnames[[2]])) {
+    test_cluster = attributes(designmat)$dimnames[[2]][i]
+    if (verbose == TRUE) {
+      message(paste("Creating logistic mixed models for", test_cluster))
+    }
+    null_fm = as.formula(paste0(c(paste0(test_cluster, " ~ 1 + "),
+                                   model_rhs), collapse = ""))
+    full_fm = as.formula(paste0(c(paste0(test_cluster, " ~ ", contrast, " + "),
+                                   model_rhs), collapse = ""))
+
+    if (verbose == TRUE) {
+      message(paste("Null model:", null_fm))
+      message(paste("Full model:", full_fm))
+    }
+    
+    # Run null and full mixed-effects models
+    full_model = lme4::glmer(formula = full_fm, data = dataset,
+                              family = binomial, nAGQ = 1, verbose = 0,
+                              control = glmerControl(optimizer = "bobyqa"))
+    
+    
+    # calculate confidence intervals for contrast term beta
+    if(is.factor(dataset[[contrast]])){
+      contrast_lvl2 = paste0(contrast, levels(dataset[[contrast]])[2])
+      
+    } else {
+      contrast_lvl2 = contrast
+    }
+    
+    contrast_ci = confint.merMod(full_model, method = "Wald",
+                                  parm = contrast_lvl2)
+    
+    
+    if(statistical.test=="Wald"){
+      pval=summary(full_model)
+      
+      pval=pval$coefficients[contrast_lvl2,4]
+    } else {
+      null_model = lme4::glmer(formula = null_fm, data = dataset,
+                                family = binomial, nAGQ = 1, verbose = 0,
+                                control = glmerControl(optimizer = "bobyqa"))
+      model_lrt = anova(null_model, full_model)
+      pval=model_lrt[["Pr(>Chisq)"]][2]
+    }
+    
+    # Save model objects to list
+    cluster_models[[i]]$confint = contrast_ci
+    cluster_models[[i]]$pval = pval
+    cluster_models[[i]]$full_model = full_model
+    
+    #jackknifing
+    jk_pvalvec=c()
+    jk_coefvec=c()
+    jk_stable=1
+    if(jackknife){
+      for(ibatch in unique(dataset[,random_effects])){
+        tmp_dataset=dataset[which(dataset[,random_effects]!=ibatch),]
+        
+        jk_full_model = tryCatch({lme4::glmer(formula = full_fm, data = tmp_dataset,
+                                               family = binomial, nAGQ = 1, verbose = 0,
+                                               control = glmerControl(optimizer = "bobyqa"))},error=function(e){return(F)})
+        
+        if(class(jk_full_model)!=class(T)){
+          jk_coefvec=c(jk_coefvec,fixef(jk_full_model)[[contrast_lvl2]])
+          if(statistical.test=="Wald"){
+            tmp_pval=summary(jk_full_model)
+            tmp_pval=tmp_pval$coefficients[contrast_lvl2,4]
+            jk_pvalvec=c(jk_pvalvec,tmp_pval)
+          } else {
+            jk_null_model = tryCatch({lme4::glmer(formula = null_fm, data = tmp_dataset,
+                                                   family = binomial, nAGQ = 1, verbose = 0,
+                                                   control = glmerControl(optimizer = "bobyqa"))},error=function(e) {return(F)})
+            
+            if(class(jk_null_model)!=class(T)){
+              jk_model_lrt = anova(jk_null_model, jk_full_model)
+              # calculate confidence intervals for contrast term beta
+              jk_pvalvec=c(jk_pvalvec,jk_model_lrt[["Pr(>Chisq)"]][2])
+            } else {
+              jk_stable=0
+            }
+          }
+          
+        } else {
+          jk_stable=0
+        }
+        
+      }
+    } else {
+      jk_pvalvec=(-1)
+      jk_coefvec=(-1)
+    }
+    
+    cluster_models[[i]]$jk_pval_median = median(jk_pvalvec)
+    cluster_models[[i]]$jk_pval_mean = mean(jk_pvalvec)
+    cluster_models[[i]]$jk_pval_max = max(jk_pvalvec)
+    
+    cluster_models[[i]]$jk_coef_median = median(jk_coefvec)
+    cluster_models[[i]]$jk_coef_mean = mean(jk_coefvec)
+    cluster_models[[i]]$jk_stable = jk_stable
+    cluster_models[[i]]$jk_coef_min = jk_coefvec[which(abs(jk_coefvec)==min(abs(jk_coefvec)))[1]]
+  }
+  
+  # Organize results into output dataframe
+  output = data.frame(cluster = attributes(designmat)$dimnames[[2]],
+                       size = colSums(designmat))
+  output$model.pvalue = sapply(cluster_models, function(x) x$pval)
+  output[[paste(contrast_lvl2, "OR", sep = ".")]] = sapply(cluster_models, function(x) exp(fixef(x$full)[[contrast_lvl2]]))
+  output[[paste(contrast_lvl2, "OR", "95pct.ci.lower", sep = ".")]] = sapply(cluster_models, function(x) exp(x$confint[contrast_lvl2, "2.5 %"]))
+  output[[paste(contrast_lvl2, "OR", "95pct.ci.upper", sep = ".")]] = sapply(cluster_models, function(x) exp(x$confint[contrast_lvl2, "97.5 %"]))
+  output[[paste(contrast_lvl2,"JK","Min", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_min==(-1)){-1} else{exp(x$jk_coef_min)}})
+  output[[paste(contrast_lvl2,"JK","Mean", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_mean==(-1)){-1} else {exp(x$jk_coef_mean)}})
+  output[[paste(contrast_lvl2,"JK","Median", "OR", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_coef_median==(-1)){-1} else {exp(x$jk_coef_median)}})
+  output[[paste(contrast_lvl2,"JK","Max", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_max==(-1)){-1} else {x$jk_pval_max}})
+  output[[paste(contrast_lvl2,"JK","Mean", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_mean==(-1)){-1} else {x$jk_pval_mean}})
+  output[[paste(contrast_lvl2,"JK","Median", "pvalue", sep = ".")]] = sapply(cluster_models, function(x) {if(x$jk_pval_median==(-1)){-1} else {x$jk_pval_median}})
+  output[[paste(contrast_lvl2,"JK","Stable", sep = ".")]] = sapply(cluster_models, function(x) x$jk_stable)
+  
+  return(output)
+}
+```
+
+```{r}
+#integrate with harmony 
+sobj = (sobj
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+```
+
+
+```{r}
+caudate_sobj = qread("Cellbender_seurat/Bennet_caudate_clean.qs")
+putamen_sobj = qread("Cellbender_seurat/Bennet_putamen_clean.qs")
+
+caudate_sobj
+putamen_sobj
+```
+
+```{r}
+DimPlot(caudate_sobj, group.by = "cell_class")
+DimPlot(putamen_sobj, group.by = "cell_class")
+```
+
+
+```{r}
+caudate_astrocyte = subset(caudate_sobj, subset = cell_class == "astro")
+caudate_oligo = subset(caudate_sobj, subset = cell_class == "oligo")
+caudate_opc = subset(caudate_sobj, subset = cell_class == "opc")
+caudate_oligo_opc = subset(caudate_sobj, subset = cell_class == "oligo" | cell_class == "opc")
+caudate_microglia = subset(caudate_sobj, subset = cell_class == "mg")
+caudate_ependymal= subset(caudate_sobj, subset = cell_class == "ependymal")
+caudate_endo = subset(caudate_sobj, subset = cell_class == "endo")
+caudate_immune = subset(caudate_sobj, subset = cell_class == "immune")
+caudate_neuron = subset(caudate_sobj, subset = cell_class == "neuron")
+
+putamen_astrocyte = subset(putamen_sobj, subset = cell_class == "astro")
+putamen_oligo = subset(putamen_sobj, subset = cell_class == "oligo")
+putamen_opc = subset(putamen_sobj, subset = cell_class == "opc")
+putamen_oligo_opc = subset(putamen_sobj, subset = cell_class == "oligo" | cell_class == "opc")
+putamen_microglia = subset(putamen_sobj, subset = cell_class == "mg")
+putamen_endo = subset(putamen_sobj, subset = cell_class == "endo")
+putamen_neuron = subset(putamen_sobj, subset = cell_class == "neuron")
+```
+
+
+
+#caudate astrocyte
+```{r}
+DimPlot(caudate_astrocyte, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_astrocyte, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_astrocyte, group.by = "donor_id")
+DimPlot(caudate_astrocyte, group.by = "Condition")
+```
+
+#scale
+```{r}
+caudate_astrocyte = normalizeScalePcaClusterUmap(caudate_astrocyte)
+DimPlot(caudate_astrocyte, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_astrocyte, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_astrocyte, group.by = "donor_id")
+DimPlot(caudate_astrocyte, group.by = "Condition")
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+FeaturePlot(caudate_astrocyte, features = c("GRM3"))
+FeaturePlot(caudate_astrocyte, features = c("ROBO2"))
+```
+
+
+```{r}
+FeaturePlot(caudate_astrocyte, features = c("GFAP"), split.by = "RNA_snn_res.0.3")
+FeaturePlot(caudate_astrocyte, features = c("CHI3L1", "CHI3L2"))
+```
+
+
+```{r}
+caudate_astro_integrated = (caudate_astrocyte
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+
+DimPlot(caudate_astro_integrated, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_astro_integrated, group.by = "RNA_snn_res.0.3")
+DimPlot(caudate_astro_integrated, group.by = "RNA_snn_res.0.4")
+DimPlot(caudate_astro_integrated, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_astro_integrated, group.by = "donor_id")
+DimPlot(caudate_astro_integrated, group.by = "Condition")
+FeaturePlot(caudate_astro_integrated, features = c("GFAP"))
+FeaturePlot(caudate_astro_integrated, features = c("CHI3L1", "CHI3L2"))
+```
+
+#Just a GFAP +/- cluster
+```{r}
+classes = c("GFAP+","GFAP-","GFAP+","GFAP+","GFAP+","GFAP+", "GFAP+")
+caudate_astro_integrated= assignCellClasses(caudate_astro_integrated, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+Idents(caudate_astro_integrated) <- "cell_class"
+DimPlot(caudate_astro_integrated, label= TRUE)
+my_order = c("GFAP+", "GFAP-")
+Idents(caudate_astro_integrated) = factor(Idents(caudate_astro_integrated), levels = my_order)
+features <- c("GFAP", "CHI3L1", "CHI3L2")
+DotPlot(caudate_astro_integrated, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+qsave(caudate_astro_integrated, "Current_subclusters/caudate_astro_integrated.qs")
+```
+
+
+```{r}
+classes = c("1_GFAPpos","GFAPneg","2_GFAPpos","3_GFAPpos","4_GFAPpos","5_GFAPpos", "6_GFAPpos")
+caudate_astro_integrated= assignCellClasses(caudate_astro_integrated, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+Idents(caudate_astro_integrated) <- "cell_class"
+DimPlot(caudate_astro_integrated, label= TRUE)
+my_order = c("1_GFAP+","2_GFAP+","3_GFAP+","4_GFAP+","5_GFAP+", "6_GFAP+","GFAP-")
+Idents(caudate_astro_integrated) = factor(Idents(caudate_astro_integrated), levels = my_order)
+features <- c("GFAP", "CHI3L1", "CHI3L2", "GRM3", "pct_mito")
+DotPlot(caudate_astro_integrated, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#here i'm only pulling grm2 to figure out what the gfap- cluster could be...
+```{r}
+Idents(caudate_astro_integrated) = caudate_astro_integrated$RNA_snn_res.0.3
+caudate_astro_integrated_markers = FindAllMarkers(caudate_astro_integrated, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+caudate_astro_integrated_markers
+
+subsetmarkers= subset(caudate_astro_integrated_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+
+```{r}
+sobj = caudate_astro_integrated
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/caudate_astro_integrated_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Astrocyte Cell Type Enrichment XDP vs. Control: Caudate") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+
+#putamen astrocyte
+```{r}
+DimPlot(putamen_astrocyte, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_astrocyte, group.by = "RNA_snn_res.0.5")
+DimPlot(putamen_astrocyte, group.by = "donor_id")
+DimPlot(putamen_astrocyte, group.by = "Condition")
+```
+
+#scale
+```{r}
+putamen_astrocyte = normalizeScalePcaClusterUmap(putamen_astrocyte)
+DimPlot(putamen_astrocyte, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_astrocyte, group.by = "RNA_snn_res.0.3")
+DimPlot(putamen_astrocyte, group.by = "RNA_snn_res.0.4")
+DimPlot(putamen_astrocyte, group.by = "RNA_snn_res.0.5")
+DimPlot(putamen_astrocyte, group.by = "donor_id")
+DimPlot(putamen_astrocyte, group.by = "Condition")
+```
+
+
+
+
+
+```{r}
+FeaturePlot(putamen_astrocyte, features = c("GFAP"))
+FeaturePlot(putamen_astrocyte, features = c("GRM3"))
+FeaturePlot(putamen_astrocyte, features = c("ROBO2"))
+```
+
+
+```{r}
+FeaturePlot(putamen_astrocyte, features = c("GFAP"), split.by = "RNA_snn_res.0.3")
+FeaturePlot(putamen_astrocyte, features = c("CHI3L1", "CHI3L2"))
+```
+
+#chose not to integrate...originally but now i should
+```{r}
+putamen_astro_integrated = (putamen_astrocyte
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+
+DimPlot(putamen_astro_integrated, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_astro_integrated, group.by = "RNA_snn_res.0.3")
+DimPlot(putamen_astro_integrated, group.by = "RNA_snn_res.0.4")
+DimPlot(putamen_astro_integrated, group.by = "RNA_snn_res.0.5")
+DimPlot(putamen_astro_integrated, group.by = "donor_id")
+DimPlot(putamen_astro_integrated, group.by = "Condition")
+FeaturePlot(putamen_astro_integrated, features = c("GFAP"))
+FeaturePlot(putamen_astro_integrated, features = c("CHI3L1", "CHI3L2"))
+```
+
+#Just a GFAP +/- cluster
+```{r}
+classes = c("GFAP-","GFAP+","GFAP+","GFAP+","GFAP+")
+putamen_astrocyte= assignCellClasses(putamen_astrocyte, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+Idents(putamen_astrocyte) <- "cell_class"
+DimPlot(putamen_astrocyte, label= TRUE)
+my_order = c("GFAP+", "GFAP-")
+Idents(putamen_astrocyte) = factor(Idents(putamen_astrocyte), levels = my_order)
+features <- c("GFAP", "CHI3L1", "CHI3L2")
+DotPlot(putamen_astrocyte, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+qsave(putamen_astrocyte, "Current_subclusters/putamen_astrocyte_notintegrated.qs")
+```
+
+```{r}
+classes = c("GFAPneg","1_GFAPpos","2_GFAPpos","3_GFAPpos","4_GFAPpos")
+putamen_astrocyte= assignCellClasses(putamen_astrocyte, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+Idents(putamen_astrocyte) <- "cell_class"
+DimPlot(putamen_astrocyte, label= TRUE)
+my_order =c("1_GFAP+","2_GFAP+","3_GFAP+","4_GFAP+", "GFAP-")
+Idents(putamen_astrocyte) = factor(Idents(putamen_astrocyte), levels = my_order)
+features <- c("GFAP", "CHI3L1", "CHI3L2", "pct_mito")
+DotPlot(putamen_astrocyte, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#not happy with trying to figure out what the gfap- cluster could be...
+```{r}
+Idents(putamen_astrocyte) = putamen_astrocyte$RNA_snn_res.0.3
+putamen_astrocyte_markers = FindAllMarkers(putamen_astrocyte, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+putamen_astrocyte_markers
+
+subsetmarkers= subset(putamen_astrocyte, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+```{r}
+Idents(putamen_astrocyte) = putamen_astrocyte$RNA_snn_res.0.3
+putamen_astrocyte_markers = FindMarkers(putamen_astrocyte, only.pos = TRUE,  ident.1 = 0, ident.2 =c(1))
+putamen_astrocyte_markers
+
+```
+
+
+
+
+```{r}
+sobj = putamen_astrocyte
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/putamen_astrocyte_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Astrocyte Cell Type Enrichment XDP vs. Control: Putamen") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+
+#caudate oligo
+```{r}
+DimPlot(caudate_oligo_opc, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_oligo_opc, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_oligo_opc, group.by = "donor_id")
+DimPlot(caudate_oligo_opc, group.by = "Condition")
+```
+
+#scale
+```{r}
+caudate_oligo_opc = normalizeScalePcaClusterUmap(caudate_oligo_opc)
+DimPlot(caudate_oligo_opc, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_oligo_opc, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_oligo_opc, group.by = "donor_id")
+DimPlot(caudate_oligo_opc, group.by = "Condition")
+```
+
+
+```{r}
+FeaturePlot(caudate_oligo_opc, features = c("VCAN", "OLIG2"))
+FeaturePlot(caudate_oligo_opc, features = c("MBP", "MOBP"))
+FeaturePlot(caudate_oligo_opc, features = c("OLIG1"))
+
+```
+
+#chose not to integrate
+
+```{r}
+# Set the active identities to RNA_snn_res.0.2
+Idents(caudate_oligo_opc) <- caudate_oligo_opc$RNA_snn_res.0.2
+
+# Find markers for cluster 3 compared to cluster 0
+x <- FindMarkers(caudate_oligo_opc, ident.1 = 1, ident.2 = c(0), only.pos = TRUE,min.pct = 0.2, logfc.threshold = 1.25)
+x
+
+subsetmarkers= subset(x, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+```{r}
+FindAllMarkers(caudate_oligo_opc, only.pos = TRUE,min.pct = 0.2, logfc.threshold = 1.25)
+```
+
+
+```{r}
+FeaturePlot(caudate_oligo_opc, features = c("OPALIN", "SORL1"))
+FeaturePlot(caudate_oligo_opc, features = c("ACTN2", "SORL1"))
+```
+
+
+```{r}
+Idents(caudate_oligo_opc) = caudate_oligo_opc$RNA_snn_res.0.2
+caudate_oligo_opc_markers = FindAllMarkers(caudate_oligo_opc, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+caudate_oligo_opc_markers
+
+subsetmarkers= subset(caudate_oligo_opc_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+
+#Basic clusters 
+
+```{r}
+classes = c("Oligo_OPALIN","Oligo_SORL1","Oligo_OPALIN","OPC","Oligo_OPALIN")
+caudate_oligo_opc= assignCellClasses(caudate_oligo_opc, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+Idents(caudate_oligo_opc) <- "cell_class"
+DimPlot(caudate_oligo_opc, label= TRUE)
+my_order = c("Oligo_OPALIN","Oligo_SORL1","OPC")
+Idents(caudate_oligo_opc) = factor(Idents(caudate_oligo_opc), levels = my_order)
+features <- c("VCAN", "OLIG2", "MBP", "MOBP", "OPALIN", "SORL1", "pct_mito")
+DotPlot(caudate_oligo_opc, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+qsave(caudate_oligo_opc, "Current_subclusters/caudate_oligo_opc.qs")
+```
+
+
+```{r}
+classes = c("Oligo_1_OPALIN","Oligo_1_SORL1","Oligo_2_OPALIN","OPC","Oligo_3_OPALIN")
+caudate_oligo_opc= assignCellClasses(caudate_oligo_opc, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+Idents(caudate_oligo_opc) <- "cell_class"
+DimPlot(caudate_oligo_opc, label= TRUE)
+my_order = c("Oligo_1_OPALIN","Oligo_2_OPALIN","Oligo_3_OPALIN","Oligo_1_SORL1","OPC")
+Idents(caudate_oligo_opc) = factor(Idents(caudate_oligo_opc), levels = my_order)
+features <- c("VCAN", "OLIG2", "MBP", "MOBP", "OPALIN", "SORL1", "pct_mito")
+DotPlot(caudate_oligo_opc, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+sobj = caudate_oligo_opc
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASCcaudate_oligo_opc_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Oligo Cell Type Enrichment XDP vs. Control: Caudate") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+
+#putamen oligo
+```{r}
+DimPlot(putamen_oligo_opc, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_oligo_opc, group.by = "RNA_snn_res.0.5")
+DimPlot(putamen_oligo_opc, group.by = "donor_id")
+DimPlot(putamen_oligo_opc, group.by = "Condition")
+```
+
+#scale
+```{r}
+putamen_oligo_opc = normalizeScalePcaClusterUmap(putamen_oligo_opc)
+DimPlot(putamen_oligo_opc, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_oligo_opc, group.by = "RNA_snn_res.0.5")
+DimPlot(putamen_oligo_opc, group.by = "donor_id")
+DimPlot(putamen_oligo_opc, group.by = "Condition")
+```
+
+
+```{r}
+FeaturePlot(putamen_oligo_opc, features = c("VCAN", "OLIG2"))
+FeaturePlot(putamen_oligo_opc, features = c("MBP", "MOBP"))
+FeaturePlot(putamen_oligo_opc, features = c("OLIG1"))
+
+```
+
+#chose not to integrate
+
+```{r}
+# Set the active identities to RNA_snn_res.0.2
+Idents(putamen_oligo_opc) <- putamen_oligo_opc$RNA_snn_res.0.2
+
+# Find markers for cluster 3 compared to cluster 0
+x <- FindMarkers(putamen_oligo_opc, ident.1 = 2, ident.2 = c(0,1), only.pos = TRUE,min.pct = 0.2, logfc.threshold = 1.25)
+x
+
+subsetmarkers= subset(x, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+```{r}
+putamen_oligo_opc_markers = FindAllMarkers(putamen_oligo_opc, only.pos = TRUE,min.pct = 0.2, logfc.threshold = 1.25)
+
+putamen_oligo_opc_markers
+subsetmarkers= subset(putamen_oligo_opc_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+
+```{r}
+FeaturePlot(putamen_oligo_opc, features = c("OPALIN", "SORL1"))
+```
+
+
+```{r}
+Idents(putamen_oligo_opc) = putamen_oligo_opc$RNA_snn_res.0.2
+putamen_oligo_opc_markers = FindAllMarkers(putamen_oligo_opc, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+putamen_oligo_opc_markers
+
+subsetmarkers= subset(putamen_oligo_opc_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+
+#Basic clusters 
+```{r}
+classes = c("Oligo_OPALIN","Oligo_OPALIN","Oligo_SORL1","OPC","Oligo_OPALIN","OPC","Oligo_OPALIN")
+putamen_oligo_opc= assignCellClasses(putamen_oligo_opc, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+Idents(putamen_oligo_opc) <- "cell_class"
+DimPlot(putamen_oligo_opc, label= TRUE)
+my_order = c("Oligo_OPALIN","Oligo_SORL1","OPC")
+Idents(putamen_oligo_opc) = factor(Idents(putamen_oligo_opc), levels = my_order)
+features <- c("VCAN", "OLIG2", "MBP", "MOBP", "OPALIN", "SORL1", "pct_mito")
+DotPlot(putamen_oligo_opc, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+qsave(putamen_oligo_opc, "Current_subclusters/putamen_oligo_opc.qs")
+```
+
+```{r}
+classes = c("Oligo_1_OPALIN","Oligo_2_OPALIN","Oligo_1_SORL1","OPC_1","Oligo_3_OPALIN","OPC_2","Oligo_4_OPALIN")
+putamen_oligo_opc= assignCellClasses(putamen_oligo_opc, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+Idents(putamen_oligo_opc) <- "cell_class"
+DimPlot(putamen_oligo_opc, label= TRUE)
+#my_order = c("Oligo_OPALIN","Oligo_SORL1","OPC")
+#Idents(putamen_oligo_opc) = factor(Idents(putamen_oligo_opc), levels = my_order)
+#features <- c("VCAN", "OLIG2", "MBP", "MOBP", "OPALIN", "SORL1", "pct_mito")
+#DotPlot(putamen_oligo_opc, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r}
+sobj = putamen_oligo_opc
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASCputamen_oligo_opc_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Oligo Cell Type Enrichment XDP vs. Control: Putamen") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+#Microglia:
+#Main states: "Homeostatic" (CX3CR1, TMEM119), "DAM" (GPNMB+, LPL+, CD83, NACA), "Interferon" (IFIT genes), "Chemokine" (CCL4+/CCL3+), "Fos" (FOS, JUNB)
+
+#caudate microglia
+```{r}
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_microglia, group.by = "donor_id")
+DimPlot(caudate_microglia, group.by = "Condition")
+```
+
+#scale and integrate
+```{r}
+caudate_microglia = normalizeScalePcaClusterUmap(caudate_microglia)
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.3")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.4")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_microglia, group.by = "donor_id")
+DimPlot(caudate_microglia, group.by = "Condition")
+```
+
+```{r}
+FeaturePlot(caudate_microglia, features = c("CX3CR1", "TMEM119"))
+FeaturePlot(caudate_microglia, features = c("DAM", "GPNMB", "LPL", "CD83", "NACA"))
+FeaturePlot(caudate_microglia, features = c("IFIT1", "IFIT2", "IFIT3"))
+FeaturePlot(caudate_microglia, features = c("CCL4", "CCL3"))
+FeaturePlot(caudate_microglia, features = c("FOS", "JUNB"))
+```
+
+
+```{r}
+Idents(caudate_microglia) = caudate_microglia$RNA_snn_res.0.4
+caudate_microglia_markers = FindAllMarkers(caudate_microglia, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+caudate_microglia_markers
+
+subsetmarkers= subset(caudate_microglia_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.6)
+newmarker
+```
+```{r}
+Idents(caudate_microglia) = caudate_microglia$RNA_snn_res.0.4
+caudate_microglia_markers = FindMarkers(caudate_microglia, only.pos = TRUE, ident.1 = 0, ident.2=c(1), min.pct = 0.2, logfc.threshold = 0.5)
+caudate_microglia_markers
+
+subsetmarkers= subset(caudate_microglia_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.7)
+newmarker
+```
+
+
+
+```{r}
+#FeaturePlot(caudate_microglia, features =c("HTRA1")) #0
+#FeaturePlot(caudate_microglia, features =c("RIPK1")) #1
+FeaturePlot(caudate_microglia, features =c("F13A1")) #2
+FeaturePlot(caudate_microglia, features =c("RPL32")) #3
+FeaturePlot(caudate_microglia, features =c("CD83")) #4
+FeaturePlot(caudate_microglia, features =c("CCL4")) #5
+FeaturePlot(caudate_microglia, features =c("pct_mito"))
+```
+
+
+
+
+```{r}
+classes = c("0","1","F13A1","RPL32","4","5","Chemokine")
+caudate_microglia= assignCellClasses(caudate_microglia, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+Idents(caudate_microglia) <- "cell_class"
+DimPlot(caudate_microglia, label= TRUE)
+my_order = c("Oligo_OPALIN","Oligo_SORL1","OPC")
+Idents(caudate_microglia) = factor(Idents(caudate_microglia), levels = my_order)
+features <- c("VCAN", "OLIG2", "MBP", "MOBP", "OPALIN", "SORL1", "pct_mito")
+DotPlot(caudate_microglia, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+
+
+
+
+```{r}
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.5")
+FeaturePlot(caudate_microglia, features =c("HTRA1")) #0
+FeaturePlot(caudate_microglia, features =c("RIPK1")) #1
+FeaturePlot(caudate_microglia, features =c("F13A1")) #2
+FeaturePlot(caudate_microglia, features =c("CD83")) #3
+FeaturePlot(caudate_microglia, features =c("RPL32")) #4
+FeaturePlot(caudate_microglia, features =c("pct_mito"))
+
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.5")
+FeaturePlot(caudate_microglia, features =c("CX3CR1", "TMEM119")) #Homeostatic
+FeaturePlot(caudate_microglia, features =c("GPNMB",  "LPL")) #DAM
+FeaturePlot(caudate_microglia, features =c("CD83", "NACA")) #DAM
+FeaturePlot(caudate_microglia, features =c("IFIT1","IFIT2")) #Interferon
+FeaturePlot(caudate_microglia, features =c("CCL4","CCL3")) #Chemokine
+FeaturePlot(caudate_microglia, features =c("FOS", "JUNB")) #Fos
+```
+
+
+```{r}
+FeaturePlot(caudate_microglia, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"))
+```
+
+
+
+```{r}
+Idents(caudate_microglia) = caudate_microglia$RNA_snn_res.0.2
+caudate_microglia_markers = FindAllMarkers(caudate_microglia, only.pos = TRUE)#,  min.pct = 0.2, logfc.threshold = 1.25)
+caudate_microglia_markers
+
+subsetmarkers= subset(caudate_microglia_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+```{r}
+#M1 surface markers and secretory
+FeaturePlot(caudate_microglia, features = c("CD14", "CD40", "CD86"))
+FeaturePlot(caudate_microglia, features = c("CCL5", "CCL20", "CXCL1"))
+#from cellmarker2.0
+#FeaturePlot(caudate_microglia, features = c("P2RY12", "CSF1R", "P2RY13"))
+
+#M2 surface markers and secretory
+FeaturePlot(caudate_microglia, features = c("CD163"))
+FeaturePlot(caudate_microglia, features = c("BDNF", "CSF1"))
+
+FeaturePlot(caudate_microglia, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"))
+
+```
+
+```{r}
+#All Microglia 
+FeaturePlot(caudate_microglia, features =c("DOCK8", "CSF1R", "TMEM119", "P2Y12R", "CD68", "CD14", "CD45"))
+
+#M1 
+FeaturePlot(caudate_microglia, features =c("CD16", "CD13", "CD86", "CD40"))
+#M2
+FeaturePlot(caudate_microglia, features =c("CD206", "CD163", "IL-10", "CCL22", "CCL2"))
+#Check: CD44 from infilitrating cells not residential microglia
+FeaturePlot(caudate_microglia, features =c("CD44"))
+```
+
+
+```{r}
+FeaturePlot(caudate_microglia, features =c("DLG1"))
+FeaturePlot(caudate_microglia, features =c("RASAL3"))
+FeaturePlot(caudate_microglia, features =c("CD83"))
+FeaturePlot(caudate_microglia, features =c("F13A1"))
+FeaturePlot(caudate_microglia, features =c("RPL8"))
+FeaturePlot(caudate_microglia, features =c("MT-CO3"))
+FeaturePlot(caudate_microglia, features =c("pct_mito"))
+```
+
+
+```{r}
+classes = c("Microglia_0","Microglia_1","Macrophage","Microglia_2_CD83","Microglia_3","Microglia_4")
+
+caudate_microglia= assignCellClasses(caudate_microglia, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(caudate_microglia) <- "cell_class"
+
+DimPlot(caudate_microglia, label= TRUE)
+
+my_order = c("Microglia_0","Microglia_1","Microglia_2_CD83","Microglia_3","Microglia_4", "Macrophage")
+
+Idents(caudate_microglia) = factor(Idents(caudate_microglia), levels = my_order)
+
+
+# Define the genes and clusters you want to plot
+features <- c("C1QA","P2RY12","CD86","CD163","F13A1","CD83", "pct_mito")
+
+DotPlot(caudate_microglia, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+qsave(caudate_microglia, "Current_subclusters/caudate_microglia.qs")
+```
+
+```{r}
+FeaturePlot(caudate_microglia, features = c("C1QA","P2RY12"))
+FeaturePlot(caudate_microglia, features = c("CD86","CD163"))
+FeaturePlot(caudate_microglia, features = c("F13A1","CD83"))
+FeaturePlot(caudate_microglia, features = c("pct_mito"))
+```
+
+
+```{r}
+sobj = caudate_microglia
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/caudate_microglia_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Microglia Cell Type Enrichment XDP vs. Control: Caudate") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#caudate micrroglia
+```{r}
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_microglia, group.by = "donor_id")
+DimPlot(caudate_microglia, group.by = "Condition")
+```
+
+#scale and integrate
+```{r}
+caudate_microglia = normalizeScalePcaClusterUmap(caudate_microglia)
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_microglia, group.by = "donor_id")
+DimPlot(caudate_microglia, group.by = "Condition")
+```
+```{r}
+Idents(caudate_microglia) = caudate_microglia$RNA_snn_res.0.2
+caudate_microglia_markers = FindAllMarkers(caudate_microglia, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+caudate_microglia_markers
+
+subsetmarkers= subset(caudate_microglia_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+```{r}
+cluster4 = subset(newmarker, subset = cluster == "4")
+rownames(cluster4)
+```
+
+```{r}
+caudate_microglia_markers = FindAllMarkers(caudate_microglia, ident.1 = 2, ident.2 = c(4))
+caudate_microglia_markers
+```
+
+
+```{r}
+FeaturePlot(caudate_microglia, features =c("FRMD4A"))
+
+```
+
+
+```{r}
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.5")
+FeaturePlot(caudate_microglia, features =c("HTRA1")) #0
+FeaturePlot(caudate_microglia, features =c("RIPK1")) #1
+FeaturePlot(caudate_microglia, features =c("F13A1")) #2
+FeaturePlot(caudate_microglia, features =c("CD83")) #3
+FeaturePlot(caudate_microglia, features =c("RPL32")) #4
+FeaturePlot(caudate_microglia, features =c("pct_mito"))
+
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_microglia, group.by = "RNA_snn_res.0.5")
+FeaturePlot(caudate_microglia, features =c("CX3CR1", "TMEM119")) #Homeostatic
+FeaturePlot(caudate_microglia, features =c("GPNMB",  "LPL")) #DAM
+FeaturePlot(caudate_microglia, features =c("CD83", "NACA")) #DAM
+FeaturePlot(caudate_microglia, features =c("IRM","IFIT2")) #Interferon
+FeaturePlot(caudate_microglia, features =c("CCL4","CCL3")) #Chemokine
+FeaturePlot(caudate_microglia, features =c("FOS", "JUNB")) #Fos
+```
+
+
+```{r}
+FeaturePlot(caudate_microglia, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"))
+```
+
+
+
+```{r}
+Idents(caudate_microglia) = caudate_microglia$RNA_snn_res.0.2
+caudate_microglia_markers = FindAllMarkers(caudate_microglia, only.pos = TRUE)#,  min.pct = 0.2, logfc.threshold = 1.25)
+caudate_microglia_markers
+
+subsetmarkers= subset(caudate_microglia_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+```{r}
+#M1 surface markers and secretory
+FeaturePlot(caudate_microglia, features = c("CD14", "CD40", "CD86"))
+FeaturePlot(caudate_microglia, features = c("CCL5", "CCL20", "CXCL1"))
+#from cellmarker2.0
+#FeaturePlot(caudate_microglia, features = c("P2RY12", "CSF1R", "P2RY13"))
+
+#M2 surface markers and secretory
+FeaturePlot(caudate_microglia, features = c("CD163"))
+FeaturePlot(caudate_microglia, features = c("BDNF", "CSF1"))
+
+FeaturePlot(caudate_microglia, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"))
+
+```
+
+```{r}
+#All Microglia 
+FeaturePlot(caudate_microglia, features =c("DOCK8", "CSF1R", "TMEM119", "P2Y12R", "CD68", "CD14", "CD45"))
+
+#M1 
+FeaturePlot(caudate_microglia, features =c("CD16", "CD13", "CD86", "CD40"))
+#M2
+FeaturePlot(caudate_microglia, features =c("CD206", "CD163", "IL-10", "CCL22", "CCL2"))
+#Check: CD44 from infilitrating cells not residential microglia
+FeaturePlot(caudate_microglia, features =c("CD44"))
+```
+
+
+```{r}
+FeaturePlot(caudate_microglia, features =c("DLG1"))
+FeaturePlot(caudate_microglia, features =c("RASAL3"))
+FeaturePlot(caudate_microglia, features =c("CD83"))
+FeaturePlot(caudate_microglia, features =c("F13A1"))
+FeaturePlot(caudate_microglia, features =c("RPL8"))
+FeaturePlot(caudate_microglia, features =c("MT-CO3"))
+FeaturePlot(caudate_microglia, features =c("pct_mito"))
+```
+
+
+```{r}
+classes = c("Microglia_0","Microglia_1","Macrophage","Microglia_2_CD83","Microglia_3","Microglia_4")
+
+caudate_microglia= assignCellClasses(caudate_microglia, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(caudate_microglia) <- "cell_class"
+
+DimPlot(caudate_microglia, label= TRUE)
+
+my_order = c("Microglia_0","Microglia_1","Microglia_2_CD83","Microglia_3","Microglia_4", "Macrophage")
+
+Idents(caudate_microglia) = factor(Idents(caudate_microglia), levels = my_order)
+
+
+# Define the genes and clusters you want to plot
+features <- c("C1QA","P2RY12","CD86","CD163","F13A1","CD83", "pct_mito")
+
+DotPlot(caudate_microglia, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+FeaturePlot(caudate_microglia, features = c("C1QA","P2RY12"))
+FeaturePlot(caudate_microglia, features = c("CD86","CD163"))
+FeaturePlot(caudate_microglia, features = c("F13A1","CD83"))
+FeaturePlot(caudate_microglia, features = c("pct_mito"))
+```
+
+
+```{r}
+sobj = caudate_microglia
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/caudate_microglia_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Microglia Cell Type Enrichment XDP vs. Control: Caudate") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+
+
+#putamen microglia
+```{r}
+DimPlot(putamen_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_microglia, group.by = "RNA_snn_res.0.5")
+DimPlot(putamen_microglia, group.by = "donor_id")
+DimPlot(putamen_microglia, group.by = "Condition")
+```
+
+#scale and integrate
+```{r}
+putamen_microglia = normalizeScalePcaClusterUmap(putamen_microglia)
+DimPlot(putamen_microglia, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_microglia, group.by = "RNA_snn_res.0.5")
+DimPlot(putamen_microglia, group.by = "donor_id")
+DimPlot(putamen_microglia, group.by = "Condition")
+```
+
+```{r}
+Idents(putamen_microglia) = putamen_microglia$RNA_snn_res.0.2
+putamen_microglia_markers = FindAllMarkers(putamen_microglia, only.pos = TRUE)#, min.pct = 0.2, logfc.threshold = 1)
+putamen_microglia_markers
+
+subsetmarkers= subset(putamen_microglia_markers, subset = pct.2 < 0.2)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+
+newmarker1 = subset(putamen_microglia_markers, subset= cluster=="1")
+newmarker1
+```
+
+
+```{r}
+DimPlot(putamen_microglia, group.by = "RNA_snn_res.0.2")
+#FeaturePlot(putamen_microglia, features =c("")) #0
+#FeaturePlot(putamen_microglia, features =c("")) #1
+FeaturePlot(putamen_microglia, features =c("F13A1")) #2
+FeaturePlot(putamen_microglia, features =c("SKAP1")) #3
+FeaturePlot(putamen_microglia, features =c("UBA52")) #4
+FeaturePlot(putamen_microglia, features =c("COBLL1")) #5
+FeaturePlot(putamen_microglia, features =c("pct_mito"))
+
+```
+
+
+
+```{r}
+FeaturePlot(putamen_microglia, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"))
+```
+
+
+```{r}
+#M1 surface markers and secretory
+FeaturePlot(putamen_microglia, features = c("CD14", "CD40", "CD86"))
+FeaturePlot(putamen_microglia, features = c("CCL5", "CCL20", "CXCL1"))
+#from cellmarker2.0
+#FeaturePlot(putamen_microglia, features = c("P2RY12", "CSF1R", "P2RY13"))
+
+#M2 surface markers and secretory
+FeaturePlot(putamen_microglia, features = c("CD163"))
+FeaturePlot(putamen_microglia, features = c("BDNF", "CSF1"))
+
+FeaturePlot(putamen_microglia, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"))
+
+```
+
+```{r}
+#All Microglia 
+FeaturePlot(putamen_microglia, features =c("DOCK8", "CSF1R", "TMEM119", "P2Y12R", "CD68", "CD14", "CD45"))
+
+#M1 
+FeaturePlot(putamen_microglia, features =c("CD16", "CD13", "CD86", "CD40"))
+#M2
+FeaturePlot(putamen_microglia, features =c("CD206", "CD163", "IL-10", "CCL22", "CCL2"))
+#Check: CD44 from infilitrating cells not residential microglia
+FeaturePlot(putamen_microglia, features =c("CD44"))
+```
+
+
+```{r}
+FeaturePlot(putamen_microglia, features =c("DLG1"))
+FeaturePlot(putamen_microglia, features =c("RASAL3"))
+FeaturePlot(putamen_microglia, features =c("CD83"))
+FeaturePlot(putamen_microglia, features =c("F13A1"))
+FeaturePlot(putamen_microglia, features =c("RPL8"))
+FeaturePlot(putamen_microglia, features =c("MT-CO3"))
+FeaturePlot(putamen_microglia, features =c("pct_mito"))
+```
+
+
+```{r}
+classes = c("Microglia_0","Microglia_1","Macrophage","Microglia_2_SKAP1","Microglia_3", "Microglia_4")
+
+putamen_microglia= assignCellClasses(putamen_microglia, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(putamen_microglia) <- "cell_class"
+
+DimPlot(putamen_microglia, label= TRUE)
+
+my_order = c("Microglia_0","Microglia_1","Microglia_2_SKAP1","Microglia_3", "Microglia_4", "Macrophage")
+
+Idents(putamen_microglia) = factor(Idents(putamen_microglia), levels = my_order)
+
+
+
+# Define the genes and clusters you want to plot
+features <- c("C1QA","P2RY12","CD86","CD163","F13A1","SKAP1", "pct_mito")
+
+DotPlot(putamen_microglia, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+qsave(putamen_microglia, "Current_subclusters/putamen_microglia.qs")
+```
+
+```{r}
+FeaturePlot(putamen_microglia, features = c("C1QA","P2RY12"))
+FeaturePlot(putamen_microglia, features = c("CD86","CD163"))
+FeaturePlot(putamen_microglia, features = c("F13A1","SKAP1"))
+FeaturePlot(putamen_microglia, features = c("pct_mito"))
+```
+
+
+```{r}
+sobj = putamen_microglia
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/putamen_microglia_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Microglia Cell Type Enrichment XDP vs. Control: Putamen") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+
+
+
+#Astrocytes:
+#Main distinction: GFAP+/- (GFAP ~ 10-30%) 4-6 clusters?, CHI3L1/CHI3L2
+#Oligodendrocytes/OPCs:
+#One opc population (VCAN+/CSPG5+, very OLIG2-high)
+#Intermediate: BMP4, MBP/MOBP
+#Endothelial:
+#VLMCs (DCN+ versus FLT1+)
+#Interneurons:
+#https://pubmed.ncbi.nlm.nih.gov/32999462/
+#Cholinergics (CHAT), TAC3+, SST+, PVALB+, etc
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#caudate immune 
+```{r}
+DimPlot(caudate_immune, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_immune, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_immune, group.by = "donor_id")
+DimPlot(caudate_immune, group.by = "Condition")
+```
+
+#scale only 
+```{r}
+caudate_immune = normalizeScalePcaClusterUmap(caudate_immune)
+
+DimPlot(caudate_immune, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_immune, group.by = "RNA_snn_res.0.3")
+DimPlot(caudate_immune, group.by = "RNA_snn_res.0.4")
+DimPlot(caudate_immune, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_immune, group.by = "RNA_snn_res.0.6")
+DimPlot(caudate_immune, group.by = "RNA_snn_res.0.7")
+DimPlot(caudate_immune, group.by = "donor_id")
+DimPlot(caudate_immune, group.by = "Condition")
+```
+
+```{r}
+Idents(caudate_immune) = caudate_immune$RNA_snn_res.0.6
+caudate_immune_markers = FindAllMarkers(caudate_immune, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+caudate_immune_markers
+
+subsetmarkers= subset(caudate_immune_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+```
+
+```{r}
+FeaturePlot(caudate_immune, features = c("OXNAD1"))
+FeaturePlot(caudate_immune, features = c("PITPNC1"))
+FeaturePlot(caudate_immune, features = c("POU2AF1"))
+
+FeaturePlot(caudate_immune, features = c("CD79B"))
+FeaturePlot(caudate_immune, features = c("CD3G"))
+```
+
+
+```{r}
+Idents(caudate_immune) <- "cell_class"
+
+
+# Define the genes and clusters you want to plot
+features <- c("CD3E","CD4","CCL5", "OXNAD1", "CD19", "POU2AF1") 
+
+DotPlot(caudate_immune, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+classes = c("T_Cell", "T_Cell", "B_Cell")
+
+caudate_immune= assignCellClasses(caudate_immune, classes=classes, cluster_col="RNA_snn_res.0.6", class_col = "cell_class")
+
+Idents(caudate_immune) <- "cell_class"
+
+DimPlot(caudate_immune, label= TRUE)
+DimPlot(caudate_immune, group.by= "donor_id")
+
+qsave(caudate_immune, "Current_subclusters/caudate_immune.qs")
+```
+
+```{r}
+FeaturePlot(caudate_immune, features = c("CD3E","CD4"))
+FeaturePlot(caudate_immune, features = c("CCL5", "OXNAD1"))
+FeaturePlot(caudate_immune, features = c("CD19", "POU2AF1"))
+```
+
+
+```{r}
+sobj = caudate_immune
+model_cols = c("donor_id", "cell_class", "Condition", "Sex", "Age.of.Death") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = sobj@meta.data[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$Condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects="donor_id", # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("Age.of.Death", "Sex") # your covariates
+)
+
+masc_df
+write.csv(masc_df, "MASC/caudate_immune_masc_df.csv")
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("Immune Cell Type Enrichment XDP vs. Control: Caudate") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Subclusters") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#Tcells: helper T, killer T, regulatory T
+FeaturePlot(caudate_immune, features = c("CD3D", "CD3E", "CD3G")) # general
+FeaturePlot(caudate_immune, features = c("CD4")) #helper
+FeaturePlot(caudate_immune, features = c("CD8A", "CD8B")) #killer
+FeaturePlot(caudate_immune, features = c("FOXP3")) #regulatory
+
+#B cells
+FeaturePlot(caudate_immune, features = c("CD4")) #helper
+FeaturePlot(caudate_immune, features = c("CD8A", "CD8B")) #killer
+FeaturePlot(caudate_immune, features = c("FOXP3")) #regulatory
+```

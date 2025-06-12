@@ -1,0 +1,106 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(tibble)
+#gene_df: FindMarkers output, make sure you have a gene column here
+SPN_score_normalized = function(gene_df, SCtransform_sobj, logfc_val = "weighted_logFC", method = "multiply"){
+
+significant_genes = unique(gene_df$gene)
+
+counts_df = FetchData(SCtransform_sobj, vars = significant_genes)
+print(gene_df)
+print(counts_df)
+
+if (!all(colnames(counts_df) %in% rownames(gene_df))) {
+  stop("ERROR: Not all genes in counts_df are in gene_df")
+}
+
+#Reorder gene_df to match the columns in counts_df
+logfc_ordered <- gene_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+logfc = logfc_ordered[[logfc_val]]
+
+if (any(is.na(logfc))) {
+  stop("ERROR: NA values in the logFC values for the genes")
+}
+
+logfc_vector <- as.numeric(logfc)
+
+#Gene averages
+gene_averages <- colMeans(counts_df)
+print("Printing gene averages")
+print(gene_averages)
+
+if (method == "multiply") {
+  result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+        } else if(method == "log"){
+  custom_log_transform <- function(x, logFC_value) {
+     x * 2^logFC_value
+        }
+  result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+        } else{
+  stop("ERROR: Calculation is not working")
+        }
+
+print(result_df)
+#TO NORMALIZE
+result_df <- sweep(result_df, 2, gene_averages, FUN = "/")
+
+# Print the result
+print("Printing normalized")
+print(result_df)
+
+
+metadata <- SCtransform_sobj@meta.data
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("ERROR: No donor information in metadata")
+}
+
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+#Add/delete columns you don't want
+combined_df <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id, Condition, pct_mito, nUmi,cell_class, reclustered_cell_class, reclustered_neuron_type, reclustered_patch_matrix, reclustered_subcluster), by = "cell_id")
+print(combined_df)
+
+final_df <- combined_df %>%
+  group_by(cell_id, donor_id, Condition, pct_mito, nUmi,cell_class, reclustered_cell_class, reclustered_neuron_type, reclustered_patch_matrix, reclustered_subcluster) %>%
+  summarize(SPN_score = sum(expression), .groups = 'drop')
+print(final_df)
+
+#Z-score for Bennett
+# spn_scores = final_df$SPN_score
+# mean_spn <- mean(spn_scores, na.rm = TRUE)
+# sd_spn <- sd(spn_scores, na.rm = TRUE)
+# final_df$z_score  <- (spn_scores - mean_spn) / sd_spn
+
+return(final_df)
+}
+```
+
+```{r}
+xdp_matrix_markers_final
+```
+
+```{r}
+final_merged_xdp_transformed
+```
+
+
+```{r}
+BICAN_matrix_scores = SPN_score_normalized(xdp_matrix_markers_final, final_merged_xdp_transformed, logfc_val = "weighted_logFC", method = "multiply")
+```
+```{r}
+BICAN_matrix_scores
+```
+

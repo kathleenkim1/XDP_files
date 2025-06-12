@@ -1,0 +1,200 @@
+---
+title: "Cellranger outputs to Seurat objects"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+
+
+# THIS CODE TAKES IN
+# (1) A LIST OF LIBRARY NAMES
+# (2) THE BASE PATH IN WHICH THOSE LIBRARIES LIVE
+# (3) THE BASENAMES OF RAW, FILTERED, AND MOLECULE INFO H5's
+
+
+# THIS SCRIPT THEN LOADS THE OBJECTS INTO MEMORY, STORING THEM AS LISTS FOR FURTHER INVESTIGATION
+
+
+raw_dgc_list = list()
+filtered_dgc_list = list()
+mol_df_list = list()
+donor_ids_list = list()
+merged_metadata_df_list = list()
+seurat_object_list = list()
+
+
+this_base_path = "~/"
+library_list = list("CaH_rxn1")
+                    #, 
+                    #"CaH_rxn2", 
+                    #"CaH_rxn3", 
+                    #"CaH_rxn4", 
+                    #"Put_rxn1", 
+                    #"Put_rxn2", 
+                    #"Put_rxn3", 
+                    #"Put_rxn4")
+
+
+
+RAW_COUNTS_BASENAME = "raw_feature_bc_matrix.h5"
+FILTERED_COUNTS_BASENAME = "filtered_feature_bc_matrix.h5"
+MOLECULE_INFO_BASENAME = "molecule_info.h5"
+DONOR_ID_BASENAME = "donor_ids.tsv"
+
+
+# loop through libraries
+for (name in library_list){
+   cat(name)
+   cat("\n")
+  
+   raw_counts_path = file.path(this_base_path, name, RAW_COUNTS_BASENAME)
+   filtered_counts_path = file.path(this_base_path, name, FILTERED_COUNTS_BASENAME)
+   molecule_info_path = file.path(this_base_path, name, MOLECULE_INFO_BASENAME)
+   donor_id_path = file.path(this_base_path, name, DONOR_ID_BASENAME)
+  
+   # load the filtered counts
+   filtered_dgc = Read10X_h5(filtered_counts_path)
+   filtered_dgc_list[[name]] = filtered_dgc
+
+
+   print("READING RAW DGC .H5")
+   raw_counts = Read10X_h5(raw_counts_path)
+   raw_dgc_list[[name]] = raw_counts
+
+
+   cd = data.frame(
+       row.names=colnames(raw_counts),
+       nUMI=colSums(raw_counts),
+       log10_nUMI = log10(colSums(raw_counts) + 1),
+       nGene=colSums(raw_counts > 0),
+       is_in_filtered=colnames(raw_counts) %in% colnames(filtered_dgc_list[[name]])
+   )
+
+
+
+
+   # load the molecule data such that you can map the barcodes to what came out of CellRanger
+   # load umi_type to get whether or not the umi was intronic
+   h5fetch = function(x){return(h5read(molecule_info_path, x))}
+   mol_df = data.frame(
+               barcode=h5fetch("barcodes")[h5fetch("barcode_idx")+1] %>% paste0("-1"),
+               feature=h5fetch("features/name")[h5fetch("feature_idx")+1],
+               umi=h5fetch("umi"),
+               umi_type=h5fetch("umi_type"),
+               count=h5fetch("count")
+       )
+      
+   # only consider cells that are in the filtered umi data
+   mol_df = mol_df[mol_df$barcode %in% colnames(filtered_dgc),]
+
+
+   mol_df_grouped = mol_df %>% group_by(barcode) %>%
+       summarize(
+           nUmi=n(),
+           nRead=sum(count),
+           pct_intronic=sum(umi_type==0)/nUmi)
+   rownames(mol_df_grouped) = mol_df_grouped$barcode
+   mol_df_list[[name]] = mol_df_grouped
+
+
+   
+   donor_ids = read.table(donor_id_path, header=T)
+  donor_ids = donor_ids[, c("cell", "donor_id", "prob_max")]
+  donor_ids_list[[name]] = donor_ids
+
+  mol_df_rxn = mol_df_list[[name]] 
+  metadata = merge(donor_ids, mol_df_rxn, by.x = "cell", by.y = "barcode")
+  rownames(metadata) <- metadata$cell
+  all(colnames(filtered_dgc) == rownames(metadata))
+  metadata <- metadata[match(colnames(filtered_dgc), rownames(metadata)), ]
+  all(colnames(filtered_dgc) == rownames(metadata))
+  merged_metadata_df_list[[name]] = metadata 
+  
+  
+  sobj = CreateSeuratObject(counts=filtered_dgc, meta.data=metadata)
+  seurat_object_list[[name]] = sobj
+  
+  qsfilepath <- paste0(name, ".qs")
+  qsave(sobj, file = qsfilepath)  
+   
+  
+   # cellbender_dgc = Read10X_h5(path/to/cellbender/h5)
+   # donor_ids = read.table(____, header=T)
+   # metadata = merge(donor_ids, mol_df_grouped, by.x="cell", by.y="barcode)
+   # filter metadata to same rows as cellbender_dgc
+   # match row order of metadata to col order of cellbender (and put in list)
+   # create seurat object (put in list)
+   # save seurat object in reaction-specific location
+   
+   
+  # cellbender_dgc = Read10X_h5(cellbender_counts_path)
+   #cellbender_dgc_list[[name]] = cellbender_dgc
+}
+```
+
+
+```{r}
+  sobj
+  
+  sobj = CreateSeuratObject(counts=filtered_dgc, meta.data=metadata)
+str(sobj)
+```
+
+
+
+
+```{r}
+#this works
+
+donor_ids = read.table(donor_id_path, header=T)
+donor_ids = donor_ids[, c("cell", "donor_id", "prob_max")]
+#    donor_ids_list[[name]] = donor_ids
+
+mol_df_carxn1 = mol_df_list[[1]] #techincally mol_df
+merged_df = merge(donor_ids, mol_df_carxn1, by.x = "cell", by.y = "barcode")
+rownames(merged_df) <- merged_df$cell
+all(colnames(filtered_dgc) == rownames(merged_df))
+merged_df <- merged_df[match(colnames(filtered_dgc), rownames(merged_df)), ]
+all(colnames(filtered_dgc) == rownames(merged_df))
+sobj1 = CreateSeuratObject(counts=filtered_dgc, meta.data=merged_df)
+head(sobj1@meta.data)
+```
+
+
+```{r}
+merged_metadata_df = merge(donor_ids, mol_df, by.x = "cell", by.y = "barcode")
+    rownames(merged_metadata_df) = merged_metadata_df$cell
+    all(colnames(filtered_dgc)) == rownames(merged_metadata_df) #hopefully this prints out
+    merged_metadata_df <- merged_metadata_df[match(colnames(filtered_dgc), rownames(merged_metadata_df)), ]
+    merged_metadata_df_list[[name]] = merged_metadata_df
+   
+   
+    seurat_object = CreateSeuratObject(counts= filtered_dgc, meta.data = merged_metadata_df)
+    seurat_object_list[[name]] = seurat_object
+   
+
+
+```
+
+
+```{r}
+donor_ids = read.table("~/CaH_rxn3/donor_ids.tsv", header=T)
+donor_ids = donor_ids[, c("cell", "donor_id", "prob_max")]
+mol_df_carxn1 = mol_df_list[[1]]
+merged_df = merge(donor_ids, mol_df_carxn1, by.x = "cell", by.y = "barcode")
+rownames(merged_df) <- merged_df$cell
+all(colnames(filtered_dgc) == rownames(merged_df))
+merged_df <- merged_df[match(colnames(filtered_dgc), rownames(merged_df)), ]
+all(colnames(filtered_dgc) == rownames(merged_df))
+sobj = CreateSeuratObject(counts=filtered_dgc, meta.data=merged_df)
+```
+
+```{r}
+sobj@meta.data
+
+```
+

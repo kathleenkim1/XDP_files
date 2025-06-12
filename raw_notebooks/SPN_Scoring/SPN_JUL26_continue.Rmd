@@ -1,0 +1,470 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+#functions: SPN-score, plot_histogram
+```{r}
+SPN_score_graphs = function(gene_df, SCtransform_counts, logfc_val){
+
+```
+
+#SPN SCORING
+
+```{r}
+caudate_neurons_transformed= qread("SPN_Scores/caudate_neurons_transformed.qs")
+putamen_neurons_transformed= qread("SPN_Scores/putamen_neurons_transformed.qs")
+caudate_neurons_transformed
+putamen_neurons_transformed
+```
+```{r}
+caudate_neurons_transformed@meta.data
+putamen_neurons_transformed@meta.data
+```
+
+```{r}
+BICAN_SPN_vs_non_markers_filtered
+```
+
+
+```{r}
+features = BICAN_SPN_vs_non_markers_filtered$gene
+Idents(caudate_neurons_transformed) = "subcluster"
+DotPlot(caudate_neurons_transformed, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+CaH_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, caudate_neurons_transformed,logfc_val = "avg_log2FC")
+```
+
+
+```{r}
+donors = c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006","SCF-19-009", "SCF-19-014", "SCF-19-018",  "SCF-20-023",  "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM")
+```
+
+
+```{r}
+SPN_score_graphs = function(SPN_score_output, donor_order = donors, fillcol = "subcluster", color = color1, donor_graph_title = "CaH SPNs vs non-SPNs", SCtransformcounts, SPN_score_col_name){
+  
+min_SPN_score = min(SPN_score_output$total_expression)
+max_SPN_score = max(SPN_score_output$total_expression)
+median_SPN_score = median(SPN_score_output$total_expression)
+
+print("min, max, median scores")
+print(min_SPN_score)
+print(max_SPN_score)
+print(median_SPN_score)
+
+options(repr.plot.width=24, repr.plot.height=16)
+plots = list()
+
+for (donor in donor_order) {
+test = SPN_score_output[SPN_score_output$donor_id == donor,]
+plots[[donor]] = plot_overlapping_density_histogram(df = test,
+hist_col = "total_expression",
+fill_col = fillcol,
+colors = color,
+#alpha=0.5,
+breaks=seq(0,max_SPN_score, round(max_SPN_score/50)),
+title= paste(donor_graph_title, ": ", donor),
+xlab = "SPN Score",
+fig_filename = NULL)
+}
+layout_matrix <- rbind(
+c(1, 2, 3, 4, 5),
+c(6, 7, 8, 9, 10),
+c(11, 12, 13, NA, NA),
+c(14, 15, 16, 17, NA)
+)
+# Arrange the plots according to the custom layout
+grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+# Save the arranged plots to a PNG file
+ggsave(filename = "SPN_SCORE_Output/USETEST.png", plot = grid_plots, width = 30, height = 16)
+
+print("donor plot done")
+
+XDP = SPN_score_output[SPN_score_output$Condition == "XDP",]
+a = plot_overlapping_density_histogram(df = XDP, 
+    hist_col = "total_expression",
+    fill_col = fillcol,
+    colors = color,
+    #alpha=0.5,
+    breaks=seq(0,max_SPN_score, round(max_SPN_score/50)),
+    title= paste(donor_graph_title, ": ", "XDP"),
+    xlab = "SPN score",
+    fig_filename = NULL)
+
+Control = SPN_score_output[SPN_score_output$Condition == "Control",]
+b =plot_overlapping_density_histogram(df = Control, 
+    hist_col = "total_expression",
+    fill_col = fillcol,
+    colors = color,
+    #alpha=0.5,
+    breaks=seq(0,max_SPN_score, round(max_SPN_score/50)),
+    title= paste(donor_graph_title, ": ", "Control "),
+    xlab = "SPN score",
+    fig_filename = NULL)
+
+print("Condition plot done")
+
+SPN= SPN_score_output[SPN_score_output$subcluster == "SPN",]
+c = plot_overlapping_density_histogram(df = SPN, 
+    hist_col = "total_expression",
+    fill_col = "Condition",
+    colors = c("XDP" = "red", "Control"= "blue"),
+    #alpha=0.5,
+    breaks=seq(0,max_SPN_score, round(max_SPN_score/50)),
+    title= paste("XDP vs Control: SPN"),
+    xlab = "SPN score",
+    fig_filename = NULL)
+
+notSPN = SPN_score_output[SPN_score_output$subcluster == "non-SPN",]
+d = plot_overlapping_density_histogram(df = notSPN, 
+    hist_col = "total_expression",
+    fill_col = "Condition",
+    colors = c("XDP" = "red", "Control"= "blue"),
+    #alpha=0.5,
+    breaks=seq(0,max_SPN_score, round(max_SPN_score/50)),
+    title= paste("XDP vs Control: non-SPN"),
+    xlab = "SPN score",
+    fig_filename = NULL)  
+  
+print(a)
+print(b)
+print(c)
+print(d)
+
+print("graphs done")
+
+threshold <- quantile(SPN_score_output$total_expression[SPN_score_output$subcluster == "SPN" & CaH_summary_expr_data$Condition == "XDP"], 0.1)
+print(threshold)
+
+SPN_score_output_identity_loss_SPN = subset(SPN_score_output, subset = total_expression < threshold & subcluster == "SPN") 
+                                                 #& Condition == "XDP")
+print(SPN_score_output_identity_loss_SPN)
+
+print(table(SPN_score_output_identity_loss_SPN$donor_id))
+
+identity_loss_cells = unique(SPN_score_output_identity_loss_SPN$cell_id)
+identity_loss_cells
+
+SCtransformcounts@meta.data$SPN_identity = "Other"
+SCtransformcounts$SPN_identity[identity_loss_cells] = "Losing_Identity"
+SCtransformcounts@meta.data
+
+# Visualize on UMAP
+pic = DimPlot(SCtransformcounts, reduction = "umap", group.by = "SPN_identity", split.by = "Condition",  cols = c("red", "grey"))
+print(pic)
+ggsave("SPN_SCORE_Output/SPN_score_10pct_TEST.png", plot = pic, width = 20, height = 8, units = "in", dpi = 300)
+
+spn_scores = setNames(SPN_score_output$total_expression, SPN_score_output$cell_id)
+spn_scores
+
+SCtransformcounts = AddMetaData(SCtransformcounts, metadata= spn_scores, col.name = SPN_score_col_name)
+
+
+pic2 = FeaturePlot(SCtransformcounts, features = SPN_score_col_name, split.by = "Condition") #+  ggtitle("UMAP of SPN Scores")
+print(pic2)
+ggsave("SPN_SCORE_Output/SPN_UMAP_TEST.png", plot = pic2, width = 20, height = 8, units = "in", dpi = 300)
+return(SCtransformcounts)
+}
+```
+
+
+```{r}
+# Load the necessary package
+library(patchwork)
+
+# List of donor IDs in the desired order
+desired_order <- c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006","SCF-19-009", "SCF-19-014", "SCF-19-018",  "SCF-20-023",  "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM")
+
+# Generate a list of FeaturePlots
+plots <- lapply(desired_order, function(donor) {
+  cells <- WhichCells(caudate_neurons_transformed, expression = donor_id == donor)
+  FeaturePlot(caudate_neurons_transformed, features = "SPN_score", cells = cells) + 
+    ggtitle(paste("Donor:", donor))
+})
+
+# Arrange the plots into the specified rows
+row1 <- wrap_plots(plots[1:5], ncol = 5)
+row2 <- wrap_plots(plots[6:10], ncol = 5)
+row3 <- wrap_plots(plots[11:13], ncol = 5)
+row4 <- wrap_plots(plots[14:17], ncol = 5)
+
+# Combine the rows into a single plot
+combined_plot <- (row1 / row2 / row3 / row4)
+
+# Save the combined plot as a PNG file
+ggsave("SPN_SCORE_Output/SPN_score_by_donor.png", plot = combined_plot, width = 40, height = 20, units = "in", dpi = 300)
+
+```
+
+
+
+
+
+```{r}
+CaH_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, caudate_neurons_transformed,logfc_val = "avg_log2FC")
+```
+
+```{r}
+color1 = c("SPN" = "red", "non-SPN"= "blue") #for subcluster: SPN vs non-SPNS
+color2 = c("red", "blue")
+color3 = c("SPN"="red", "eSPN"="yellow", "other"="green", "IN" = "blue") #for subclass
+```
+
+```{r}
+caudate_neurons_transformed@meta.data
+SPN_score_graphs(CaH_summary_expr_data, donor_order = donors, fillcol = "subcluster", color = color1, donor_graph_title = "CaH SPNs vs non-SPNs", caudate_neurons_transformed, "BICAN_SPN_score_52genes")
+caudate_neurons_transformed@meta.data
+```
+
+
+```{r}
+CaH_summary_expr_data
+```
+
+
+```{r}
+SPN_score_graphs(CaH_summary_expr_data, donor_order = donors, fillcol = "subcluster", color = color1, donor_graph_title = "CaH SPNs vs non-SPNs", caudate_neurons_transformed, "BICAN_SPN_score_52genes")
+
+```
+
+
+
+```{r}
+CaH_SPN_vs_nonSPN@meta.data
+caudate_neurons_transformed
+```
+
+
+```{r}
+caudate_neurons_transformed@meta.data
+```
+
+
+
+
+
+```{r}
+BICAN_SPN_vs_non_markers_filtered
+```
+
+
+```{r}
+colnames(merged_xdp@meta.data)
+
+head(merged_xdp)
+```
+```{r}
+merged_xdp@meta.data$subcluster = merged_xdp$neuron_type
+merged_xdp$subcluster[merged_xdp$subcluster == "IN"] = "non-SPN"
+merged_xdp$subcluster[merged_xdp$subcluster == "other"] = "non-SPN"
+merged_xdp$subcluster[merged_xdp$subcluster == "eSPN"] = "non-SPN"
+
+merged_xdp@meta.data$sub_class = merged_xdp$neuron_type
+```
+
+
+
+```{r}
+merged_xdp@meta.data
+#10%: 50.29607
+merged_XDP_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, merged_xdp,logfc_val = "avg_log2FC")
+
+merged_xdp= SPN_score_graphs(merged_XDP_summary_expr_data, donor_order = donors, fillcol = "subcluster", color = color1, donor_graph_title = "SPNs vs non-SPNs", merged_xdp, "BICAN_SPN_Score_52genes")
+
+merged_xdp= SPN_score_graphs(merged_XDP_summary_expr_data, donor_order = donors, fillcol = "sub_class", color = color3, donor_graph_title = "SPNs vs non-SPNs", merged_xdp, "BICAN_SPN_Score_52genes")
+
+merged_xdp@meta.data
+```
+
+
+```{r}
+final_BICAN_SPN_vs_non_markers = subset(BICAN_SPN_vs_non_markers, subset = p_val_adj < 0.05 & cluster == "SPN")
+final_BICAN_SPN_vs_non_markers$pct_subtract = final_BICAN_SPN_vs_non_markers$pct.1 - final_BICAN_SPN_vs_non_markers$pct.2
+final_BICAN_SPN_vs_non_markers$weighted_logFC = final_BICAN_SPN_vs_non_markers$avg_log2FC * final_BICAN_SPN_vs_non_markers$pct_subtract
+final_BICAN_SPN_vs_non_markers
+```
+
+
+```{r}
+merged_xdp@meta.data
+#10%: 300.81
+merged_XDP_BICAN_pct = SPN_score(final_BICAN_SPN_vs_non_markers, merged_xdp,logfc_val = "weighted_logFC")
+
+merged_xdp= SPN_score_graphs(merged_XDP_BICAN_pct, donor_order = donors, fillcol = "subcluster", color = color1, donor_graph_title = "SPNs vs non-SPNs", merged_xdp, "BICAN_SPN_Score_pct")
+
+SPN_score_graphs(merged_XDP_BICAN_pct, donor_order = donors, fillcol = "sub_class", color = color3, donor_graph_title = "SPNs vs non-SPNs", merged_xdp, "BICAN_SPN_Score_pct")
+
+merged_xdp@meta.data
+```
+
+```{r}
+table(BICAN_SPN_classes_vs_non_markers$cluster)
+```
+
+
+```{r}
+final_BICAN_SPN_classes_vs_non_markers = subset(BICAN_SPN_classes_vs_non_markers, subset = cluster != "non-SPN")
+final_BICAN_SPN_classes_vs_non_markers
+table(final_BICAN_SPN_classes_vs_non_markers$cluster)
+```
+
+
+
+```{r}
+final_BICAN_SPN_classes_vs_non_markers = subset(final_BICAN_SPN_classes_vs_non_markers, subset = p_val_adj < 0.05)
+final_BICAN_SPN_classes_vs_non_markers_unique <- final_BICAN_SPN_classes_vs_non_markers %>%
+  distinct(gene, .keep_all = TRUE)
+final_BICAN_SPN_classes_vs_non_markers_unique
+
+table(final_BICAN_SPN_classes_vs_non_markers_unique$cluster) #107 is now lowest
+```
+
+```{r}
+final_BICAN_SPN_classes_vs_non_markers_unique
+```
+
+
+```{r}
+final_final_BICAN_SPN_classes_vs_non_markers <- final_BICAN_SPN_classes_vs_non_markers_unique %>%
+  group_by(cluster) %>%
+  arrange(p_val_adj) %>%
+  slice_head(n = 107) %>%
+  ungroup()
+final_final_BICAN_SPN_classes_vs_non_markers = as.data.frame(final_final_BICAN_SPN_classes_vs_non_markers)
+final_final_BICAN_SPN_classes_vs_non_markers
+# View the result
+rownames(final_final_BICAN_SPN_classes_vs_non_markers)= final_final_BICAN_SPN_classes_vs_non_markers$gene
+final_final_BICAN_SPN_classes_vs_non_markers
+```
+
+
+
+```{r}
+final_final_BICAN_SPN_classes_vs_non_markers$pct_subtract = final_final_BICAN_SPN_classes_vs_non_markers$pct.1 - final_final_BICAN_SPN_classes_vs_non_markers$pct.2
+final_final_BICAN_SPN_classes_vs_non_markers$weighted_logFC = final_final_BICAN_SPN_classes_vs_non_markers$avg_log2FC * final_final_BICAN_SPN_classes_vs_non_markers$pct_subtract
+final_final_BICAN_SPN_classes_vs_non_markers
+```
+
+
+
+
+```{r}
+merged_xdp@meta.data
+
+merged_XDP_BICAN_pct_SPNclasses = SPN_score(final_final_BICAN_SPN_classes_vs_non_markers, merged_xdp,logfc_val = "weighted_logFC")
+
+merged_xdp= SPN_score_graphs(merged_XDP_BICAN_pct_SPNclasses, donor_order = donors, fillcol = "subcluster", color = color1, donor_graph_title = "SPNs vs non-SPNs", merged_xdp, "BICAN_SPNclasses_Score_pct")
+
+SPN_score_graphs(merged_XDP_BICAN_pct, donor_order = donors, fillcol = "sub_class", color = color3, donor_graph_title = "SPNs vs non-SPNs", merged_xdp, "BICAN_SPNclasses_Score_pct")
+
+merged_xdp@meta.data
+```
+
+```{r}
+final_BICAN_SPN_classes_vs_non_markers$pct_subtract = final_BICAN_SPN_classes_vs_non_markers$pct.1 - final_BICAN_SPN_classes_vs_non_markers$pct.2
+final_BICAN_SPN_classes_vs_non_markers$weighted_logFC = final_BICAN_SPN_classes_vs_non_markers$avg_log2FC * final_BICAN_SPN_classes_vs_non_markers$pct_subtract
+final_BICAN_SPN_classes_vs_non_markers
+```
+
+```{r}
+merged_xdp@meta.data
+
+merged_XDP_BICAN_pct_SPNclasses = SPN_score(final_BICAN_SPN_classes_vs_non_markers, merged_xdp,logfc_val = "weighted_logFC")
+
+merged_xdp= SPN_score_graphs(merged_XDP_BICAN_pct_SPNclasses, donor_order = donors, fillcol = "subcluster", color = color1, donor_graph_title = "SPNs vs non-SPNs", merged_xdp, "BICAN_SPNclasses_Score_pcttest")
+
+#SPN_score_graphs(merged_XDP_BICAN_pct, donor_order = donors, fillcol = "sub_class", color = color3, donor_graph_title = "SPNs vs non-SPNs", merged_xdp, "BICAN_SPNclasses_Score_pcttest")
+
+merged_xdp@meta.data
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+merged_xdp_test = merged_xdp
+merged_xdp_test@meta.data <- merged_xdp_test@meta.data %>%
+  mutate(identity_loss1 = BICAN_SPN_Score_52genes < 50.29607 & subcluster == "SPN")
+merged_xdp_test@meta.data <- merged_xdp_test@meta.data %>%
+  mutate(identity_loss2 = BICAN_SPN_Score_pct < 300.81 & subcluster == "SPN")
+merged_xdp_test@meta.data
+```
+
+
+```{r}
+table(merged_xdp_test$identity_loss1)
+table(merged_xdp_test$identity_loss2)
+```
+
+
+```{r}
+
+DimPlot(merged_xdp_test, reduction = "umap", group.by = "identity_loss1", split.by = "Condition",  cols = c("grey","red"))
+
+DimPlot(merged_xdp_test, reduction = "umap", group.by = "identity_loss2", split.by = "Condition",  cols = c("grey","red"))
+
+```
+
+
+```{r}
+DimPlot(merged_xdp, reduction = "umap", group.by = "SPN_identity", split.by = "Condition",  cols = c("red", "grey"))
+
+FeaturePlot(merged_xdp, features = "BICAN_SPN_Score_52genes", split.by = "Condition") #+ 
+```
+
+```{r}
+FeaturePlot(merged_xdp, features = "BICAN_SPN_Score_52genes", split.by = "Condition") 
+FeaturePlot(merged_xdp, features = "BICAN_SPN_Score_pct", split.by = "Condition") 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+merged_xdp = qread("SPN_Scores/caudate_and_putamen_neuron_all.qs")
+merged_xdp
+merged_xdp@meta.data
+Idents(merged_xdp) = "neuron_type"
+DimPlot(merged_xdp, label = TRUE)
+```
+
+```{r}
+DimPlot(merged_xdp, group.by = "RNA_snn_res.0.2")
+DimPlot(merged_xdp, group.by = "RNA_snn_res.0.3")
+DimPlot(merged_xdp, group.by = "region")
+```
+```{r}
+FeaturePlot(merged_xdp, features =c("CASZ1","CHAT"))
+FeaturePlot(merged_xdp, features =c("DRD1", "DRD2"))
+FeaturePlot(merged_xdp, features =c("PPP1R1B", "pct_mito"))
+FeaturePlot(merged_xdp, features =c("SST", "VIP"))
+FeaturePlot(merged_xdp, features =c("GAD1", "GAD2"))
+FeaturePlot(merged_xdp, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(merged_xdp, features =c("PVALB", "CALB2"))
+FeaturePlot(merged_xdp, features =c("SLC17A7", "SLC17A6"))
+
+```
+
+

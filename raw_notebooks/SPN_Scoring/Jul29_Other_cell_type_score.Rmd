@@ -1,0 +1,558 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(qs)
+library(tibble)
+library(Seurat)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+```
+
+
+<!-- Calculate Cell class identity scores for all cell classes -->
+<!-- Oligo -->
+<!-- Astro -->
+<!-- MG -->
+<!-- Endo -->
+<!-- OPC -->
+<!-- SPN (+eSPN? I.e. use eSPNs when making marker genes, but we will make histograms of their scores separately) -->
+<!-- Matrix SPN and patch SPN separate? -->
+<!-- Non-SPN neurons (+eSPN?) -->
+<!-- Within person histograms -->
+<!-- Within-condition histograms -->
+```{r}
+BICAN_3P_V8_CaH = qread("BICAN_3P_V8_CaH.qs")
+BICAN_3P_V8_CaH
+BICAN_3P_V8_CaH@meta.data
+DimPlot(BICAN_3P_V8_CaH, label = TRUE)
+```
+```{r}
+unique(BICAN_3P_V8_CaH$predClass) 
+```
+
+
+
+```{r}
+Idents(BICAN_3P_V8_CaH) <- "predClass"
+DimPlot(BICAN_3P_V8_CaH, label = TRUE)
+
+interneuron_markers <- FindMarkers(object = BICAN_3P_V8_CaH, ident.1 = "interneuron", ident.2 = "SPN", only.pos = TRUE)
+astrocyte_markers <- FindMarkers(object = BICAN_3P_V8_CaH, ident.1 = "astrocyte", ident.2 = "SPN", only.pos = TRUE)
+polydendrocyte_markers <- FindMarkers(object = BICAN_3P_V8_CaH, ident.1 = "polydendrocyte", ident.2 = "SPN", only.pos = TRUE)
+oligodendrocyte_markers <- FindMarkers(object = BICAN_3P_V8_CaH, ident.1 = "oligodendrocyte", ident.2 = "SPN", only.pos = TRUE)
+endothelia_markers <- FindMarkers(object = BICAN_3P_V8_CaH, ident.1 = "endothelia", ident.2 = "SPN", only.pos = TRUE)
+microglia_markers <- FindMarkers(object = BICAN_3P_V8_CaH, ident.1 = "microglia", ident.2 = "SPN", only.pos = TRUE)
+
+interneuron_markers 
+astrocyte_markers 
+polydendrocyte_markers 
+oligodendrocyte_markers
+endothelia_markers
+microglia_markers
+```
+
+
+```{r}
+qsave(interneuron_markers, "SPN_Scores/interneuron_markers.qs") 
+qsave(astrocyte_markers, "SPN_Scores/astrocyte_markers.qs")  
+qsave(polydendrocyte_markers, "SPN_Scores/polydendrocyte_markers.qs")  
+qsave(oligodendrocyte_markers, "SPN_Scores/oligodendrocyte_markers.qs") 
+qsave(endothelia_markers, "SPN_Scores/endothelia_markers.qs") 
+qsave(microglia_markers, "SPN_Scores/microglia_markers.qs") 
+```
+
+```{r}
+interneuron_markers= qread("SPN_Scores/interneuron_markers.qs") 
+astrocyte_markers= qread("SPN_Scores/astrocyte_markers.qs")  
+polydendrocyte_markers= qread("SPN_Scores/polydendrocyte_markers.qs")  
+oligodendrocyte_markers= qread("SPN_Scores/oligodendrocyte_markers.qs") 
+endothelia_markers= qread("SPN_Scores/endothelia_markers.qs") 
+microglia_markers= qread("SPN_Scores/microglia_markers.qs") 
+```
+
+
+```{r}
+interneuron_markers_final = subset(interneuron_markers, subset = p_val_adj < 0.05)
+interneuron_markers_final$pct_subtract = interneuron_markers_final$pct.1 - interneuron_markers_final$pct.2
+interneuron_markers_final$weighted_logFC = interneuron_markers_final$avg_log2FC * interneuron_markers_final$pct_subtract
+interneuron_markers_final$gene = rownames(interneuron_markers_final)
+interneuron_markers_final
+hist(interneuron_markers_final$pct_subtract)
+hist(interneuron_markers_final$weighted_logFC)
+hist(interneuron_markers_final$avg_log2FC)
+  
+astrocyte_markers_final = subset(astrocyte_markers, subset = p_val_adj < 0.05)
+astrocyte_markers_final$pct_subtract = astrocyte_markers_final$pct.1 - astrocyte_markers_final$pct.2
+astrocyte_markers_final$weighted_logFC = astrocyte_markers_final$avg_log2FC * astrocyte_markers_final$pct_subtract
+astrocyte_markers_final
+astrocyte_markers_final$gene = rownames(astrocyte_markers_final)
+hist(astrocyte_markers_final$pct_subtract)
+hist(astrocyte_markers_final$weighted_logFC)
+hist(astrocyte_markers_final$avg_log2FC)
+
+polydendrocyte_markers_final = subset(polydendrocyte_markers, subset = p_val_adj < 0.05)
+polydendrocyte_markers_final$pct_subtract = polydendrocyte_markers_final$pct.1 - polydendrocyte_markers_final$pct.2
+polydendrocyte_markers_final$weighted_logFC = polydendrocyte_markers_final$avg_log2FC * polydendrocyte_markers_final$pct_subtract
+polydendrocyte_markers_final$gene = rownames(polydendrocyte_markers_final)
+polydendrocyte_markers_final
+hist(polydendrocyte_markers_final$pct_subtract)
+hist(polydendrocyte_markers_final$weighted_logFC)
+hist(polydendrocyte_markers_final$avg_log2FC)
+
+oligodendrocyte_markers_final = subset(oligodendrocyte_markers, subset = p_val_adj < 0.05)
+oligodendrocyte_markers_final$pct_subtract = oligodendrocyte_markers_final$pct.1 - oligodendrocyte_markers_final$pct.2
+oligodendrocyte_markers_final$weighted_logFC = oligodendrocyte_markers_final$avg_log2FC * oligodendrocyte_markers_final$pct_subtract
+oligodendrocyte_markers_final$gene = rownames(oligodendrocyte_markers_final)
+oligodendrocyte_markers_final
+hist(oligodendrocyte_markers_final$pct_subtract)
+hist(oligodendrocyte_markers_final$weighted_logFC)
+hist(oligodendrocyte_markers_final$avg_log2FC)
+
+endothelia_markers_final = subset(endothelia_markers, subset = p_val_adj < 0.05)
+endothelia_markers_final$pct_subtract = endothelia_markers_final$pct.1 - endothelia_markers_final$pct.2
+endothelia_markers_final$weighted_logFC = endothelia_markers_final$avg_log2FC * endothelia_markers_final$pct_subtract
+endothelia_markers_final$gene = rownames(endothelia_markers_final)
+endothelia_markers_final
+hist(endothelia_markers_final$pct_subtract)
+hist(endothelia_markers_final$weighted_logFC)
+hist(endothelia_markers_final$avg_log2FC)
+
+microglia_markers_final = subset(microglia_markers, subset = p_val_adj < 0.05)
+microglia_markers_final$pct_subtract = microglia_markers_final$pct.1 - microglia_markers_final$pct.2
+microglia_markers_final$weighted_logFC = microglia_markers_final$avg_log2FC * microglia_markers_final$pct_subtract
+microglia_markers_final$gene = rownames(microglia_markers_final)
+microglia_markers_final
+hist(microglia_markers_final$pct_subtract)
+hist(microglia_markers_final$weighted_logFC)
+hist(microglia_markers_final$avg_log2FC)
+```
+
+#GIRL YOU ARE GONNA NEED TO TRANSFORM AND SUBSET ALL CELL TYPES 
+
+```{r}
+merged_xdp@meta.data
+```
+
+```{r}
+interneuron_markers_final 
+astrocyte_markers_final  
+polydendrocyte_markers_final  
+oligodendrocyte_markers_final 
+endothelia_markers_final 
+microglia_markers_final 
+```
+
+
+```{r}
+caudate= qread("Cellbender_seurat/clustered_caudate.qs")
+caudate
+```
+
+```{r}
+caudate_controls = subset(caudate, subset = Condition == "Control")
+caudate_controls
+DimPlot(caudate_controls, label = TRUE)
+```
+```{r}
+caudate_astro_control_markers = FindMarkers(caudate_controls, ident.1 = "astrocyte", ident.2 = "SPN")
+caudate_oligo_control_markers= FindMarkers(caudate_controls, ident.1 = "oligo", ident.2 = "SPN")
+caudate_microglia_control_markers= FindMarkers(caudate_controls, ident.1 = "microglia", ident.2 = "SPN")
+caudate_interneuron_control_markers= FindMarkers(caudate_controls, ident.1 = "interneuron", ident.2 = "SPN")
+caudate_opc_control_markers= FindMarkers(caudate_controls, ident.1 = "opc", ident.2 = "SPN")
+caudate_endo_control_markers= FindMarkers(caudate_controls, ident.1 = "endothelial", ident.2 = "SPN")
+
+caudate_astro_control_markers
+caudate_oligo_control_markers
+caudate_microglia_control_markers
+caudate_interneuron_control_markers
+caudate_opc_control_markers
+caudate_endo_control_markers
+```
+
+```{r}
+qsave(caudate_astro_control_markers, "SPN_Scores/caudate_astro_control_markers.qs")
+qsave(caudate_oligo_control_markers,"SPN_Scores/caudate_oligo_control_markers.qs")
+qsave(caudate_microglia_control_markers,"SPN_Scores/caudate_microglia_control_markers.qs")
+qsave(caudate_interneuron_control_markers,"SPN_Scores/caudate_interneuron_control_markers.qs")
+qsave(caudate_opc_control_markers,"SPN_Scores/caudate_opc_control_markers.qs")
+qsave(caudate_endo_control_markers,"SPN_Scores/caudate_endo_control_markers.qs")
+```
+
+
+```{r}
+final_caudate_astro_control_markers= subset(caudate_astro_control_markers, subset = p_val_adj < 0.05)
+final_caudate_astro_control_markers$pct_subtract = final_caudate_astro_control_markers$pct.1 - final_caudate_astro_control_markers$pct.2
+final_caudate_astro_control_markers$weighted_logFC = final_caudate_astro_control_markers$avg_log2FC * final_caudate_astro_control_markers$pct_subtract
+final_caudate_astro_control_markers$gene = rownames(final_caudate_astro_control_markers)
+final_caudate_astro_control_markers
+hist(final_caudate_astro_control_markers$pct_subtract)
+hist(final_caudate_astro_control_markers$weighted_logFC)
+hist(final_caudate_astro_control_markers$avg_log2FC)
+
+final_caudate_oligo_control_markers= subset(caudate_oligo_control_markers, subset = p_val_adj < 0.05)
+final_caudate_oligo_control_markers$pct_subtract = final_caudate_oligo_control_markers$pct.1 - final_caudate_oligo_control_markers$pct.2
+final_caudate_oligo_control_markers$weighted_logFC = final_caudate_oligo_control_markers$avg_log2FC * final_caudate_oligo_control_markers$pct_subtract
+final_caudate_oligo_control_markers$gene = rownames(final_caudate_oligo_control_markers)
+final_caudate_oligo_control_markers
+hist(final_caudate_oligo_control_markers$pct_subtract)
+hist(final_caudate_oligo_control_markers$weighted_logFC)
+hist(final_caudate_oligo_control_markers$avg_log2FC)
+
+final_caudate_microglia_control_markers= subset(caudate_microglia_control_markers, subset = p_val_adj < 0.05)
+final_caudate_microglia_control_markers$pct_subtract = final_caudate_microglia_control_markers$pct.1 - final_caudate_microglia_control_markers$pct.2
+final_caudate_microglia_control_markers$weighted_logFC = final_caudate_microglia_control_markers$avg_log2FC * final_caudate_microglia_control_markers$pct_subtract
+final_caudate_microglia_control_markers$gene = rownames(final_caudate_microglia_control_markers)
+final_caudate_microglia_control_markers
+hist(final_caudate_microglia_control_markers$pct_subtract)
+hist(final_caudate_microglia_control_markers$weighted_logFC)
+hist(final_caudate_microglia_control_markers$avg_log2FC)
+
+final_caudate_interneuron_control_markers= subset(caudate_interneuron_control_markers, subset = p_val_adj < 0.05)
+final_caudate_interneuron_control_markers$pct_subtract = final_caudate_interneuron_control_markers$pct.1 - final_caudate_interneuron_control_markers$pct.2
+final_caudate_interneuron_control_markers$weighted_logFC = final_caudate_interneuron_control_markers$avg_log2FC * final_caudate_interneuron_control_markers$pct_subtract
+final_caudate_interneuron_control_markers$gene = rownames(final_caudate_interneuron_control_markers)
+final_caudate_interneuron_control_markers
+hist(final_caudate_interneuron_control_markers$pct_subtract)
+hist(final_caudate_interneuron_control_markers$weighted_logFC)
+hist(final_caudate_interneuron_control_markers$avg_log2FC)
+
+final_caudate_opc_control_markers= subset(caudate_opc_control_markers, subset = p_val_adj < 0.05)
+final_caudate_opc_control_markers$pct_subtract = final_caudate_opc_control_markers$pct.1 - final_caudate_opc_control_markers$pct.2
+final_caudate_opc_control_markers$weighted_logFC = final_caudate_opc_control_markers$avg_log2FC * final_caudate_opc_control_markers$pct_subtract
+final_caudate_opc_control_markers$gene = rownames(final_caudate_opc_control_markers)
+final_caudate_opc_control_markers
+hist(final_caudate_opc_control_markers$pct_subtract)
+hist(final_caudate_opc_control_markers$weighted_logFC)
+hist(final_caudate_opc_control_markers$avg_log2FC)
+
+final_caudate_endo_control_markers= subset(caudate_endo_control_markers, subset = p_val_adj < 0.05)
+final_caudate_endo_control_markers$pct_subtract = final_caudate_endo_control_markers$pct.1 - final_caudate_endo_control_markers$pct.2
+final_caudate_endo_control_markers$weighted_logFC = final_caudate_endo_control_markers$avg_log2FC * final_caudate_endo_control_markers$pct_subtract
+final_caudate_endo_control_markers$gene = rownames(final_caudate_endo_control_markers)
+final_caudate_endo_control_markers
+hist(final_caudate_endo_control_markers$pct_subtract)
+hist(final_caudate_endo_control_markers$weighted_logFC)
+hist(final_caudate_endo_control_markers$avg_log2FC)
+
+final_caudate_astro_control_markers
+final_caudate_oligo_control_markers
+final_caudate_microglia_control_markers
+final_caudate_interneuron_control_markers
+final_caudate_opc_control_markers
+final_caudate_endo_control_markers
+```
+
+```{r}
+table(caudate$cell_class)
+```
+
+
+
+
+```{r}
+final_caudate_astro_control_markers
+final_caudate_oligo_control_markers
+final_caudate_microglia_control_markers
+final_caudate_interneuron_control_markers
+final_caudate_opc_control_markers
+final_caudate_endo_control_markers
+
+caudate_astro_SPN
+caudate_oligo_SPN
+caudate_microglia_SPN
+caudate_interneuron_SPN
+caudate_opc_SPN
+caudate_endo_SPN
+```
+
+```{r}
+color4 = c("blue", "red")
+```
+
+```{r}
+library(gridExtra)
+```
+
+```{r}
+astro_summary_expr_data = cell_class_score(final_caudate_astro_control_markers, caudate_astro_SPN, logfc_val = "weighted_logFC")
+astro_summary_expr_data
+```
+
+
+```{r}
+merged_xdp= cell_type_score_graphs(SPN_score_output= astro_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs astrocyte", 
+                              SCtransformcounts = caudate_astro_SPN, 
+                              SPN_score_col_name = "CaH_astro_score",
+                              cell_class_name = "astrocyte"
+  )
+```
+
+
+```{r}
+#zscore
+merged_xdp= cell_type_score_graphs(SPN_score_output= astro_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "z_score", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs astrocyte Z-score", 
+                              SCtransformcounts = caudate_astro_SPN, 
+                              SPN_score_col_name = "CaH_astro_zscore",
+                              cell_class_name = "astrocyte"
+  )
+
+
+```
+
+
+
+
+
+
+
+
+```{r}
+oligo_summary_expr_data = cell_class_score(final_caudate_oligo_control_markers, caudate_oligo_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= oligo_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs oligo", 
+                              SCtransformcounts = caudate_oligo_SPN, 
+                              SPN_score_col_name = "CaH_oligo_score",
+                              cell_class_name = "oligo"
+  )
+```
+
+
+```{r}
+microglia_summary_expr_data = cell_class_score(final_caudate_microglia_control_markers, caudate_microglia_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= microglia_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs microglia", 
+                              SCtransformcounts = caudate_microglia_SPN, 
+                              SPN_score_col_name = "CaH_microglia_score",
+                              cell_class_name = "microglia"
+  )
+```
+
+
+```{r}
+interneuron_summary_expr_data = cell_class_score(final_caudate_interneuron_control_markers, caudate_interneuron_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= interneuron_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs interneuon", 
+                              SCtransformcounts = caudate_interneuron_SPN, 
+                              SPN_score_col_name = "CaH_interneuron_score",
+                              cell_class_name = "interneuron"
+  )
+```
+
+
+
+```{r}
+opc_summary_expr_data = cell_class_score(final_caudate_opc_control_markers, caudate_opc_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= opc_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs opc", 
+                              SCtransformcounts = caudate_opc_SPN, 
+                              SPN_score_col_name = "CaH_opc_score",
+                              cell_class_name = "opc"
+  )
+```
+
+
+
+
+
+```{r}
+endo_summary_expr_data = cell_class_score(final_caudate_endo_control_markers, caudate_endo_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= endo_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs endo", 
+                              SCtransformcounts = caudate_endo_SPN, 
+                              SPN_score_col_name = "CaH_endo_score",
+                              cell_class_name = "endothelial"
+  )
+```
+
+
+
+
+
+```{r}
+library(sctransform)
+caudate = SCTransform(caudate, vars.to.regress = "pct_mito", verbose = FALSE)
+DefaultAssay(caudate) = "SCT"
+caudate
+```
+
+```{r}
+qsave(caudate, "caudate_transformed.qs")
+```
+
+
+```{r}
+caudate_astro_SPN = subset(caudate, subset = cell_class == "astrocyte" | cell_class == "SPN")
+caudate_oligo_SPN= subset(caudate, subset = cell_class == "oligo" | cell_class == "SPN")
+caudate_microglia_SPN= subset(caudate, subset = cell_class == "microglia" | cell_class == "SPN")
+caudate_interneuron_SPN= subset(caudate, subset = cell_class == "interneuron" | cell_class == "SPN")
+caudate_opc_SPN= subset(caudate, subset = cell_class == "opc" | cell_class == "SPN")
+caudate_endo_SPN= subset(caudate, subset = cell_class == "endothelial" | cell_class == "SPN")
+
+caudate_astro_SPN
+caudate_oligo_SPN
+caudate_microglia_SPN
+caudate_interneuron_SPN
+caudate_opc_SPN
+caudate_endo_SPN
+```
+
+
+
+
+
+ 
+  
+  
+ 
+ 
+ 
+
+
+
+
+```{r}
+astro_summary_expr_data = cell_class_score(astrocyte_markers_final, caudate_astro_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= astro_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs astrocyte", 
+                              SCtransformcounts = caudate_astro_SPN, 
+                              SPN_score_col_name = "CaH_astro_score",
+                              cell_class_name = "astrocyte"
+  )
+```
+
+
+```{r}
+oligo_summary_expr_data = cell_class_score(oligodendrocyte_markers_final, caudate_oligo_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= oligo_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs oligo", 
+                              SCtransformcounts = caudate_oligo_SPN, 
+                              SPN_score_col_name = "CaH_oligo_score",
+                              cell_class_name = "oligo"
+  )
+```
+
+
+```{r}
+microglia_summary_expr_data = cell_class_score(microglia_markers_final, caudate_microglia_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= microglia_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs microglia", 
+                              SCtransformcounts = caudate_microglia_SPN, 
+                              SPN_score_col_name = "CaH_microglia_score",
+                              cell_class_name = "microglia"
+  )
+```
+
+
+```{r}
+interneuron_summary_expr_data = cell_class_score(interneuron_markers_final, caudate_interneuron_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= interneuron_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs interneuon", 
+                              SCtransformcounts = caudate_interneuron_SPN, 
+                              SPN_score_col_name = "CaH_interneuron_score",
+                              cell_class_name = "interneuron"
+  )
+```
+
+
+
+```{r}
+opc_summary_expr_data = cell_class_score(polydendrocyte_markers_final, caudate_opc_SPN, logfc_val = "weighted_logFC")
+
+merged_xdp= cell_type_score_graphs(SPN_score_output= opc_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs opc", 
+                              SCtransformcounts = caudate_opc_SPN, 
+                              SPN_score_col_name = "CaH_opc_score",
+                              cell_class_name = "opc"
+  )
+```
+
+
+
+```{r}
+caudate_endo_SPN
+caudate_endo_SPN@meta.data
+```
+
+#not working
+```{r}
+endo_summary_expr_data = cell_class_score(endothelia_markers_final, caudate_endo_SPN, logfc_val = "weighted_logFC")
+```
+
+
+```{r}
+merged_xdp= cell_type_score_graphs(SPN_score_output= endo_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "cell_class", 
+                              color = color4, 
+                              donor_graph_title = "SPNs vs endo", 
+                              SCtransformcounts = caudate_endo_SPN, 
+                              SPN_score_col_name = "CaH_endo_score",
+                              cell_class_name = "endothelial"
+  )
+```
+
+
+

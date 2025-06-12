@@ -1,0 +1,236 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+caudate_sobj = qread("Cellbender_seurat/Bennet_caudate_clean.qs")
+putamen_sobj = qread("Cellbender_seurat/Bennet_putamen_clean.qs")
+
+caudate_sobj
+putamen_sobj
+```
+
+```{r}
+caudate_neurons = subset(caudate_sobj, subset = cell_class == "neuron")
+caudate_neurons
+head(caudate_neurons)
+```
+
+
+```{r}
+head(caudate_sobj)
+```
+
+```{r}
+total_cells_cah = as.data.frame(table(caudate_sobj$donor_id))
+
+total_cells_cah$Donor = total_cells_cah$Var1
+total_cells_cah$total_cells_in_village =total_cells_cah$Freq
+
+total_cells_cah$Var1 = NULL
+total_cells_cah$Freq = NULL
+
+total_cells_cah
+```
+
+
+```{r}
+total_neurons_num= as.data.frame(table(caudate_neurons_filtered$donor_id))
+total_neurons_num$Donor = total_neurons_num$Var1 
+total_neurons_num$total_cells_in_neuron = total_neurons_num$Freq 
+total_neurons_num$Var1= NULL
+total_neurons_num$Freq =NULL
+
+total_neurons_num
+```
+
+
+```{r}
+total_cah_neurons = as.data.frame(table(caudate_neurons_filtered$cell_class, caudate_neurons_filtered$donor_id))
+
+total_cah_neurons$cluster = total_cah_neurons$Var1
+total_cah_neurons$Donor = total_cah_neurons$Var2
+total_cah_neurons$cells_per_cluster = total_cah_neurons$Freq
+
+total_cah_neurons$Var1 = NULL
+total_cah_neurons$Var2 = NULL
+total_cah_neurons$Freq = NULL
+
+total_cah_neurons
+```
+```{r}
+total_cah_neurons = merge(total_cah_neurons, total_cells_cah, by = "Donor")
+total_cah_neurons = merge(total_cah_neurons, total_neurons_num, by = "Donor")
+total_cah_neurons
+```
+
+```{r}
+total_cah_neurons$percentage_in_neurons = (total_cah_neurons$cells_per_cluster/total_cah_neurons$total_cells_in_neuron) *100
+
+total_cah_neurons$percentage_in_village = (total_cah_neurons$cells_per_cluster/total_cah_neurons$total_cells_in_village) *100
+
+total_cah_neurons
+```
+
+
+
+
+```{r}
+total_cah_neurons$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", total_cah_neurons$Donor), "control", "XDP")
+total_cah_neurons
+
+total_cah_neurons<- total_cah_neurons %>% arrange(desc(condition))
+total_cah_neurons
+```
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+total_cah_neurons$Donor = factor(total_cah_neurons$Donor, levels = x_order)
+```
+
+```{r}
+clus = subset(total_cah_neurons, subset = cluster == "D1_SPN_1")
+clus
+```
+
+```{r}
+cell_proportion_barplot = function(data, x, y, label, xlab, ylab,title){
+
+median_cells = median(y)
+
+ggplot(data, aes(x=x, y = y,fill=single_cluster$Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = label), vjust = -0.3, color = "black", size = 3) + xlab(xlab) + ylab(ylab) + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_hline(yintercept = median_cells, linetype = "dashed", color = "black") + ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f", median_cells))) +geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+
+#added sprintf("%0.2f" for propotions
+}
+```
+
+
+
+
+```{r}
+cluster_names = unique(total_cah_neurons$cluster)
+#cluster_names= c("D1_SPN_1")
+
+for (acluster in cluster_names){
+  single_cluster = subset(total_cah_neurons, subset = cluster == acluster)
+  #print(single_cluster)
+ 
+  print(cell_proportion_barplot(single_cluster, single_cluster$Donor, single_cluster$percentage_in_neurons, sprintf("%0.1f", single_cluster$percentage_in_neurons), "Donors from Caudate Village", paste("Proportion of ", acluster, "in Neurons"),paste(acluster)))
+  
+}
+
+```
+```{r}
+for (acluster in cluster_names){
+  single_cluster = subset(total_cah_neurons, subset = cluster == acluster)
+  #print(single_cluster)
+ 
+  print(cell_proportion_barplot(single_cluster, single_cluster$Donor, single_cluster$percentage_in_village, sprintf("%0.1f", single_cluster$percentage_in_village), "Donors from putamen Village", paste("Proportion of ", acluster, "in Village"),paste(acluster)))
+}
+```
+
+
+
+
+```{r}
+single_cluster
+```
+
+
+```{r}
+ggplot(single_cluster, aes(x=single_cluster$Donor, y = single_cluster$percentage_in_neurons, fill=single_cluster$Donor)) + geom_bar(stat = "identity") + geom_text(aes(label = label), vjust = -0.3, color = "black", size = 3) + xlab(xlab) + ylab(ylab) + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_hline(yintercept = median_cells, linetype = "dashed", color = "black") + ggtitle(label = title, subtitle = paste("Median: ", median_cells)) +geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+```
+
+
+#putamen
+
+```{r}
+total_cells_put = as.data.frame(table(putamen_sobj$donor_id))
+
+total_cells_put$Donor = total_cells_put$Var1
+total_cells_put$total_cells_in_village =total_cells_put$Freq
+
+total_cells_put$Var1 = NULL
+total_cells_put$Freq = NULL
+
+total_cells_put
+
+total_neurons_num= as.data.frame(table(putamen_neurons$donor_id))
+total_neurons_num$Donor = total_neurons_num$Var1 
+total_neurons_num$total_cells_in_neuron = total_neurons_num$Freq 
+total_neurons_num$Var1= NULL
+total_neurons_num$Freq =NULL
+
+total_neurons_num
+
+total_put_neurons = as.data.frame(table(putamen_neurons$cell_class, putamen_neurons$donor_id))
+
+total_put_neurons$cluster = total_put_neurons$Var1
+total_put_neurons$Donor = total_put_neurons$Var2
+total_put_neurons$cells_per_cluster = total_put_neurons$Freq
+
+total_put_neurons$Var1 = NULL
+total_put_neurons$Var2 = NULL
+total_put_neurons$Freq = NULL
+
+total_put_neurons
+
+total_put_neurons = merge(total_put_neurons, total_cells_put, by = "Donor")
+total_put_neurons = merge(total_put_neurons, total_neurons_num, by = "Donor")
+total_put_neurons
+
+total_put_neurons$percentage_in_neurons = (total_put_neurons$cells_per_cluster/total_put_neurons$total_cells_in_neuron) *100
+
+total_put_neurons$percentage_in_village = (total_put_neurons$cells_per_cluster/total_put_neurons$total_cells_in_village) *100
+
+total_put_neurons
+
+total_put_neurons$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", total_put_neurons$Donor), "control", "XDP")
+total_put_neurons
+
+total_put_neurons<- total_put_neurons %>% arrange(desc(condition))
+total_put_neurons
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+total_put_neurons$Donor = factor(total_put_neurons$Donor, levels = x_order)
+
+```
+
+```{r}
+cell_proportion_barplot = function(data, x, y, label, xlab, ylab,title){
+
+median_cells = median(y)
+
+ggplot(data, aes(x=x, y = y,fill=single_cluster$Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = label), vjust = -0.3, color = "black", size = 3) + xlab(xlab) + ylab(ylab) + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_hline(yintercept = median_cells, linetype = "dashed", color = "black") + ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f", median_cells))) +geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+
+#added sprintf("%0.2f" for propotions
+}
+```
+
+
+
+```{r}
+cluster_names = unique(total_put_neurons$cluster)
+#cluster_names= c("D1_SPN_1")
+
+for (acluster in cluster_names){
+  single_cluster = subset(total_put_neurons, subset = cluster == acluster)
+  #print(single_cluster)
+ 
+  print(cell_proportion_barplot(single_cluster, single_cluster$Donor, single_cluster$percentage_in_neurons, sprintf("%0.1f", single_cluster$percentage_in_neurons), "Donors from Putamen Village", paste("Proportion of ", acluster, "in Neurons"),paste(acluster)))
+  
+}
+
+```
+
+```{r}
+for (acluster in cluster_names){
+  single_cluster = subset(total_put_neurons, subset = cluster == acluster)
+  #print(single_cluster)
+ 
+  print(cell_proportion_barplot(single_cluster, single_cluster$Donor, single_cluster$percentage_in_village, sprintf("%0.1f", single_cluster$percentage_in_village), "Donors from Putamen Village", paste("Proportion of ", acluster, "in Village"),paste(acluster)))
+}
+```

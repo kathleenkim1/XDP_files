@@ -1,0 +1,758 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+counts_df
+```
+
+
+```{r}
+BICAN_SPN_score_normalized = function(gene_df, SCtransform_counts, logfc_val, method = "multiply"){
+
+significant_genes = unique(gene_df$gene)
+
+exp = FetchData(SCtransform_counts, vars = significant_genes)
+
+rownames(gene_df) = gene_df$gene
+gene_df$gene = NULL
+
+# Assuming gene_df and exp are your dataframes
+logfc_df <- gene_df
+counts_df <- exp
+
+print(logfc_df)
+print(counts_df)
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+logfc = logfc_ordered[[logfc_val]]
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc)
+logfc_vector
+
+gene_averages <- colMeans(counts_df)
+print("Printing gene averages")
+print(gene_averages)
+if (method == "multiply") {
+  
+#THE ACTUAL
+result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+} else if(method == "log"){
+  custom_log_transform <- function(x, logFC_value) {
+     x * 2^logFC_value
+  }
+  result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+} else{
+  stop("Calculation is not working")
+}
+print(result_df)
+# Divide each gene's expression by its average expression
+result_df <- sweep(result_df, 2, gene_averages, FUN = "/")
+
+# Print the result
+print("Printing normalized")
+print(result_df)
+
+
+metadata <- SCtransform_counts@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"DONOR" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Check if 'cell_id' column already exists and remove it
+if ("cell_id" %in% colnames(metadata)) {
+  metadata <- metadata %>% select(-cell_id)
+}
+
+# Ensure unique row names in result_df
+if (any(duplicated(rownames(result_df)))) {
+  stop("Row names in result_df are not unique. Please ensure unique row names.")
+}
+
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, DONOR, subcluster, pct_mt, NUM_TRANSCRIPTS, reclustered_cell_class, reclustered_subcluster,reclustered_neuron_type,reclustered_patch_matrix,reclustered_neuron_joint_type), by = "cell_id")
+
+# Assuming your data frame is named expr_data_long
+print(expr_data_long)
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, DONOR, subcluster, pct_mt, NUM_TRANSCRIPTS, reclustered_cell_class, reclustered_subcluster,reclustered_neuron_type,reclustered_patch_matrix,reclustered_neuron_joint_type) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+print(summarized_expr_data)
+
+
+return(summarized_expr_data)
+}
+
+SPN_score_normalized = function(gene_df, SCtransform_counts, logfc_val, method = "multiply"){
+
+significant_genes = unique(gene_df$gene)
+
+exp = FetchData(SCtransform_counts, vars = significant_genes)
+
+rownames(gene_df) = gene_df$gene
+gene_df$gene = NULL
+
+# Assuming gene_df and exp are your dataframes
+logfc_df <- gene_df
+counts_df <- exp
+
+print(logfc_df)
+print(counts_df)
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+logfc = logfc_ordered[[logfc_val]]
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc)
+logfc_vector
+
+ gene_averages <- colMeans(counts_df)
+ print("Printing gene averages")
+ print(gene_averages)
+if (method == "multiply") {
+  
+#THE ACTUAL
+result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+} else if(method == "log"){
+  custom_log_transform <- function(x, logFC_value) {
+     x * 2^logFC_value
+  }
+  result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+} else{
+  stop("Calculation is not working")
+}
+print(result_df)
+# Divide each gene's expression by its average expression
+ result_df <- sweep(result_df, 2, gene_averages, FUN = "/")
+
+# Print the result
+print("Printing normalized")
+print(result_df)
+
+
+metadata <- SCtransform_counts@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id, Condition, cell_class, reclustered_cell_class, reclustered_neuron_type, reclustered_patch_matrix, reclustered_subcluster, reclustered_patch_matrix_exotic, reclustered_neuron_type_joint_cluster, pct_mito, nUmi, region), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+print(expr_data_long)
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, donor_id, Condition, cell_class, reclustered_cell_class, reclustered_neuron_type, reclustered_patch_matrix, reclustered_subcluster, reclustered_patch_matrix_exotic, reclustered_neuron_type_joint_cluster, pct_mito, nUmi,region) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+print(summarized_expr_data)
+
+return(summarized_expr_data)
+}
+
+```
+
+#BICAN V17 markers
+
+```{r}
+final_V17_BICAN_neurons@meta.data$reclustered_patch_matrix_exotic = final_V17_BICAN_neurons$reclustered_neuron_joint_type
+final_V17_BICAN_neurons$reclustered_patch_matrix_exotic[final_V17_BICAN_neurons$reclustered_cell_class == "D1_patch_exotic" | final_V17_BICAN_neurons$reclustered_cell_class == "D2_patch_exotic"] = "SPN_exotic"
+table(final_V17_BICAN_neurons$reclustered_patch_matrix_exotic)
+
+qsave(final_V17_BICAN_neurons, "~/SOBJ_USE_THESE/final_V17_BICAN_neurons.qs")
+final_V17_BICAN_neurons@meta.data
+```
+
+
+```{r}
+Idents(final_V17_BICAN_neurons) = "reclustered_patch_matrix"
+DimPlot(final_V17_BICAN_neurons, label = T)
+```
+
+
+```{r}
+BICAN_V17_matrix_markers =FindMarkers(object = final_V17_BICAN_neurons, ident.1 = "SPN_matrix", ident.2 = "non-SPN", only.pos = TRUE)
+                                #,  min.pct = 0.2, logfc.threshold = 1.25)
+BICAN_V17_matrix_markers
+```
+
+
+```{r}
+BICAN_V17_matrix_markers_final = subset(BICAN_V17_matrix_markers, subset = p_val_adj < 0.05)
+BICAN_V17_matrix_markers_final$pct_subtract = BICAN_V17_matrix_markers_final$pct.1 - BICAN_V17_matrix_markers_final$pct.2
+BICAN_V17_matrix_markers_final$weighted_logFC = BICAN_V17_matrix_markers_final$avg_log2FC * BICAN_V17_matrix_markers_final$pct_subtract
+BICAN_V17_matrix_markers_final
+
+BICAN_V17_matrix_markers_final$gene = rownames(BICAN_V17_matrix_markers_final)
+```
+
+```{r}
+gene_df = BICAN_V17_matrix_markers_final
+SCtransform_counts = final_merged_xdp_transformed
+logfc_val = "weighted_logFC"
+method = "multiply"
+
+significant_genes = unique(gene_df$gene)
+
+exp = FetchData(SCtransform_counts, vars = significant_genes)
+
+rownames(gene_df) = gene_df$gene
+gene_df$gene = NULL
+
+# Assuming gene_df and exp are your dataframes
+logfc_df <- gene_df
+counts_df <- exp
+counts_df
+```
+
+```{r}
+#this is the list of genes to us
+genes_in_both = colnames(counts_df)
+
+```
+
+```{r}
+ Intersected_BICAN_V17_matrix_markers_final = subset(BICAN_V17_matrix_markers_final, subset = gene %in% genes_in_both)
+ Intersected_BICAN_V17_matrix_markers_final
+```
+
+```{r}
+Intersected_BICAN_V17_matrix_markers_final_filtered =subset(Intersected_BICAN_V17_matrix_markers_final, subset = pct_subtract > 0)
+Intersected_BICAN_V17_matrix_markers_final_filtered
+```
+
+
+
+```{r}
+Intersected_BICAN_matrix_markers_final_filtered
+```
+
+```{r}
+write.csv(Intersected_BICAN_matrix_markers_final_filtered, "~/genes.csv")
+```
+
+```{r}
+Intersected_BICAN_matrix_markers_final_filtered$new_weight = Intersected_BICAN_matrix_markers_final_filtered$avg_log2FC * (Intersected_BICAN_matrix_markers_final_filtered$pct.1/(Intersected_BICAN_matrix_markers_final_filtered$pct.1 + Intersected_BICAN_matrix_markers_final_filtered$pct.2))
+
+
+Intersected_BICAN_matrix_markers_final_filtered$relative_pct =Intersected_BICAN_matrix_markers_final_filtered$pct.1/(Intersected_BICAN_matrix_markers_final_filtered$pct.1 + Intersected_BICAN_matrix_markers_final_filtered$pct.2)
+```
+
+```{r}
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = pct.1, y = pct.2)) + geom_point(alpha = 0.4, color = "red")
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = pct.1, y = pct_subtract)) + geom_point(alpha = 0.4, color = "red")
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = pct.2, y = pct_subtract)) + geom_point(alpha = 0.4, color = "red")
+```
+
+
+
+```{r}
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = avg_log2FC, y = pct.1)) + geom_point(alpha = 0.4, color = "red") 
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = avg_log2FC, y = pct.2)) + geom_point(alpha = 0.4, color = "red") 
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = avg_log2FC, y = new_weight)) + geom_point(alpha = 0.4, color = "red") 
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = avg_log2FC, y = weighted_logFC)) + geom_point(alpha = 0.4, color = "red") 
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = weighted_logFC, y = new_weight)) + geom_point(alpha = 0.4, color = "red")
+ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x = pct_subtract, y = relative_pct)) + geom_point(alpha = 0.4, color = "red")
+```
+```{r}
+cor.test(Intersected_BICAN_matrix_markers_final_filtered$avg_log2FC, Intersected_BICAN_matrix_markers_final_filtered$weighted_logFC, method = "spearman", exact = FALSE )
+
+cor.test(Intersected_BICAN_matrix_markers_final_filtered$avg_log2FC, Intersected_BICAN_matrix_markers_final_filtered$new_weight, method = "spearman", exact = FALSE )
+
+cor.test(Intersected_BICAN_matrix_markers_final_filtered$weighted_logFC, Intersected_BICAN_matrix_markers_final_filtered$new_weight, method = "spearman", exact = FALSE )
+```
+
+
+
+```{r}
+cortest1 <- cor.test(Intersected_BICAN_matrix_markers_final_filtered$avg_log2FC, Intersected_BICAN_matrix_markers_final_filtered$weighted_logFC, method = "spearman", exact = FALSE )
+cortest1
+
+cor1 <- cortest1$estimate
+pvalue1 <- cortest1$p.value
+subtitl1 <- paste("Spearman correlation: ", sprintf("%0.3f", cor1), " R^2: ", sprintf("%0.3f", cor1^2), " p-value:", sprintf("%0.3f", pvalue1^2))
+
+b <- ggplot(data = Intersected_BICAN_matrix_markers_final_filtered, aes(x =Intersected_BICAN_matrix_markers_final_filtered$avg_log2FC, y = Intersected_BICAN_matrix_markers_final_filtered$weighted_logFC, color = Intersected_BICAN_matrix_markers_final_filtered$donor_id)) + 
+  geom_point() + labs(fill = "Condition") + xlab("SPN Score") + ylab("MMR Score") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("CB: GP RQS vs GP DV200", subtitle = subtitl1) + scale_color_discrete(name = "Sample ID")
+
+b
+```
+
+```{r}
+final_V8_BICAN_neurons_final@meta.data
+
+table(final_V8_BICAN_neurons_final$reclustered_patch_matrix)
+```
+
+```{r}
+final_V8_BICAN_neurons_final
+```
+
+```{r}
+
+```
+
+
+```{r}
+A <- FetchData(final_V8_BICAN_neurons, vars = c("GPC5", "reclustered_patch_matrix"))
+print(A)
+
+mean1 <- mean(A$GPC5[A$reclustered_patch_matrix == "SPN_matrix"])
+
+mean2 <- mean(A$GPC5[A$reclustered_patch_matrix == "non-SPN"])
+
+log2(mean1/mean2)
+
+mean1 <- mean(A$GPC5[A$reclustered_patch_matrix == "SPN_matrix"]) + 1
+mean2 <- mean(A$GPC5[A$reclustered_patch_matrix == "non-SPN"]) + 1
+log2FC <- log2(mean1 / mean2)
+log2FC
+```
+
+
+```{r}
+FeaturePlot(final_V8_BICAN_neurons_final, features = c("GPC5"))
+```
+```{r}
+BICAN_matrix_markers =FindMarkers(object = final_V8_BICAN_neurons, ident.1 = "SPN_matrix", ident.2 = "non-SPN", only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 3)
+```
+```{r}
+# Fetch data
+A <- FetchData(final_V8_BICAN_neurons_final, vars = c("COCH", "reclustered_patch_matrix"))
+
+# Calculate mean expression for each group with pseudo-count
+pseudocount <- 1
+mean1 <- mean(exp(A$COCH[A$reclustered_patch_matrix == "SPN_matrix"]) - 1) + pseudocount
+mean2 <- mean(exp(A$COCH[A$reclustered_patch_matrix == "non-SPN"]) - 1) + pseudocount
+
+mean1
+mean2
+
+# Compute log fold change
+log2FC <- log2(mean1 / mean2)
+log2FC
+```
+
+```{r}
+log2(mean1/mean2) * (mean1- mean2)
+```
+
+```{r}
+Intersected_BICAN_matrix_markers_final_filtered
+```
+
+```{r}
+filtered_BICAN = subset(Intersected_BICAN_matrix_markers_final_filtered, gene %in% genes_to_keep)
+filtered_BICAN
+```
+
+```{r}
+final_V17_BICAN_neurons = qread("~/SOBJ_USE_THESE/final_V17_BICAN_neurons.qs")
+```
+
+```{r}
+#BICAN_filtered_test = subset(Intersected_BICAN_matrix_markers_final_filtered, subset = avg_log2FC > 1)
+BICAN_filtered_test = subset(Intersected_BICAN_matrix_markers_final_filtered, subset = relative_pct > 0.6)
+BICAN_filtered_test
+```
+
+
+
+
+```{r}
+XDP_matrix_scores = SPN_score_normalized(Intersected_BICAN_V17_matrix_markers_final_filtered, final_merged_xdp_transformed, logfc_val = "weighted_logFC", method = "multiply")
+
+XDP_matrix_scores$Village = "XDP"
+
+V8_BICAN_scores = BICAN_SPN_score_normalized(Intersected_BICAN_V17_matrix_markers_final_filtered, final_V8_BICAN_neurons, logfc_val = "weighted_logFC", method = "multiply")
+V8_BICAN_scores$Village = "BICAN_V8"
+V8_BICAN_scores
+
+V17_BICAN_scores = BICAN_SPN_score_normalized(Intersected_BICAN_V17_matrix_markers_final_filtered, final_V17_BICAN_neurons, logfc_val = "weighted_logFC", method = "multiply")
+V17_BICAN_scores$Village = "BICAN_V17"
+V17_BICAN_scores
+```
+
+```{r}
+ V17_BICAN_scores$reclustered_patch_matrix_exotic = V17_BICAN_scores$reclustered_neuron_joint_type
+ V17_BICAN_scores$reclustered_patch_matrix_exotic[V17_BICAN_scores$reclustered_cell_class == "D1_patch_exotic" | V17_BICAN_scores$reclustered_cell_class == "D2_patch_exotic"] = "SPN_exotic"
+table(V17_BICAN_scores$reclustered_patch_matrix_exotic)
+
+library(dplyr)
+XDP_matrix_scores_df = XDP_matrix_scores %>% select(cell_id, donor_id, Condition, reclustered_patch_matrix_exotic, reclustered_patch_matrix, reclustered_neuron_type_joint_cluster,  pct_mito, nUmi, total_expression , z_score, Village)
+
+BICAN_matrix_scores_df_V8 = V8_BICAN_scores %>% select(cell_id, DONOR, reclustered_patch_matrix, reclustered_neuron_joint_type,  pct_mt, NUM_TRANSCRIPTS, total_expression , z_score, Village) 
+
+BICAN_matrix_scores_df_V17 = V17_BICAN_scores %>% select(cell_id, DONOR, reclustered_patch_matrix, reclustered_neuron_joint_type,reclustered_patch_matrix_exotic,  pct_mt, NUM_TRANSCRIPTS, total_expression , z_score, Village) 
+
+BICAN_matrix_scores_df_V8$Condition = "BICAN Control V8"
+BICAN_matrix_scores_df_V8$reclustered_patch_matrix_exotic = BICAN_matrix_scores_df_V8$reclustered_neuron_joint_type
+BICAN_matrix_scores_df_V8$reclustered_neuron_type_joint_cluster = BICAN_matrix_scores_df_V8$reclustered_neuron_joint_type
+BICAN_matrix_scores_df_V8$reclustered_neuron_joint_type = NULL
+BICAN_matrix_scores_df_V8$pct_mito = BICAN_matrix_scores_df_V8$pct_mt 
+BICAN_matrix_scores_df_V8$pct_mt  = NULL
+BICAN_matrix_scores_df_V8$nUmi = BICAN_matrix_scores_df_V8$NUM_TRANSCRIPTS 
+BICAN_matrix_scores_df_V8$NUM_TRANSCRIPTS  = NULL
+BICAN_matrix_scores_df_V8$donor_id = BICAN_matrix_scores_df_V8$DONOR 
+BICAN_matrix_scores_df_V8$DONOR  = NULL
+
+BICAN_matrix_scores_df_V17$Condition = "BICAN Control V17"
+BICAN_matrix_scores_df_V17$reclustered_neuron_type_joint_cluster = BICAN_matrix_scores_df_V17$reclustered_neuron_joint_type
+BICAN_matrix_scores_df_V17$reclustered_neuron_joint_type = NULL
+BICAN_matrix_scores_df_V17$pct_mito = BICAN_matrix_scores_df_V17$pct_mt 
+BICAN_matrix_scores_df_V17$pct_mt  = NULL
+BICAN_matrix_scores_df_V17$nUmi = BICAN_matrix_scores_df_V17$NUM_TRANSCRIPTS 
+BICAN_matrix_scores_df_V17$NUM_TRANSCRIPTS  = NULL
+BICAN_matrix_scores_df_V17$donor_id = BICAN_matrix_scores_df_V17$DONOR 
+BICAN_matrix_scores_df_V17$DONOR  = NULL
+
+XDP_matrix_scores_df
+BICAN_matrix_scores_df_V8
+BICAN_matrix_scores_df_V17
+
+Combined_scores_df = rbind(XDP_matrix_scores_df, BICAN_matrix_scores_df_V8, BICAN_matrix_scores_df_V17)
+Combined_scores_df
+
+table(Combined_scores_df$Condition, Combined_scores_df$reclustered_patch_matrix_exotic)
+table(Combined_scores_df$Condition, Combined_scores_df$reclustered_neuron_type_joint_cluster)
+
+min(Combined_scores_df$total_expression)
+max(Combined_scores_df$total_expression)
+```
+
+```{r}
+matrix <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue", "BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 120, 2),
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  patch <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_patch", ]
+  plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue", "BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 60, 1),
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  nonSPN <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "non-SPN", ]
+  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 60, 1),
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+    exotic <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_exotic", ]
+  plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 60, 1),
+                                          title = "XDP vs Control: Exotic SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+    eSPN <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "eSPN", ]
+  plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 60, 1),
+                                          title = "XDP vs Control: eSPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+```
+
+```{r}
+XDP_weighted = Combined_scores_df
+XDP_weighted
+```
+```{r}
+XDP_weighted
+Combined_scores_df$total_expression1 = Combined_scores_df$total_expression
+Combined_scores_df
+```
+```{r}
+new_weights = Combined_scores_df %>% select(cell_id, total_expression1)
+new_weights
+
+combo = merge(XDP_weighted, new_weights, by = "cell_id")
+combo
+```
+```{r}
+classes = unique(combo$reclustered_patch_matrix_exotic)
+
+ for (class in classes) {
+   test = subset(combo, subset = reclustered_patch_matrix_exotic == class)
+   
+   
+cortest1 <- cor.test(test$total_expression, test$total_expression1, method = "spearman", exact = FALSE )
+print(cortest1)
+
+cor1 <- cortest1$estimate
+pvalue1 <- cortest1$p.value
+subtitl1 <- paste("Spearman correlation: ", sprintf("%0.3f", cor1), " R^2: ", sprintf("%0.3f", cor1^2), " p-value:", sprintf("%0.3f", pvalue1^2))
+
+   
+   
+   
+  a = ggplot(test, aes(x = total_expression, y = total_expression1, color = Condition)) + geom_point(alpha = 0.4) + xlab("Weighted_logFC") +ylab("New_weighted_logFC") +  scale_color_manual(values = c("XDP" = "red", 
+                                "Control" = "blue", 
+                                "BICAN Control V8" = "green", 
+                                "BICAN Control V17" = "orange")) + geom_smooth(method = "lm", se = FALSE, color = "black")+ ggtitle(paste(class), subtitle = subtitl1)
+  print(a)
+ }
+
+```
+
+
+
+
+```{r}
+SCtransform_counts@assays$SCT
+SCtransform_counts@assays$RNA
+```
+
+
+
+#filter
+```{r}
+gene_df = Intersected_BICAN_matrix_markers_final_filtered
+SCtransform_counts = final_V8_BICAN_neurons_final
+
+
+significant_genes = unique(gene_df$gene)
+
+exp = FetchData(SCtransform_counts, vars = significant_genes)
+exp
+```
+
+
+```{r}
+rownames(gene_df) = gene_df$gene
+gene_df$gene = NULL
+
+# Assuming gene_df and exp are your dataframes
+logfc_df <- gene_df
+counts_df <- exp
+
+print(logfc_df)
+print(counts_df)
+```
+
+
+```{r}
+# Assuming 'data' is your expression matrix with genes as rows and cells as columns
+avg_expression <- as.data.frame(colMeans(counts_df))
+avg_expression 
+
+avg_expression <- colMeans(counts_df)
+
+# Filter out the lowest 1% of genes by average expression
+threshold_avg <- quantile(avg_expression, 0.01)
+threshold_avg
+
+avg_expression_keep = avg_expression > threshold
+avg_expression_keep = as.data.frame(avg_expression_keep)
+avg_expression_keep
+
+avg_expression_keep = subset(avg_expression_keep, avg_expression_keep == TRUE)
+avg_expression_keep
+
+genes_to_keep <- rownames(avg_expression_keep)
+genes_to_keep
+
+```
+
+
+#remove genes with < 10 counts overall (i cant), remove genes expressed in < 1% of cells)
+
+```{r}
+counts_df
+```
+
+
+
+```{r}
+# Calculate the number of cells expressing each gene
+expressing_cells <- rowSums(counts_df > 0)
+
+# Calculate the percentage of cells expressing each gene
+percent_expressed <- expressing_cells / ncol(counts_df)
+
+# Filter out genes expressed in < 1% of cells
+filtered_data <- counts_df[percent_expressed >= 0.01, ]
+filtered_data
+```
+
+
+
+```{r}
+merged_xdp_transformed_controls = subset(final_merged_xdp_transformed, subset = Condition == "Control")
+merged_xdp_transformed_controls
+```
+
+
+```{r}
+Idents(final_merged_xdp_transformed_controls) = "reclustered_neuron_type_joint_cluster"
+DimPlot(final_merged_xdp_transformed_controls, label = TRUE)
+
+xdp_matrix_markers =FindMarkers(object = final_merged_xdp_transformed_controls, ident.1 = "SPN_matrix", ident.2 = "non-SPN", only.pos = TRUE)
+                                #,  min.pct = 0.2, logfc.threshold = 1.25)
+xdp_matrix_markers
+
+xdp_matrix_markers_final = subset(xdp_matrix_markers, subset = p_val_adj < 0.05)
+xdp_matrix_markers_final$pct_subtract = xdp_matrix_markers_final$pct.1 - xdp_matrix_markers_final$pct.2
+xdp_matrix_markers_final$weighted_logFC = xdp_matrix_markers_final$avg_log2FC * xdp_matrix_markers_final$pct_subtract
+xdp_matrix_markers_final
+
+xdp_matrix_markers_final$gene = rownames(xdp_matrix_markers_final)
+```
+
+```{r}
+gene_df = xdp_matrix_markers_final
+SCtransform_counts = final_V8_BICAN_neurons
+
+significant_genes = unique(gene_df$gene)
+
+exp = FetchData(SCtransform_counts, vars = significant_genes)
+exp
+```
+
+
+```{r}
+rownames(gene_df) = gene_df$gene
+gene_df$gene = NULL
+
+# Assuming gene_df and exp are your dataframes
+logfc_df <- gene_df
+counts_df <- exp
+
+print(logfc_df)
+print(counts_df)
+```
+
+```{r}
+genes_in_both = colnames(counts_df)
+genes_in_both
+```
+
+
+```{r}
+Intersected_xdp_matrix_markers_final = subset(xdp_matrix_markers_final, subset = gene %in% genes_in_both)
+Intersected_xdp_matrix_markers_final$new_weight = Intersected_xdp_matrix_markers_final$avg_log2FC * (Intersected_xdp_matrix_markers_final$pct.1/(Intersected_xdp_matrix_markers_final$pct.1 + Intersected_xdp_matrix_markers_final$pct.2))
+Intersected_xdp_matrix_markers_final
+```
+```{r}
+Intersected_xdp_matrix_markers_final_filtered = subset(Intersected_xdp_matrix_markers_final, subset = pct_subtract > 0)
+Intersected_xdp_matrix_markers_final_filtered
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+BICAN_matrix_markers =FindMarkers(object = final_V8_BICAN_neurons, ident.1 = "SPN_matrix", ident.2 = "non-SPN", only.pos = TRUE)
+                                #,  min.pct = 0.2, logfc.threshold = 1.25)
+BICAN_matrix_markers
+```
+
+
+```{r}
+BICAN_matrix_markers_final = subset(BICAN_matrix_markers, subset = p_val_adj < 0.05)
+BICAN_matrix_markers_final$pct_subtract = BICAN_matrix_markers_final$pct.1 - BICAN_matrix_markers_final$pct.2
+BICAN_matrix_markers_final$weighted_logFC = BICAN_matrix_markers_final$avg_log2FC * BICAN_matrix_markers_final$pct_subtract
+BICAN_matrix_markers_final
+
+BICAN_matrix_markers_final$gene = rownames(BICAN_matrix_markers_final)
+```
+
+
+
+
+```{r}
+# Assuming 'data' is your expression matrix with genes as rows and cells as columns
+avg_expression <- rowMeans(data)
+
+# Calculate the threshold for the lowest 1%
+threshold <- quantile(avg_expression, 0.01)
+
+# Filter out genes below the threshold
+filtered_data <- data[avg_expression > threshold, ]
+
+```
+
+

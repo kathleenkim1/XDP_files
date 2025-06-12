@@ -1,0 +1,97 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+caudate_sobj = qread("~/filtered_merged_caudate_clustered_clean.qs")
+```
+#Original: subset and then integrated 
+```{r}
+caudate_neuron = subset(caudate_sobj, subset = cell_class == "neuron")
+
+
+caudate_neuron = normalizeScalePcaClusterUmap(caudate_neuron)
+caudate_neuron = (caudate_neuron
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+) 
+
+
+DimPlot(caudate_neuron, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_neuron, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_neuron, group.by = "donor_id")
+DimPlot(caudate_neuron, group.by = "Condition")
+```
+
+
+#New: using subset, scale, then integrate
+```{r}
+hvgs = getSeuratVarFeatureIntersectByCol(caudate_neuron, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+
+# now cluster
+# the "%>%" lines are a little piece of syntax from the dyplr library,
+# short for "apply the following transformation to the object"
+# doing this line-by-line allows us to apply a sequence of transformations
+caudate_neuron_scaled = (caudate_neuron
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_putamen$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_putamen$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+
+# Now we can plot the data and just see what it looks like
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+```
+
+```{r}
+DimPlot(caudate_neuron_scaled, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_neuron_scaled, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_neuron_scaled, group.by = "donor_id")
+DimPlot(caudate_neuron_scaled, group.by = "Condition")
+```
+
+```{r}
+caudate_neuron_scaled_integrated = normalizeScalePcaClusterUmap(caudate_neuron_scaled)
+caudate_neuron_scaled_integrated = (caudate_neuron_scaled
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+) 
+
+
+DimPlot(caudate_neuron_scaled_integrated, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_neuron_scaled_integrated, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_neuron_scaled_integrated, group.by = "donor_id")
+DimPlot(caudate_neuron_scaled_integrated, group.by = "Condition")
+```
+
+

@@ -1,0 +1,605 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(qs)
+library(tidyverse)
+library(ggplot2)
+```
+
+```{r}
+All_XDP_SN= qread("All_XDP_Cohorts_SN_sct.qs")
+All_XDP_SN
+DimPlot(All_XDP_SN, raster = F, group.by = "final_cell_class_merged_harmony")
+```
+```{r}
+All_XDP_SN = subset(All_XDP_SN, subset = pct_intronic >= 25)
+All_XDP_SN@meta.data
+DimPlot(All_XDP_SN, raster = F, group.by = "final_cell_class_merged_harmony")
+DefaultAssay(All_XDP_SN) = "RNA"
+```
+
+
+```{r}
+table(All_XDP_SN$final_cell_class_merged_harmony)
+```
+
+```{r}
+temp_sobj = subset(All_XDP_SN, subset = final_cell_class_merged_harmony == "neuron")
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(temp_sobj, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+temp_sobj = (temp_sobj
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_SN$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_SN$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(temp_sobj, group.by = "donor_id") 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.8", label=T) 
+
+FeaturePlot(temp_sobj, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+FeaturePlot(temp_sobj, features = c("AQP4", "GINS3", "GFAP", "TH"), raster = F)
+FeaturePlot(temp_sobj, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(temp_sobj, features = c("FLT1", "DCN", "RGS5"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG1", "MOG", "MOBP", "MBP"), raster = F)
+FeaturePlot(temp_sobj, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(temp_sobj, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(temp_sobj, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+FeaturePlot(temp_sobj, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+FeaturePlot(temp_sobj, features = c("pct_mito", "pct_intronic", "nUmi","TH"),raster=FALSE) 
+
+
+```
+
+```{r}
+marker_genes <- c("CD96", "CX3CR1", "P2RY12", "C1QB", "C1QA", "CASZ1", "FLT1", "MOBP", "MOG", "MBP", "OLIG2", "OLIG1", "GFAP", "AQP4", "SEMA3E", "EPHA4", "PPP1R1B", "DRD2", "DRD1", "GAD2", "GAD1", "SYT1", "RBFOX3", "SLC17A6", "SLC17A7", "VCAN")
+
+Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "final_cell_class_merged_harmony")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+
+
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "final_cell_class_merged_harmony")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+```{r}
+table(temp_sobj$RNA_snn_res.0.6)
+```
+
+
+```{r}
+temp_sobj
+temp_sobj = subset(temp_sobj, subset = RNA_snn_res.0.2 != "2")
+temp_sobj
+DimPlot(temp_sobj, group.by = "RNA_snn_res.0.2")
+```
+
+```{r}
+FeaturePlot(temp_sobj, features = c("SYT1", "RBFOX3", "GAD2", "CHAT"), raster = F)
+FeaturePlot(temp_sobj, features = c("SOX6", "CALB1", "SLC1A3", "KIT"), raster = F)
+FeaturePlot(temp_sobj, features = c("PLP1", "RELN", "GULP1", "CDH6"), raster = F)
+FeaturePlot(temp_sobj, features = c("NXPH1", "EYA4", "SLC18A2", "TH"), raster = F)
+FeaturePlot(temp_sobj, features = c("SLC6A3", "TRHR", "GEM", "RBP4"), raster = F)
+FeaturePlot(temp_sobj, features = c("PPP1R17", "CCDC68", "CRYM", "CALCR"), raster = F)
+FeaturePlot(temp_sobj, features = c("GFRA2", "DDT", "SYNPR", "AGTR1"), raster = F)
+FeaturePlot(temp_sobj, features = c("TMEM200A", "SST", "SLC17A6", "SLC17A7"), raster=FALSE)
+FeaturePlot(temp_sobj, features = c("pct_mito", "pct_intronic", "nUmi"),raster=FALSE) 
+
+```
+```{r}
+FeaturePlot(temp_sobj, features = c("DBH", "PHOX2B"),raster=FALSE) 
+```
+
+```{r}
+marker_genes <- c("SYT1", "RBFOX3", "GAD2", "CHAT", "SOX6", "CALB1", "SLC1A3", "KIT","PLP1", "RELN", "GULP1", "CDH6", "NXPH1", "EYA4", "SLC18A2", "TH", "SLC6A3", "TRHR", "GEM", "RBP4", "PPP1R17", "CCDC68", "CRYM", "CALCR", "GFRA2", "DDT", "SYNPR", "AGTR1", "TMEM200A", "SST", "SLC17A6", "SLC17A7")
+
+Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "final_cell_class_merged_harmony")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+
+marker_genes <- c("TRHR", "GEM", "RBP4", "PPP1R17", "CCDC68", "CRYM", "CALCR", "GFRA2", "DDT", "PART1", "FAM19A4","SYNPR", "AGTR1", "TMEM200A", "CALB1", "SOX6")
+
+Dotplot = DotPlot(object = temp_sobj, features = marker_genes, group.by = "final_cell_class_merged_harmony")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+```{r}
+Idents(temp_sobj) = temp_sobj$RNA_snn_res.0.4
+
+classes = c("DaN", "DaN", "DaN", "DaN", "non_da", "non_da", "doublet", "DaN", "non_da", "non_da", "DaN", "DaN", "doublet", "non_da", "non_da", "non_da", "DaN", "non_da", "non_da")
+
+
+temp_sobj= assignCellClasses(temp_sobj, classes=classes, cluster_col="RNA_snn_res.0.4", class_col = "final_cell_class_merged_harmony")
+
+DimPlot(temp_sobj, group.by = "final_cell_class_merged_harmony" ,label = T, raster = FALSE)
+```
+```{r}
+temp_sobj
+temp_sobj = subset(temp_sobj, subset = final_cell_class_merged_harmony != "doublet")
+temp_sobj
+```
+
+
+```{r}
+SN_astro
+SN_endo
+SN_ependymal
+SN_immune
+SN_micro
+SN_oligo
+SN_opc
+SN_neuron= temp_sobj
+#
+```
+
+```{r}
+sobj_list = list(SN_astro,
+SN_endo,
+SN_ependymal,
+SN_immune,
+SN_micro,
+SN_oligo,
+SN_opc,
+SN_neuron)
+
+counts_list <- lapply(sobj_list, function(sobj) GetAssayData(sobj, slot = "counts"))
+
+merged_counts <- do.call(cbind, counts_list)
+
+metadata_list <- lapply(sobj_list, function(sobj) sobj@meta.data)
+
+merged_metadata <- do.call(rbind, metadata_list)
+merged_metadata
+
+stopifnot(all(rownames(merged_metadata) == colnames(merged_counts)))
+
+# Create Seurat object
+cleaned_SN_Cohort1 <- CreateSeuratObject(counts = merged_counts, meta.data = merged_metadata)
+cleaned_SN_Cohort1
+```
+
+
+```{r}
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(cleaned_SN_Cohort1, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+cleaned_SN_Cohort1 = (cleaned_SN_Cohort1
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_SN$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_SN$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(cleaned_SN_Cohort1, group.by = "donor_id") 
+DimPlot(cleaned_SN_Cohort1, group.by = "library") 
+DimPlot(cleaned_SN_Cohort1, group.by = "Condition") 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.2", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.3", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.4", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.5", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.6", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.7", label=T) 
+DimPlot(cleaned_SN_Cohort1, group.by = "RNA_snn_res.0.8", label=T)
+DimPlot(cleaned_SN_Cohort1, group.by = "cell_class", label=T)
+```
+```{r}
+DimPlot(cleaned_SN_Cohort1, group.by = "final_cell_class_merged_harmony", label=T)
+```
+
+
+```{r}
+library(sctransform)
+options(future.globals.maxSize = 400 * 1024^3)  
+All_XDP_Cohorts_SN= cleaned_SN_Cohort1
+rm(cleaned_SN_Cohort1)
+All_XDP_Cohorts_SN = SCTransform(All_XDP_Cohorts_SN, vars.to.regress = "pct_mito", verbose = FALSE)
+DefaultAssay(All_XDP_Cohorts_SN) = "SCT"
+All_XDP_Cohorts_SN
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(All_XDP_Cohorts_SN, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+All_XDP_Cohorts_SN = (All_XDP_Cohorts_SN
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_caudate$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_caudate$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(All_XDP_Cohorts_SN, group.by = "donor_id", raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Condition", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Cohort", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class_merged_harmony", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.2", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.3", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.4", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.5", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.6", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.7", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.8", label=T, raster = F)
+```
+
+
+```{r}
+library(harmony)
+All_XDP_Cohorts_SN = (All_XDP_Cohorts_SN
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.05)
+    %>% FindClusters(res=0.1)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% FindClusters(res=0.6)
+    %>% FindClusters(res=0.7)
+    %>% FindClusters(res=0.8)    
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+All_XDP_Cohorts_SN
+All_XDP_Cohorts_SN@meta.data
+DimPlot(All_XDP_Cohorts_SN, group.by = "donor_id", raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.05", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.1", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.2", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.3", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.4", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.5", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.6", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.7", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.8", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "library", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Cohort", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "library_cohort", raster = F)
+
+DimPlot(All_XDP_Cohorts_SN, group.by = "Condition", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class_merged_harmony", label=T, raster = F)
+```
+
+
+```{r}
+FeaturePlot(All_XDP_Cohorts_SN, features = c("SYT1", "AQP4", "C1QA","FLT1"),raster=FALSE)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("OLIG1", "OLIG2", "MOG" ,"CD96"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("MBP", "MOBP", "WIF1", "TNC"),raster=FALSE)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("RBFOX3", "CX3CR1", "GFAP" ,"AQP4"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("GAD1", "GAD2", "SLC17A7" ,"SLC17A6"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("pct_mito", "pct_intronic", "nUmi", "TH"),raster=FALSE) 
+
+FeaturePlot(All_XDP_Cohorts_SN, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("FLT1", "DCN", "RGS5"), raster = F)
+
+FeaturePlot(All_XDP_Cohorts_SN, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+
+```
+
+```{r}
+FeaturePlot(All_XDP_Cohorts_SN, features = c("TH", "SLC6A3"), raster = F)
+```
+
+```{r}
+Idents(All_XDP_Cohorts_SN) = All_XDP_Cohorts_SN$SCT_snn_res.0.2
+
+classes = c("oligo", "oligo", "microglia", "astrocyte", "DaN", "opc", "doublet", "oligo", "endothelial", "oligo", "non_da", "oligo", "oligo", "doublet", "oligo", "oligo", "doublet", "immune", "non_da", "doublet", "non_da", "oligo", "ependymal")
+
+
+All_XDP_Cohorts_SN= assignCellClasses(All_XDP_Cohorts_SN, classes=classes, cluster_col="SCT_snn_res.0.2", class_col = "final_cell_class")
+
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class" ,label = T, raster = FALSE)
+Idents(All_XDP_Cohorts_SN) = "final_cell_class"
+```
+
+```{r}
+marker_genes <- c("CD96", "CX3CR1", "P2RY12", "C1QB", "C1QA", "CASZ1", "FLT1", "MOBP", "MOG", "MBP", "OLIG2", "OLIG1", "GFAP", "AQP4", "SEMA3E", "EPHA4", "PPP1R1B", "DRD2", "DRD1", "GAD2", "GAD1", "SYT1", "RBFOX3", "SLC17A6", "SLC17A7", "VCAN", "TH", "SLC6A3")
+
+Dotplot = DotPlot(object = All_XDP_Cohorts_SN, features = marker_genes, group.by = "final_cell_class")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+
+
+ marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6","AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12","FLT1", "DCN", "RGS5", "OLIG1", "MOG", "MOBP", "OLIG2", "VCAN","ZBBX", "CFAP157", "CFAP299", "BSG","CD96", "NKG7", "SKAP1")
+ Dotplot = DotPlot(object = All_XDP_Cohorts_SN, features = marker_genes, group.by = "final_cell_class")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+
+```{r}
+table(All_XDP_Cohorts_SN$final_cell_class)
+All_XDP_Cohorts_SN_test = All_XDP_Cohorts_SN
+```
+
+```{r}
+All_XDP_Cohorts_SN = subset(All_XDP_Cohorts_SN_test, subset = final_cell_class != "doublet")
+```
+
+```{r}
+All_XDP_Cohorts_SN_test
+All_XDP_Cohorts_SN
+```
+
+
+```{r}
+hvgs = getSeuratVarFeatureIntersectByCol(All_XDP_Cohorts_SN, subset_col="donor_id", original_nfeatures=2500)
+n_dims_use=20
+All_XDP_Cohorts_SN = (All_XDP_Cohorts_SN
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_caudate$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_caudate$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+DimPlot(All_XDP_Cohorts_SN, group.by = "donor_id", raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Condition", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Cohort", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class_merged_harmony", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.2", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.3", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.4", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.5", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.6", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.7", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.8", label=T, raster = F)
+```
+
+
+```{r}
+FeaturePlot(All_XDP_Cohorts_SN, features = c("SYT1", "AQP4", "C1QA","FLT1"),raster=FALSE)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("OLIG1", "OLIG2", "MOG" ,"CD96"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("MBP", "MOBP", "WIF1", "TNC"),raster=FALSE)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("RBFOX3", "CX3CR1", "GFAP" ,"AQP4"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("GAD1", "GAD2", "SLC17A7" ,"SLC17A6"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("pct_mito", "pct_intronic", "nUmi", "TH"),raster=FALSE) 
+
+FeaturePlot(All_XDP_Cohorts_SN, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("FLT1", "DCN", "RGS5"), raster = F)
+
+FeaturePlot(All_XDP_Cohorts_SN, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+
+```
+```{r}
+All_XDP_Cohorts_SN
+```
+
+
+```{r}
+library(harmony)
+All_XDP_Cohorts_SN = (All_XDP_Cohorts_SN
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.05)
+    %>% FindClusters(res=0.1)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% FindClusters(res=0.6)
+    %>% FindClusters(res=0.7)
+    %>% FindClusters(res=0.8)    
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+
+DimPlot(All_XDP_Cohorts_SN, group.by = "donor_id", raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Condition", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Cohort", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Region", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class_merged_harmony", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "final_cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.2", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.3", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.4", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.5", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.6", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.7", label=T, raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "SCT_snn_res.0.8", label=T, raster = F)
+```
+
+```{r}
+FeaturePlot(All_XDP_Cohorts_SN, features = c("SYT1", "AQP4", "C1QA","FLT1"),raster=FALSE)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("OLIG1", "OLIG2", "MOG" ,"CD96"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("MBP", "MOBP", "WIF1", "TNC"),raster=FALSE)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("RBFOX3", "CX3CR1", "GFAP" ,"AQP4"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("GAD1", "GAD2", "SLC17A7" ,"SLC17A6"),raster=FALSE) 
+FeaturePlot(All_XDP_Cohorts_SN, features = c("pct_mito", "pct_intronic", "nUmi", "TH"),raster=FALSE) 
+
+FeaturePlot(All_XDP_Cohorts_SN, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("FLT1", "DCN", "RGS5"), raster = F)
+
+FeaturePlot(All_XDP_Cohorts_SN, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+FeaturePlot(All_XDP_Cohorts_SN, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+```
+
+```{r}
+All_XDP_Cohorts_SN@meta.data
+```
+
+
+
+```{r}
+colnames(All_XDP_Cohorts_SN@meta.data) <- tolower(colnames(All_XDP_Cohorts_SN@meta.data))
+All_XDP_Cohorts_SN@meta.data
+```
+
+```{r}
+All_XDP_Cohorts_SN@meta.data$cell_class = NULL
+All_XDP_Cohorts_SN@meta.data$final_cell_class_merged_harmony = NULL
+All_XDP_Cohorts_SN@meta.data$cell_class = All_XDP_Cohorts_SN$final_cell_class
+All_XDP_Cohorts_SN$final_cell_class = NULL
+All_XDP_Cohorts_SN@meta.data
+```
+
+```{r}
+qsave(All_XDP_Cohorts_SN, "All_XDP_Cohorts_SN_sct_final_051225.qs")
+```
+
+
+```{r}
+All_XDP_Cohorts_SN_meta = All_XDP_Cohorts_SN@meta.data
+qsave(All_XDP_Cohorts_SN_meta, "All_XDP_Cohorts_SN_meta.qs")
+```
+
+
+
+```{r}
+qsave(bican_recon_astro_markers_top50_wm, "/broad/macosko/kimkathl/bican_recon_astro_markers_top50_wm.qs")
+qsave(bican_recon_astro_markers_top50_gm, "/broad/macosko/kimkathl/bican_recon_astro_markers_top50_gm.qs")
+qsave(bican_recon_opc_markers_top50_wm, "/broad/macosko/kimkathl/bican_recon_opc_markers_top50_wm.qs")
+qsave(bican_recon_opc_markers_top50_gm, "/broad/macosko/kimkathl/bican_recon_opc_markers_top50_gm.qs")
+qsave(bican_recon_oligo_markers_top50_wm, "/broad/macosko/kimkathl/bican_recon_oligo_markers_top50_wm.qs")
+qsave(bican_recon_oligo_markers_top50_gm, "/broad/macosko/kimkathl/bican_recon_oligo_markers_top50_gm.qs")
+qsave(bican_recon_mg_markers_top50_wm, "/broad/macosko/kimkathl/bican_recon_mg_markers_top50_wm.qs")
+qsave(bican_recon_mg_markers_top50_gm, "/broad/macosko/kimkathl/bican_recon_mg_markers_top50_gm.qs")
+```
+
+```{r}
+All_XDP_Cohorts_SN_meta = qread("All_XDP_Cohorts_SN_meta.qs")
+```
+
+```{r}
+library(lme4)
+sobj = All_XDP_Cohorts_SN_meta
+sobj = subset(sobj, donor_id != "SCF_22_049CCF")
+model_cols = c("donor_id", "cell_class", "condition", "sex", "age_of_death", "cohort") #include any other covariates of interest, replace cell_class with whatever column defines the cluster annotations
+pd = All_XDP_Cohorts_SN_meta[,model_cols]
+pd = pd[complete.cases(pd),] # don't want any NAs
+pd$case_control_factor = as.factor(pd$condition)
+
+masc_df = .sconline.MASCfn(
+    dataset=pd,
+    cluster=pd$cell_class, # cluster annotations
+    contrast="case_control_factor", # name of contrast annotations (what you want to run the test for)
+    random_effects=c("donor_id"), # name of random effects annotations (not interested in these coefficients, but account for variability in probable sources ob batch effects, in this case donor
+    fixed_effects = c("age_of_death", "sex", "cohort") # your covariates
+)
+
+masc_df
+
+my_order <- unique(masc_df$cluster)
+masc_df$cluster_name <- sub("cluster", "", masc_df$cluster) # for legibility
+masc_df$log2_or = log2(masc_df$case_control_factorXDP.OR) # the names of the case_control_factor<whatever> columns will change from project to project depending on the unique values of your Condition column
+masc_df$log2_or_ci_low = log2(masc_df$case_control_factorXDP.OR.95pct.ci.lower)
+masc_df$log2_or_ci_high = log2(masc_df$case_control_factorXDP.OR.95pct.ci.upper)
+
+# order the graph to put disease-enriched populations on top
+masc_df = masc_df[order(-masc_df$log2_or), ] 
+masc_df$cluster_name = factor(masc_df$cluster_name, levels = masc_df$cluster_name[order(masc_df$log2_or)])
+masc_df
+
+
+library(RColorBrewer)
+library(ggplot2)
+
+# Create the forest plot with ticks on error bars, axis lines with ticks, RdBu color map, and opaque white circles on top
+a = ggplot(masc_df, aes(y = cluster_name, x = log2_or)) +
+  ggtitle("SN All Cohorts (no CCF)") +
+  geom_vline(xintercept = 0, linetype = "dotted", color = "gray") +  # Add dotted vertical line at x=0
+  geom_segment(aes(x = log2_or_ci_low, xend = log2_or_ci_high, y = cluster_name, yend = cluster_name, color = log2_or), size = 1) +  # Add horizontal error bars
+  geom_point(size = 3, aes(color = log2_or), shape = 1) +  # Add points for effect sizes
+  geom_point(size = 3, shape = 21, fill = "white") +  # Add opaque white circle on top of the error bar line
+  scale_color_gradientn(colors = RColorBrewer::brewer.pal(10, "RdBu")) +  # Use RdBu color map
+  theme_minimal() +  # Minimal theme
+  labs(x = "log2(OR)", y = "Cell Classes") +  # Axis labels
+  theme(
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(), 
+    legend.position = "none",
+    plot.title = element_text(size=16),
+    axis.line = element_line(color = "black"),  # Add axis lines
+    axis.ticks = element_line(color = "black"),  # Add axis ticks
+    axis.text = element_text(size = 14),  # Increase tick label font size
+    axis.title = element_text(size = 15)  # Increase axis label font size
+  )
+
+ggsave(a, filename = "pic.png", width = 7, height = 8)
+```

@@ -1,0 +1,522 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+#SPN-ness score
+#Findallmarkers on controls: SPN vs non-SPNs 
+```{r}
+library(dplyr)
+library(tibble)
+```
+
+
+```{r}
+SPN_score = function(gene_df, SCtransform_counts, logfc_val){
+
+significant_genes = unique(gene_df$gene)
+
+exp = FetchData(SCtransform_counts, vars = significant_genes)
+
+rownames(gene_df) = gene_df$gene
+gene_df$gene = NULL
+
+# Assuming gene_df and exp are your dataframes
+logfc_df <- gene_df
+counts_df <- exp
+
+print(logfc_df)
+print(counts_df)
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+logfc = logfc_ordered[[logfc_val]]
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc)
+logfc_vector
+
+
+#THE ACTUAL
+result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+
+# Print the result
+print(result_df)
+
+metadata <- SCtransform_counts@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id, Condition, subcluster, sub_class, cell_class), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+print(expr_data_long)
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, donor_id, Condition, subcluster, sub_class, cell_class) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+print(summarized_expr_data)
+
+spn_scores = summarized_expr_data$total_expression
+mean_spn <- mean(spn_scores, na.rm = TRUE)
+sd_spn <- sd(spn_scores, na.rm = TRUE)
+# Compute the z-score for each SPN score
+summarized_expr_data$z_score  <- (spn_scores - mean_spn) / sd_spn
+
+return(summarized_expr_data)
+}
+```
+
+
+
+
+
+
+```{r}
+# Add z-scores to Seurat object metadata
+caudate_neurons_transformed <- AddMetaData(caudate_neurons_transformed, metadata = spn_zscores, col.name = "SPN_zscore")
+
+# Visualize SPN z-scores on UMAP
+plot <- FeaturePlot(caudate_neurons_transformed, features = "SPN_zscore") +
+  ggtitle("SPN Z-Score on UMAP")
+
+# Save the UMAP plot with SPN z-scores as a PNG file
+ggsave("SPN_zscore_umap.png", plot = plot, width = 10, height = 8, dpi = 300)
+
+```
+
+
+
+```{r}
+by_donor_histogram_plots = function(final_df, title, slab, hist_col = "total_expression", fill_col = "cell_type"){
+  
+library(gridExtra)
+options(repr.plot.width=24, repr.plot.height=16)
+plots = list()
+donors = c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006","SCF-19-009", "SCF-19-014", "SCF-19-018",  "SCF-20-023",  "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM")
+
+for (donor in donors) {
+test = final_df[final_df$donor_id == donor,]
+plots[[donor]] = plot_overlapping_density_histogram(df = test,
+hist_col = hist_col,
+fill_col = fill_col,
+colors = c("red", "blue"),
+breaks=seq(-60,60,2),
+title= paste("Put SPNs vs non-SPNs: ", donor),
+xlab = "CaH SPN Score",
+fig_filename = NULL)
+}
+layout_matrix <- rbind(
+c(1, 2, 3, 4, 5),
+c(6, 7, 8, 9, 10),
+c(11, 12, 13, NA, NA),
+c(14, 15, 16, 17, NA)
+)
+# Arrange the plots according to the custom layout
+grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+# Save the arranged plots to a PNG file
+ggsave(filename = "output/Put_ZSCORE_donors.png", plot = grid_plots, width = 30, height = 16)
+}
+```
+
+
+
+```{r}
+SPN_score_graphs <- function(SPN_score_output, 
+                             donor_order = donors, 
+                             total_expression = "total_expression", 
+                             fillcol = "subcluster", 
+                             color = color1, 
+                             donor_graph_title = "CaH SPNs vs non-SPNs", 
+                             SCtransformcounts, 
+                             SPN_score_col_name) {
+  
+  # Ensure total_expression is a string
+  total_expression <- as.character(total_expression)
+  
+  # Calculate min, max, and median
+  min_SPN_score <- min(SPN_score_output[[total_expression]], na.rm = TRUE)
+  max_SPN_score <- max(SPN_score_output[[total_expression]], na.rm = TRUE)
+  median_SPN_score <- median(SPN_score_output[[total_expression]], na.rm = TRUE)
+  
+  print("min, max, median scores")
+  print(min_SPN_score)
+  print(max_SPN_score)
+  print(median_SPN_score)
+  
+  options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+  
+  for (donor in donor_order) {
+    test <- SPN_score_output[SPN_score_output$donor_id == donor, ]
+    plots[[donor]] <- plot_overlapping_density_histogram(df = test,
+                                                         hist_col = total_expression,
+                                                         fill_col = fillcol,
+                                                         colors = color,
+                                                         breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+                                                         title = paste(donor_graph_title, ": ", donor),
+                                                         xlab = "SPN Score",
+                                                         fig_filename = NULL)
+  }
+  
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, NA, NA),
+    c(14, 15, 16, 17, NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "SPN_SCORE_Output/USETEST.png", plot = grid_plots, width = 30, height = 16)
+  
+  print("donor plot done")
+  
+  XDP <- SPN_score_output[SPN_score_output$Condition == "XDP", ]
+  a <- plot_overlapping_density_histogram(df = XDP, 
+                                          hist_col = total_expression,
+                                          fill_col = fillcol,
+                                          colors = color,
+                                          breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+                                          title = paste(donor_graph_title, ": ", "XDP"),
+                                          xlab = "SPN score",
+                                          fig_filename = NULL)
+  
+  Control <- SPN_score_output[SPN_score_output$Condition == "Control", ]
+  b <- plot_overlapping_density_histogram(df = Control, 
+                                          hist_col = total_expression,
+                                          fill_col = fillcol,
+                                          colors = color,
+                                          breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+                                          title = paste(donor_graph_title, ": ", "Control"),
+                                          xlab = "SPN score",
+                                          fig_filename = NULL)
+  
+  print("Condition plot done")
+  
+  SPN <- SPN_score_output[SPN_score_output$subcluster == "SPN", ]
+  c <- plot_overlapping_density_histogram(df = SPN, 
+                                          hist_col = total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+                                          title = "XDP vs Control: SPN",
+                                          xlab = "SPN score",
+                                          fig_filename = NULL)
+  
+  notSPN <- SPN_score_output[SPN_score_output$subcluster == "non-SPN", ]
+  d <- plot_overlapping_density_histogram(df = notSPN, 
+                                          hist_col = total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = "SPN score",
+                                          fig_filename = NULL)
+  
+  print(a)
+  print(b)
+  print(c)
+  print(d)
+  
+  print("graphs done")
+  
+  # Calculate the threshold
+  threshold <- quantile(SPN_score_output[[total_expression]][SPN_score_output[["subcluster"]] == "SPN" & SPN_score_output[["Condition"]] == "XDP"], 0.1, na.rm = TRUE)
+  print(threshold)
+  
+  # Subset the data
+  SPN_score_output_identity_loss_SPN <- SPN_score_output[SPN_score_output[[total_expression]] < threshold & SPN_score_output[["subcluster"]] == "SPN", ]
+  
+  print(SPN_score_output_identity_loss_SPN)
+  print(table(SPN_score_output_identity_loss_SPN$donor_id))
+  
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Losing_Identity"
+  SCtransformcounts@meta.data
+  
+  # Visualize on UMAP
+  pic <- DimPlot(SCtransformcounts, reduction = "umap", group.by = "SPN_identity", split.by = "Condition", cols = c("red", "grey"))
+  print(pic)
+  ggsave("SPN_SCORE_Output/SPN_score_10pct_TEST.png", plot = pic, width = 20, height = 8, units = "in", dpi = 300)
+  
+  spn_scores <- setNames(SPN_score_output[[total_expression]], SPN_score_output$cell_id)
+  
+  SCtransformcounts <- AddMetaData(SCtransformcounts, metadata = spn_scores, col.name = SPN_score_col_name)
+  
+  pic2 <- FeaturePlot(SCtransformcounts, features = SPN_score_col_name, split.by = "Condition")
+  print(pic2)
+  ggsave("SPN_SCORE_Output/SPN_UMAP_TEST.png", plot = pic2, width = 20, height = 8, units = "in", dpi = 300)
+  
+  return(SCtransformcounts)
+}
+
+```
+
+
+
+
+
+
+```{r}
+merged_xdp= SPN_score_graphs( SPN_score_output= merged_XDP_summary_expr_data,
+                              donor_order = donors, 
+                              total_expression = "total_expression", 
+                              fillcol = "subcluster", 
+                              color = color1, 
+                              donor_graph_title = "SPNs vs non-SPNs", 
+                              SCtransformcounts = merged_xdp, 
+                              SPN_score_col_name = "BICAN_SPN_Score_52genes"
+  )
+```
+
+
+
+```{r}
+cell_class_score = function(gene_df, SCtransform_counts, logfc_val){
+
+significant_genes = unique(gene_df$gene)
+
+exp = FetchData(SCtransform_counts, vars = significant_genes)
+
+rownames(gene_df) = gene_df$gene
+gene_df$gene = NULL
+
+# Assuming gene_df and exp are your dataframes
+logfc_df <- gene_df
+counts_df <- exp
+
+print(logfc_df)
+print(counts_df)
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+logfc = logfc_ordered[[logfc_val]]
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc)
+logfc_vector
+
+
+#THE ACTUAL
+result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+
+# Print the result
+print(result_df)
+
+metadata <- SCtransform_counts@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id, Condition, cell_class), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+print(expr_data_long)
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, donor_id, Condition, cell_class) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+print(summarized_expr_data)
+
+spn_scores = summarized_expr_data$total_expression
+mean_spn <- mean(spn_scores, na.rm = TRUE)
+sd_spn <- sd(spn_scores, na.rm = TRUE)
+# Compute the z-score for each SPN score
+summarized_expr_data$z_score  <- (spn_scores - mean_spn) / sd_spn
+
+return(summarized_expr_data)
+}
+```
+
+
+```{r}
+cell_type_score_graphs <- function(SPN_score_output, 
+                             donor_order = donors, 
+                             total_expression = "total_expression", 
+                             fillcol = "cell_class", 
+                             color = color1, 
+                             donor_graph_title, 
+                             SCtransformcounts, 
+                             SPN_score_col_name) {
+  
+  # Ensure total_expression is a string
+  total_expression <- as.character(total_expression)
+  
+  # Calculate min, max, and median
+  min_SPN_score <- min(SPN_score_output[[total_expression]], na.rm = TRUE)
+  max_SPN_score <- max(SPN_score_output[[total_expression]], na.rm = TRUE)
+  median_SPN_score <- median(SPN_score_output[[total_expression]], na.rm = TRUE)
+  
+  print("min, max, median scores")
+  print(min_SPN_score)
+  print(max_SPN_score)
+  print(median_SPN_score)
+  
+  options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+  
+  for (donor in donor_order) {
+    test <- SPN_score_output[SPN_score_output$donor_id == donor, ]
+    plots[[donor]] <- plot_overlapping_density_histogram(df = test,
+                                                         hist_col = total_expression,
+                                                         fill_col = fillcol,
+                                                         colors = color,
+                                                         breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+                                                         title = paste(donor_graph_title, ": ", donor),
+                                                         xlab = "SPN Score",
+                                                         fig_filename = NULL)
+  }
+  
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, NA, NA),
+    c(14, 15, 16, 17, NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "SPN_SCORE_Output/celltypeUSETEST.png", plot = grid_plots, width = 30, height = 16)
+  
+  print("donor plot done")
+  
+  XDP <- SPN_score_output[SPN_score_output$Condition == "XDP", ]
+  a <- plot_overlapping_density_histogram(df = XDP, 
+                                          hist_col = total_expression,
+                                          fill_col = fillcol,
+                                          colors = color,
+                                          breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+                                          title = paste(donor_graph_title, ": ", "XDP"),
+                                          xlab = "SPN score",
+                                          fig_filename = NULL)
+  
+  Control <- SPN_score_output[SPN_score_output$Condition == "Control", ]
+  b <- plot_overlapping_density_histogram(df = Control, 
+                                          hist_col = total_expression,
+                                          fill_col = fillcol,
+                                          colors = color,
+                                          breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+                                          title = paste(donor_graph_title, ": ", "Control"),
+                                          xlab = "SPN score",
+                                          fig_filename = NULL)
+  
+  print("Condition plot done")
+  
+  # SPN <- SPN_score_output[SPN_score_output$subcluster == "SPN", ]
+  # c <- plot_overlapping_density_histogram(df = SPN, 
+  #                                         hist_col = total_expression,
+  #                                         fill_col = "Condition",
+  #                                         colors = c("XDP" = "red", "Control" = "blue"),
+  #                                         breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+  #                                         title = "XDP vs Control: SPN",
+  #                                         xlab = "SPN score",
+  #                                         fig_filename = NULL)
+  # 
+  # notSPN <- SPN_score_output[SPN_score_output$subcluster == "non-SPN", ]
+  # d <- plot_overlapping_density_histogram(df = notSPN, 
+  #                                         hist_col = total_expression,
+  #                                         fill_col = "Condition",
+  #                                         colors = c("XDP" = "red", "Control" = "blue"),
+  #                                         breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score / 50)),
+  #                                         title = "XDP vs Control: non-SPN",
+  #                                         xlab = "SPN score",
+  #                                         fig_filename = NULL)
+  
+  # print(a)
+  # print(b)
+  # print(c)
+  # print(d)
+  # 
+  # print("graphs done")
+  
+  # Calculate the threshold
+  threshold <- quantile(SPN_score_output[[total_expression]][SPN_score_output[["cell_type"]] == "SPN" & SPN_score_output[["Condition"]] == "XDP"], 0.1, na.rm = TRUE)
+  print(threshold)
+  
+  # Subset the data
+  SPN_score_output_identity_loss_SPN <- SPN_score_output[SPN_score_output[[total_expression]] < threshold & SPN_score_output[["subcluster"]] == "SPN", ]
+  
+  print(SPN_score_output_identity_loss_SPN)
+  print(table(SPN_score_output_identity_loss_SPN$donor_id))
+  
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Losing_Identity"
+  SCtransformcounts@meta.data
+  
+  # Visualize on UMAP
+  pic <- DimPlot(SCtransformcounts, reduction = "umap", group.by = "SPN_identity", split.by = "Condition", cols = c("red", "grey"))
+  print(pic)
+  ggsave("SPN_SCORE_Output/celltype_10pct_TEST.png", plot = pic, width = 20, height = 8, units = "in", dpi = 300)
+  
+  spn_scores <- setNames(SPN_score_output[[total_expression]], SPN_score_output$cell_id)
+  
+  SCtransformcounts <- AddMetaData(SCtransformcounts, metadata = spn_scores, col.name = SPN_score_col_name)
+  
+  pic2 <- FeaturePlot(SCtransformcounts, features = SPN_score_col_name, split.by = "Condition")
+  print(pic2)
+  ggsave("SPN_SCORE_Output/celltype_UMAP_TEST.png", plot = pic2, width = 20, height = 8, units = "in", dpi = 300)
+  
+  return(SCtransformcounts)
+}
+
+```

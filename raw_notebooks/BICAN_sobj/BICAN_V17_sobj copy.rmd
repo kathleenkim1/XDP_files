@@ -1,0 +1,951 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+#BICAN validation 
+```{r}
+BICAN_V17_CaH = qread("~/SOBJ_USE_THESE/Caudate_V17.qs")
+BICAN_V17_CaH
+BICAN_V17_CaH@meta.data
+DimPlot(BICAN_V17_CaH, label = T)
+```
+
+```{r}
+BICAN_V17_CaH = subset(BICAN_V17_CaH, subset = predClass == "SPN" | predClass == "interneuron")
+BICAN_V17_CaH
+BICAN_V17_CaH@meta.data
+DimPlot(BICAN_V17_CaH, label = T)
+```
+
+```{r}
+BICAN_V17_CaH <- subset(BICAN_V17_CaH, subset = pct_mt < 10 & pct_intronic >= 0.25)
+BICAN_V17_CaH <- subset(BICAN_V17_CaH, subset = pct_mt < 10 & pct_intronic >= 0.25)
+BICAN_V17_CaH
+```
+
+```{r}
+normalizeScalePcaClusterUmap = function(
+    sobj,
+    subset_col="donor_id",
+    n_hvgs_orig=2500,
+    n_dims_use=20,
+    resolutions=c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)){
+    # this function takes a Seurat object, normalizes the data, scales the data, runs PCA, finds neighbors, clusters, and runs UMAP
+    # it then returns the Seurat object
+    hvgs = getSeuratVarFeatureIntersectByCol(sobj, subset_col=subset_col, original_nfeatures=n_hvgs_orig)
+    sobj = (sobj
+        %>% NormalizeData() # log normalizes raw counts
+        %>% ScaleData(features=hvgs, split.by=subset_col) # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+        %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+        %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+    )
+    for(res in resolutions){
+        sobj = sobj %>% FindClusters(resolution = res) # finds clusters at a variety of resolutions
+    }
+    sobj = sobj %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+    return(sobj)
+}
+```
+
+
+```{r}
+DimPlot(BICAN_V17_CaH, label =TRUE)
+BICAN_V17_CaH_neurons = normalizeScalePcaClusterUmap(BICAN_V17_CaH, subset_col = "DONOR", resolutions = c(0.01, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1))
+
+Idents(BICAN_V17_CaH_neurons) = BICAN_V17_CaH_neurons@meta.data$predClass
+DimPlot(BICAN_V17_CaH_neurons, label =TRUE)
+```
+
+```{r}
+table(BICAN_V17_CaH_neurons$predClass)
+head(BICAN_V17_CaH_neurons)
+```
+
+```{r}
+Idents(BICAN_V17_CaH_neurons) = BICAN_V17_CaH_neurons@meta.data$predClass
+DimPlot(BICAN_V17_CaH_neurons, group.by = "RNA_snn_res.0.01")
+DimPlot(BICAN_V17_CaH_neurons, group.by = "RNA_snn_res.0.05")
+DimPlot(BICAN_V17_CaH_neurons, group.by = "RNA_snn_res.0.1")
+DimPlot(BICAN_V17_CaH_neurons, group.by = "RNA_snn_res.0.15")
+DimPlot(BICAN_V17_CaH_neurons, group.by = "RNA_snn_res.0.2")
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("CASZ1", "CHAT"))
+```
+
+```{r}
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("DRD1", "DRD2"))
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(BICAN_V17_CaH_neurons, features =c("CASZ1","CHAT"))
+FeaturePlot(BICAN_V17_CaH_neurons, features =c("C1QA"))
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("PPP1R1B", "pct_mt"))
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("GAD1", "GAD2"))
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("VIP", "CALB2"))
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("SLC17A7", "SLC17A6"))
+
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("DRD1", "DRD2"))
+#Patch
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("SEMA5B", "MFGE8")) 
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("KREMEN1", "PDE1C")) 
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("LYPD1")) 
+#matrix
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("ID4", "SGK1")) 
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("EPHA4", "SV2B")) 
+ #Coexpression is exopatch
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("ID4", "OPRM1"))
+#first 2 is D1 patch,
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("NECAB1", "COL11A1")) 
+#next is D2 patch
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("ASIC4")) 
+
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("TSHZ1", "TAC1", "NNAT")) #patch
+
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("pct_mt"))
+FeaturePlot(BICAN_V17_CaH_neurons, features = c("PPP1R1B", "CASZ1")) 
+```
+
+```{r}
+subcluster = c("D1_SPN_matrix", "D2_SPN_matrix", "D1_SPN_patch", "D2_SPN_patch", "eSPN", "junk", "interneuron_1", "junk2", "interneuron_2","D2_SPN_patch_2", "interneuron_3", "interneuron_4", "cholinergic", "interneuron_5")
+  
+ # c("D1_SPN_matrix","D2_SPN_matrix", "D1_SPN_patch", "D2_SPN_patch", "interneuron_1", "eSPN", "SPN-junk", "interneuron_2", "interneuron_3","D2_SPN_patch","cholinergic", "D1_SPN_matrix")
+
+BICAN_V17_CaH_neurons= assignCellClasses(BICAN_V17_CaH_neurons, classes=subcluster, cluster_col="RNA_snn_res.0.2", class_col = "subcluster")
+
+Idents(BICAN_V17_CaH_neurons) <- "subcluster"
+DimPlot(BICAN_V17_CaH_neurons, label = TRUE)
+```
+
+#Now sctransform, recluster, integrate, relabel
+
+```{r}
+library(sctransform)
+BICAN_V17_CaH_neurons_transformed = SCTransform(BICAN_V17_CaH_neurons, vars.to.regress = "pct_mt", verbose = FALSE)
+DefaultAssay(BICAN_V17_CaH_neurons_transformed) = "SCT"
+BICAN_V17_CaH_neurons_transformed
+```
+
+```{r}
+BICAN_V17_CaH_neurons_transformed[["umap_rna"]] = BICAN_V17_CaH_neurons_transformed[["umap"]]
+BICAN_V17_CaH_neurons_transformed
+```
+
+#Actual Clustering Code- BICAN
+```{r}
+hvgs = getSeuratVarFeatureIntersectByCol(BICAN_V17_CaH_neurons_transformed, subset_col="DONOR", original_nfeatures=2500)
+
+
+n_dims_use=20
+
+
+BICAN_V17_CaH_neurons_transformed_reclustered = (BICAN_V17_CaH_neurons_transformed
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="DONOR") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via merged_xdp_transformed$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: merged_xdp_transformed$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+
+# Now we can plot the data and just see what it looks like
+
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+library(harmony)
+BICAN_V17_CaH_neurons_transformed_reclustered_integrated = (BICAN_V17_CaH_neurons_transformed_reclustered
+    %>% RunHarmony(
+        group.by = "DONOR")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+BICAN_V17_CaH_neurons_transformed_reclustered_integrated
+BICAN_V17_CaH_neurons_transformed_reclustered_integrated@meta.data
+```
+
+```{r}
+qsave(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, "~/BICAN_V17_CaH_neurons_transformed_reclustered_integrated.qs")
+```
+
+
+```{r}
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "predClass")
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "DONOR")
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "library")
+```
+
+
+```{r}
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "SCT_snn_res.0.2")
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "SCT_snn_res.0.3")
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "SCT_snn_res.0.4")
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "SCT_snn_res.0.5")
+
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("DRD1", "DRD2"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features =c("CASZ1","CHAT"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features =c("C1QA"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("PPP1R1B", "pct_mt"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("GAD1", "GAD2"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("VIP", "CALB2"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("SLC17A7", "SLC17A6"))
+```
+
+```{r}
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("SEMA5B", "MTGE8", "KREMEN1", "PDE1C"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("TSHZ1", "TAC1", "NNAT"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("ID4", "OPRM1"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("ID4", "SGK1", "EPHA4", "SV2B"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("NECAB1", "CO11A1"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("ASIC4"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("CASZ1", "CACNG5", "PCDH8"))
+FeaturePlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, features = c("pct_mt", "NUM_TRANSCRIPTS"))
+```
+```{r}
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "predClass", label = T)
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, group.by = "subcluster",label = T)
+```
+
+```{r}
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+```
+
+```{r}
+a=FindAllMarkers(object = BICAN_V17_CaH_neurons_transformed_reclustered_integrated, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1)
+a
+s= subset(a, subset = cluster =="D2_patch" | cluster == "D2_patch")
+s
+```
+
+```{r}
+classes = c("D1_matrix", "D2_matrix", "D1_patch_exotic", "junk", "D2_patch_exotic", "eSPN", "interneuron_1", "interneuron_2", "interneuron_3", "D2_patch", "interneuron_4", "D1_patch", "cholinergic")
+  
+  #c("D1_matrix", "D2_matrix", "D1_patch_exotic", "D2_patch", "interneuron_1", "eSPN", "interneuron_2", "SPN_junk", "interneuron_3", "interneuron_4", "D2_patch", "cholinergic")
+
+BICAN_V17_CaH_neurons_transformed_reclustered_integrated = assignCellClasses(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, classes=classes, cluster_col="SCT_snn_res.0.2", class_col = "reclustered_cell_class")
+Idents(BICAN_V17_CaH_neurons_transformed_reclustered_integrated) = "reclustered_cell_class"
+DimPlot(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, label = T)
+```
+
+```{r}
+final_V17_BICAN_neurons = subset(BICAN_V17_CaH_neurons_transformed_reclustered_integrated, subset = reclustered_cell_class != "junk")
+unique(final_V17_BICAN_neurons$reclustered_cell_class)
+```
+
+```{r}
+final_V17_BICAN_neurons@meta.data$reclustered_subcluster = final_V17_BICAN_neurons@meta.data$reclustered_cell_class
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "D1_matrix"] = "SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "D2_matrix"] = "SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "D1_patch"] = "SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "D2_patch"] = "SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "D1_patch_exotic"] = "SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "D2_patch_exotic"] = "SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "interneuron_1"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "eSPN"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "interneuron_2"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "interneuron_3"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "interneuron_4"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "interneuron_5"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_subcluster[final_V17_BICAN_neurons$reclustered_subcluster == "cholinergic"] = "non-SPN"
+
+final_V17_BICAN_neurons@meta.data$reclustered_neuron_type = final_V17_BICAN_neurons$reclustered_subcluster
+final_V17_BICAN_neurons$reclustered_neuron_type[final_V17_BICAN_neurons$reclustered_cell_class == "eSPN"] = "eSPN"
+
+final_V17_BICAN_neurons@meta.data$reclustered_patch_matrix = final_V17_BICAN_neurons$reclustered_cell_class
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "D1_matrix"] = "SPN_matrix"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "D2_matrix"] = "SPN_matrix"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "D1_patch"] = "SPN_patch"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "D2_patch"] = "SPN_patch"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "D1_patch_exotic"] = "SPN_patch"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "D2_patch_exotic"] = "SPN_patch"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "interneuron_1"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "eSPN"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "interneuron_2"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "interneuron_3"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "interneuron_4"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "interneuron_5"] = "non-SPN"
+final_V17_BICAN_neurons$reclustered_patch_matrix[final_V17_BICAN_neurons$reclustered_patch_matrix == "cholinergic"] = "non-SPN"
+
+final_V17_BICAN_neurons@meta.data$reclustered_neuron_joint_type = final_V17_BICAN_neurons$reclustered_patch_matrix
+final_V17_BICAN_neurons$reclustered_neuron_joint_type[final_V17_BICAN_neurons$reclustered_cell_class == "eSPN"] = "eSPN"
+final_V17_BICAN_neurons@meta.data
+```
+
+```{r}
+table(final_V17_BICAN_neurons$reclustered_cell_class)
+table(final_V17_BICAN_neurons$reclustered_subcluster)
+table(final_V17_BICAN_neurons$reclustered_neuron_type)
+table(final_V17_BICAN_neurons$reclustered_patch_matrix)
+table(final_V17_BICAN_neurons$reclustered_neuron_joint_type)
+```
+
+```{r}
+qsave(final_V17_BICAN_neurons_final, "~/SOBJ_USE_THESE/final_V17_BICAN_neurons.qs")
+
+final_V17_BICAN_neurons = qread("~/SOBJ_USE_THESE/final_V17_BICAN_neurons.qs")
+```
+
+```{r}
+DimPlot(final_V17_BICAN_neurons, group.by = "reclustered_cell_class" , label = T)
+DimPlot(final_V17_BICAN_neurons, group.by = "reclustered_subcluster" , label = T)
+DimPlot(final_V17_BICAN_neurons, group.by = "reclustered_neuron_type" , label = T)
+DimPlot(final_V17_BICAN_neurons, group.by = "reclustered_patch_matrix", label = T)
+DimPlot(final_V17_BICAN_neurons, group.by = "reclustered_neuron_joint_type" , label = T)
+```
+
+
+```{r}
+table(final_V17_BICAN_neurons$DONOR)
+table(final_V17_BICAN_neurons$library)
+```
+
+
+```{r}
+# final_V17_BICAN_neurons_final = subset(final_V17_BICAN_neurons, subset = DONOR != "MS587476")
+# final_V17_BICAN_neurons_final
+final_V17_BICAN_neurons
+```
+
+
+#score time!!
+
+```{r}
+BICAN_matrix_scores = BICAN_SPN_score_normalized(Intersected_BICAN_matrix_markers_final_filtered, final_V17_BICAN_neurons, logfc_val = "weighted_logFC", method = "multiply")
+BICAN_matrix_scores
+```
+
+
+```{r}
+color4 = c("SPN_matrix" = "red", "non-SPN" = "blue", "SPN_patch" = "orange")
+
+color1 = c("SPN" = "red", "non-SPN"= "blue") #for subcluster: SPN vs non-SPNS
+color2 = c("red", "blue")
+color3 = c("SPN"="red", "eSPN"="yellow", "other"="green", "IN" = "blue") #for subclass
+
+color5 = c("SPN_matrix"="red", "SPN_patch" = "orange","eSPN"="green", "non-SPN" = "blue") 
+```
+
+
+#now I want to take score distribution for each person, subtract the mean of the distribution, divide by st dev
+```{r}
+BICAN_matrix_scores$Village = "BICAN_V17"
+BICAN_matrix_scores
+```
+
+```{r}
+unique(BICAN_matrix_scores$reclustered_neuron_joint_type)
+```
+
+```{r}
+BICANdonors1 = unique(BICAN_matrix_scores$DONOR)
+BICANdonors1
+```
+
+
+```{r}
+BICAN_SPN_score_graphs(BICAN_matrix_scores, 
+                             donor_order = BICANdonors1, 
+                             total_expression = "total_expression", 
+                             fillcol = "reclustered_neuron_joint_type", 
+                             color = color5, 
+                             donor_graph_title = "BICAN SPN Matrix vs non-SPNs", 
+                             final_V17_BICAN_neurons, 
+                             SPN_score_col_name="test")
+```
+
+
+
+
+```{r}
+color4 = c("SPN_matrix" = "red", "non-SPN" = "blue", "SPN_patch" = "orange")
+color3 = c("SPN_matrix" = "red", "non-SPN" = "blue")
+BICAN_matrix_scores
+donor_order = BICANdonors1
+  combined_df_list <- list()
+fillcol = "reclustered_neuron_joint_type" #"reclustered_patch_matrix" 
+color = color5 #color4 or 5
+donor_graph_title = "BICAN SPN Matrix vs non-SPNs"
+SCtransformcounts =final_V17_BICAN_neurons
+SPN_score_col_name = "BICANtest"
+
+ 
+  options(repr.plot.width = 24, repr.plot.height = 16)
+  BICAN_matrix_scores$new_distribution <- NA
+  plots <- list()
+
+for (donor in donor_order) {
+    test <- BICAN_matrix_scores[BICAN_matrix_scores$DONOR == donor, ]
+    test$new_distribution <- NA  # Initialize the new column
+    cell_classes = unique(test$reclustered_neuron_joint_type)  
+    for (class in cell_classes) {
+        df = test[test$reclustered_neuron_joint_type == class, ]
+        test$new_distribution[test$reclustered_neuron_joint_type == class] <- scale(df$total_expression)
+    }
+    BICAN_matrix_scores[BICAN_matrix_scores$DONOR == donor, "new_distribution"] <- test$new_distribution
+
+    plots[[donor]] <- plot_overlapping_density_histogram(df = test,
+                                                         hist_col = "new_distribution",
+                                                         fill_col = fillcol,
+                                                         colors = color,
+                                                         breaks = seq(-8,6,0.5),
+                                                         title = paste(donor_graph_title, ": ", donor),
+                                                         xlab = "Matrix SPN Score",
+                                                         fig_filename = NULL)
+    
+
+  }
+  BICAN_matrix_scores_final <- do.call(rbind, combined_df_list)
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, 14, 15),
+    c(16, 17, 18, NA, NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "~/SPN_SCORE_Output/USETEST.png", plot = grid_plots, width = 30, height = 16)
+  
+  BICAN_matrix_scores
+```
+
+```{r}
+table(BICAN_matrix_scores$reclustered_cell_class)
+table(BICAN_matrix_scores$reclustered_neuron_joint_type)
+table(BICAN_matrix_scores$reclustered_patch_matrix)
+```
+```{r}
+BICAN_matrix_scores$reclustered_patch_matrix_exotic = BICAN_matrix_scores$reclustered_neuron_joint_type
+BICAN_matrix_scores$reclustered_patch_matrix_exotic[BICAN_matrix_scores$reclustered_cell_class == "D1_patch_exotic" | BICAN_matrix_scores$reclustered_cell_class == "D2_patch_exotic"] = "SPN_exotic"
+table(BICAN_matrix_scores$reclustered_patch_matrix_exotic)
+```
+
+
+
+```{r}
+matrix <- BICAN_matrix_scores[BICAN_matrix_scores$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$total_expression,
+                                          fill_col = "reclustered_patch_matrix_exotic",
+                                          colors = c("SPN_matrix" = "red"),
+                                          breaks = seq(0,120,2),
+                                          title = "BICAN Controls: SPN matrix",
+                                          xlab = "Matrix SPN score",
+                                          fig_filename = NULL)
+  patch <- BICAN_matrix_scores[BICAN_matrix_scores$reclustered_patch_matrix_exotic == "SPN_patch", ]
+  plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch$total_expression,
+                                          fill_col = "reclustered_patch_matrix_exotic",
+                                          colors = c("SPN_patch" = "orange"),
+                                          breaks = seq(0,120,2),
+                                          title = "BICAN Controls: SPN patch",
+                                          xlab = "Matrix SPN score",
+                                          fig_filename = NULL)
+  
+  exotic <- BICAN_matrix_scores[BICAN_matrix_scores$reclustered_patch_matrix_exotic == "SPN_exotic", ]
+  plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic$total_expression,
+                                          fill_col = "reclustered_patch_matrix_exotic",
+                                          colors = c("SPN_exotic" = "yellow"),
+                                          breaks = seq(0,120,2),
+                                          title = "BICAN Controls: SPN exotic",
+                                          xlab = "Matrix SPN score",
+                                          fig_filename = NULL)  
+  
+
+  nonSPN <- BICAN_matrix_scores[BICAN_matrix_scores$reclustered_patch_matrix_exotic == "non-SPN", ]
+  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN$total_expression,
+                                          fill_col = "reclustered_patch_matrix_exotic",
+                                          colors = c("non-SPN" = "blue"),
+                                          breaks = seq(0,120,2),
+                                          title = "BICAN Controls: non-SPN",
+                                          xlab = "Matrix SPN score",
+                                          fig_filename = NULL)
+    eSPN <- BICAN_matrix_scores[BICAN_matrix_scores$reclustered_patch_matrix_exotic == "eSPN", ]
+  plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN$total_expression,
+                                          fill_col = "reclustered_patch_matrix_exotic",
+                                          colors = c("eSPN" = "green"),
+                                          breaks = seq(0,120,2),
+                                          title = "BICAN Controls: eSPN",
+                                          xlab = "Matrix SPN score",
+                                          fig_filename = NULL)
+  
+```
+```{r}
+V17_BICAN_scores = BICAN_matrix_scores
+V17_BICAN_scores
+```
+
+```{r}
+XDP_matrix_scores
+```
+
+```{r}
+V8_BICAN_scores = BICAN_matrix_scores
+V8_BICAN_scores$Village = "BICAN_V8"
+V8_BICAN_scores
+```
+
+
+
+```{r}
+library(dplyr)
+XDP_matrix_scores_df = XDP_matrix_scores %>% select(cell_id, donor_id, Condition, reclustered_patch_matrix_exotic, reclustered_patch_matrix, reclustered_neuron_type_joint_cluster,  pct_mito, nUmi, total_expression , z_score, Village,new_distribution)
+
+BICAN_matrix_scores_df_V8 = V8_BICAN_scores %>% select(cell_id, DONOR, reclustered_patch_matrix, reclustered_neuron_joint_type,  pct_mt, NUM_TRANSCRIPTS, total_expression , z_score, Village,new_distribution) 
+
+BICAN_matrix_scores_df_V17 = V17_BICAN_scores %>% select(cell_id, DONOR, reclustered_patch_matrix, reclustered_neuron_joint_type,reclustered_patch_matrix_exotic,  pct_mt, NUM_TRANSCRIPTS, total_expression , z_score, Village,new_distribution) 
+
+BICAN_matrix_scores_df_V8$Condition = "BICAN Control V8"
+BICAN_matrix_scores_df_V8$reclustered_patch_matrix_exotic = BICAN_matrix_scores_df_V8$reclustered_neuron_joint_type
+BICAN_matrix_scores_df_V8$reclustered_neuron_type_joint_cluster = BICAN_matrix_scores_df_V8$reclustered_neuron_joint_type
+BICAN_matrix_scores_df_V8$reclustered_neuron_joint_type = NULL
+BICAN_matrix_scores_df_V8$pct_mito = BICAN_matrix_scores_df_V8$pct_mt 
+BICAN_matrix_scores_df_V8$pct_mt  = NULL
+BICAN_matrix_scores_df_V8$nUmi = BICAN_matrix_scores_df_V8$NUM_TRANSCRIPTS 
+BICAN_matrix_scores_df_V8$NUM_TRANSCRIPTS  = NULL
+BICAN_matrix_scores_df_V8$donor_id = BICAN_matrix_scores_df_V8$DONOR 
+BICAN_matrix_scores_df_V8$DONOR  = NULL
+
+BICAN_matrix_scores_df_V17$Condition = "BICAN Control V17"
+BICAN_matrix_scores_df_V17$reclustered_neuron_type_joint_cluster = BICAN_matrix_scores_df_V17$reclustered_neuron_joint_type
+BICAN_matrix_scores_df_V17$reclustered_neuron_joint_type = NULL
+BICAN_matrix_scores_df_V17$pct_mito = BICAN_matrix_scores_df_V17$pct_mt 
+BICAN_matrix_scores_df_V17$pct_mt  = NULL
+BICAN_matrix_scores_df_V17$nUmi = BICAN_matrix_scores_df_V17$NUM_TRANSCRIPTS 
+BICAN_matrix_scores_df_V17$NUM_TRANSCRIPTS  = NULL
+BICAN_matrix_scores_df_V17$donor_id = BICAN_matrix_scores_df_V17$DONOR 
+BICAN_matrix_scores_df_V17$DONOR  = NULL
+
+XDP_matrix_scores_df
+BICAN_matrix_scores_df_V8
+BICAN_matrix_scores_df_V17
+
+Combined_scores_df = rbind(XDP_matrix_scores_df, BICAN_matrix_scores_df_V8, BICAN_matrix_scores_df_V17)
+Combined_scores_df
+```
+
+```{r}
+table(Combined_scores_df$Condition, Combined_scores_df$reclustered_patch_matrix_exotic)
+table(Combined_scores_df$Condition, Combined_scores_df$reclustered_neuron_type_joint_cluster)
+```
+
+```{r}
+min(Combined_scores_df$total_expression)
+max(Combined_scores_df$total_expression)
+```
+
+```{r}
+matrix <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue", "BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 150, 2),
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  patch <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_patch", ]
+  plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue", "BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 150, 2),
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  nonSPN <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "non-SPN", ]
+  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 150, 2),
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+    exotic <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_exotic", ]
+  plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 150, 2),
+                                          title = "XDP vs Control: Exotic SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+    eSPN <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "eSPN", ]
+  plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                          breaks = seq(0, 150, 2),
+                                          title = "XDP vs Control: eSPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+```
+
+```{r}
+matrix <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$new_distribution,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue", "BICAN Control" = "green"),
+                                          breaks = seq(-6, -2, 0.1),
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  
+  matrix <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$new_distribution,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue", "BICAN Control" = "green"),
+                                          breaks = seq(0, 4, 0.1),
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+```
+
+
+
+
+```{r}
+color4 = c("SPN_matrix" = "red", "non-SPN" = "blue", "SPN_patch" = "orange", "SPN_exotic" = "yellow", "eSPN" = "green")
+fillcol = "reclustered_patch_matrix_exotic"
+color = color4 #color4 or 5
+donor_graph_title = "Non-SPN"
+
+ 
+  options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+
+  for (donor in donor_order) {
+    xdp_donor <- Combined_scores_df[Combined_scores_df$donor_id == donor, ]
+    control = subset(Combined_scores_df, subset = Condition == "Control" | Condition == "BICAN Control V8" | Condition == "BICAN Control V17")
+    test = rbind(xdp_donor, control)
+      df = test[test$reclustered_patch_matrix_exotic == "non-SPN",]
+       plots[[donor]] <- plot_overlapping_density_histogram(df = df,
+                                                         hist_col = "total_expression",
+                                                         fill_col = "Condition",
+                                                         colors = c("XDP" = "red", "Control" = "blue", "BICAN Control V8" = "green", "BICAN Control V17" = "orange"),
+                                                         breaks = seq(0,150,2),
+                                                         title = paste(donor_graph_title, ": ", donor),
+                                                         xlab = "Matrix SPN Score",
+                                                         fig_filename = NULL)
+  }
+  
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, NA, NA),
+    c(14, 15, 16,17 , NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "~/SPN_SCORE_Output/USETEST.png", plot = grid_plots, width = 30, height = 16)
+  
+  Combined_scores_df
+```
+
+#just plot xdp
+
+```{r}
+color4 = c("SPN_matrix" = "red", "non-SPN" = "blue", "SPN_patch" = "orange", "SPN_exotic" = "yellow", "eSPN" = "green")
+fillcol = "reclustered_patch_matrix_exotic"
+color = color4 #color4 or 5
+donor_graph_title = "eSPN"
+
+ 
+  options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+
+  for (donor in donor_order) {
+    xdp_donor <- XDP_matrix_scores_df[XDP_matrix_scores_df$donor_id == donor, ]
+    control = subset(XDP_matrix_scores_df, subset = Condition == "Control")
+    test = rbind(xdp_donor, control)
+      df = test[test$reclustered_patch_matrix_exotic == "eSPN",]
+       plots[[donor]] <- plot_overlapping_density_histogram(df = df,
+                                                         hist_col = "total_expression",
+                                                         fill_col = "Condition",
+                                                         colors = c("XDP" = "red", "Control" = "blue", "BICAN Control V8" = "green", "BICAN Control V17" = "yellow"),
+                                                         breaks = seq(0,150,2),
+                                                         title = paste(donor_graph_title, ": ", donor),
+                                                         xlab = "Matrix SPN Score",
+                                                         fig_filename = NULL)
+  }
+  
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, NA, NA),
+    c(14, 15, 16,17 , NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "~/SPN_SCORE_Output/USETEST.png", plot = grid_plots, width = 30, height = 16)
+  
+  Combined_scores_df
+```
+
+
+
+
+
+
+```{r}
+BICAN_SPN_score_normalized = function(gene_df, SCtransform_counts, logfc_val, method = "multiply"){
+
+significant_genes = unique(gene_df$gene)
+
+exp = FetchData(SCtransform_counts, vars = significant_genes)
+
+rownames(gene_df) = gene_df$gene
+gene_df$gene = NULL
+
+# Assuming gene_df and exp are your dataframes
+logfc_df <- gene_df
+counts_df <- exp
+
+print(logfc_df)
+print(counts_df)
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+logfc = logfc_ordered[[logfc_val]]
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc)
+logfc_vector
+
+gene_averages <- colMeans(counts_df)
+print("Printing gene averages")
+print(gene_averages)
+if (method == "multiply") {
+  
+#THE ACTUAL
+result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+} else if(method == "log"){
+  custom_log_transform <- function(x, logFC_value) {
+     x * 2^logFC_value
+  }
+  result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+} else{
+  stop("Calculation is not working")
+}
+print(result_df)
+# Divide each gene's expression by its average expression
+result_df <- sweep(result_df, 2, gene_averages, FUN = "/")
+
+# Print the result
+print("Printing normalized")
+print(result_df)
+
+
+metadata <- SCtransform_counts@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"DONOR" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Check if 'cell_id' column already exists and remove it
+if ("cell_id" %in% colnames(metadata)) {
+  metadata <- metadata %>% select(-cell_id)
+}
+
+# Ensure unique row names in result_df
+if (any(duplicated(rownames(result_df)))) {
+  stop("Row names in result_df are not unique. Please ensure unique row names.")
+}
+
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, DONOR, subcluster, pct_mt, NUM_TRANSCRIPTS, reclustered_cell_class, reclustered_subcluster,reclustered_neuron_type,reclustered_patch_matrix,reclustered_neuron_joint_type), by = "cell_id")
+
+# Assuming your data frame is named expr_data_long
+print(expr_data_long)
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, DONOR, subcluster, pct_mt, NUM_TRANSCRIPTS, reclustered_cell_class, reclustered_subcluster,reclustered_neuron_type,reclustered_patch_matrix,reclustered_neuron_joint_type) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+print(summarized_expr_data)
+
+spn_scores = summarized_expr_data$total_expression
+mean_spn <- mean(spn_scores, na.rm = TRUE)
+sd_spn <- sd(spn_scores, na.rm = TRUE)
+# Compute the z-score for each SPN score
+summarized_expr_data$z_score  <- (spn_scores - mean_spn) / sd_spn
+
+return(summarized_expr_data)
+}
+```
+
+
+```{r}
+BICANdonors = unique(final_V17_BICAN_neurons$DONOR)
+BICANdonors
+```
+
+```{r}
+BICAN_SPN_score_graphs <- function(SPN_score_output, 
+                             donor_order = BICANdonors, 
+                             total_expression = "total_expression", 
+                             fillcol = "subcluster", 
+                             color = color1, 
+                             donor_graph_title = "BICAN SPN Matrix vs non-SPNs", 
+                             SCtransformcounts, 
+                             SPN_score_col_name) {
+  
+  # Ensure total_expression is a string
+  total_expression <- as.character(total_expression)
+  
+  # Calculate min, max, and median
+  min_SPN_score <- min(SPN_score_output[[total_expression]], na.rm = TRUE)
+  max_SPN_score <- max(SPN_score_output[[total_expression]], na.rm = TRUE)
+  median_SPN_score <- median(SPN_score_output[[total_expression]], na.rm = TRUE)
+  
+  print("min, max, median scores")
+  print(min_SPN_score)
+  print(max_SPN_score)
+  print(median_SPN_score)
+  
+  options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+  
+  for (donor in donor_order) {
+    test <- SPN_score_output[SPN_score_output$DONOR == donor, ]
+    plots[[donor]] <- plot_overlapping_density_histogram(df = test,
+                                                         hist_col = total_expression,
+                                                         fill_col = fillcol,
+                                                         colors = color,
+                                                         breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score/50)),
+                                                         title = paste(donor_graph_title, ": ", donor),
+                                                         xlab = "Matrix SPN Score",
+                                                         fig_filename = NULL)
+  }
+  
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, 14, 15),
+    c(16, 17, 18, 19, NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "~/SPN_SCORE_Output/USETEST.png", plot = grid_plots, width = 30, height = 16)
+  
+  print("donor plot done")
+  
+  b <- plot_overlapping_density_histogram(df = SPN_score_output, 
+                                          hist_col = total_expression,
+                                          fill_col = fillcol,
+                                          colors = color,
+                                          breaks = seq(min_SPN_score, max_SPN_score, round(max_SPN_score/50)),
+                                          title = paste(donor_graph_title, ": ", "Control"),
+                                          xlab = "SPN score",
+                                          fig_filename = NULL)
+  
+  print("Condition plot done")
+  
+
+  
+  # Calculate the threshold
+  threshold <- quantile(SPN_score_output[[total_expression]][SPN_score_output[["reclustered_neuron_type"]] == "SPN"], 0.1, na.rm = TRUE)
+  print(threshold)
+  
+  # Subset the data
+  SPN_score_output_identity_loss_SPN <- SPN_score_output[SPN_score_output[[total_expression]] < threshold & SPN_score_output[["reclustered_neuron_type"]] == "SPN", ]
+  
+  print(SPN_score_output_identity_loss_SPN)
+  print(table(SPN_score_output_identity_loss_SPN$DONOR))
+  
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Bottom 10%"
+  SCtransformcounts@meta.data
+  
+  # Visualize on UMAP
+  pic <- DimPlot(SCtransformcounts, reduction = "umap", group.by = "SPN_identity", cols = c("red", "grey")) 
+  print(pic)
+  ggsave("~/SPN_SCORE_Output/SPN_score_10pct_TEST.png", plot = pic, width = 20, height = 8, units = "in", dpi = 300)
+  
+  spn_scores <- setNames(SPN_score_output[[total_expression]], SPN_score_output$cell_id)
+  
+  SCtransformcounts <- AddMetaData(SCtransformcounts, metadata = spn_scores, col.name = SPN_score_col_name)
+  
+  pic2 <- FeaturePlot(SCtransformcounts, features = SPN_score_col_name)
+  print(pic2)
+  ggsave("~/SPN_SCORE_Output/SPN_UMAP_TEST.png", plot = pic2, width = 20, height = 8, units = "in", dpi = 300)
+  
+  return(SCtransformcounts)
+}
+
+```

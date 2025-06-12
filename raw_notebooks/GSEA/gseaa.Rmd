@@ -1,0 +1,1103 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("fgsea")
+```
+
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/GSEA"
+DE_SUBDIR="de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30"
+#DE_SUBDIR="de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30"
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+
+
+#example
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "gsea")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+    kegg_2021_human = "GSEA/genesets/KEGG_2021_Human.txt",
+    go_process = "GSEA/genesets/GO_Biological_Process_2021.txt",
+    go_function = "GSEA/genesets/GO_Molecular_Function_2021.txt",
+    disgenet = "GSEA/genesets/DisGeNET.txt",
+    msigdb_hallmark = "GSEA/genesets/MSigDB_Hallmark_2020.txt",
+    neural_activity = "GSEA/genesets/neural_activity_arranged.txt",
+    wikipathways = "GSEA/genesets/WikiPathways_2019_Human.txt",
+    tf_perturbations = "GSEA/genesets/TF_Perturbations_Followed_by_Expression.txt",
+    jensen_diseases = "GSEA/genesets/Jensen_DISEASES.txt"
+)
+
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+    if (! grepl("trend", de_slogan)){next}
+
+    #if (strsplit(de_slogan, "__")[[1]][[2]] != "opc"){next}
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$gene)
+    anno=anno[match(dataDE$gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="logFC", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_logfc.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+
+```{r}
+# Define cell types
+caudate_cell_types <- list("astro", "endo", "ependymal", "immune", "mg", "neuron", "oligo", "opc")
+putamen_cell_types <- list("astro", "endo", "mg", "neuron", "oligo", "opc")
+
+# Initialize an empty named list to store the dataframes
+#caudate_gsea_df_list <- list()
+putamen_gsea_df_list <- list()
+
+# Loop through each cell type and read the corresponding file into a dataframe
+for (cell_type in putamen_cell_types) {
+  # Construct the file name
+  gsea_file_name <- paste("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/gsea/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep = "")
+  
+  # Print the file name to verify the path
+  print(paste("Trying to read file:", gsea_file_name))
+  
+  # Check if the file exists
+  if (file.exists(gsea_file_name)) {
+    # Read the file into a dataframe
+    gsea_file <- read.delim(gsea_file_name, header = TRUE)
+    
+    # Store the dataframe in the list with the cell type as the name
+    putamen_gsea_df_list[[cell_type]] <- gsea_file
+  } else {
+    print(paste("File does not exist:", gsea_file_name))
+  }
+}
+
+# Accessing the dataframes
+# You can access each dataframe by its cell type name, for example:
+if ("astro" %in% names(putamen_gsea_df_list)) {
+  astro_df <- putamen_gsea_df_list[["astro"]]
+}
+
+```
+
+
+```{r}
+# Extract relevant data from GSEA results
+data <- gsea_results@result
+data$GeneRatio <- sapply(data$GeneRatio, function(x) eval(parse(text=x)))
+
+# Define a new column for NES absolute value for dot circumference
+data$NES_abs <- abs(data$NES)
+
+# Define a new column for -log10(p.adjust) for coloring the dots
+data$log10_pvalue <- -log10(data$p.adjust)
+
+```
+
+
+
+```{r}
+df_ordered <- df[order(df$column_name), ]
+```
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_astro_df
+caudate_astro_df = caudate_astro_df[order(caudate_astro_df$NES),]
+caudate_astro_df
+```
+
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_endo_df= caudate_gsea_df_list[["endo"]]
+caudate_ependymal_df= caudate_gsea_df_list[["ependymal"]]
+caudate_immune_df =caudate_gsea_df_list[["immune"]]
+caudate_microglia_df = caudate_gsea_df_list[["mg"]]
+caudate_neuron_df = caudate_gsea_df_list[["neuron"]]
+caudate_oligo_df=caudate_gsea_df_list[["oligo"]]
+caudate_opc_df=caudate_gsea_df_list[["opc"]]
+```
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install(version = "3.12")
+```
+
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("clusterProfiler")
+```
+
+```{r}
+# Load necessary libraries
+library(clusterProfiler)
+# Read GSEA results
+gsea_results <- caudate_neuron_df
+
+# Select top 10 pathways by adjusted p-value
+top_gsea_results <- gsea_results[order(gsea_results$padj), ][1:10, ]
+
+# Create a bar plot
+ggplot(top_gsea_results, aes(x = reorder(Description, NES), y = NES)) +
+    geom_bar(stat = "identity", fill = "steelblue") +
+    coord_flip() +  # Flip coordinates for better readability
+    labs(title = "Top 10 Enriched Pathways",
+         x = "Pathway",
+         y = "Normalized Enrichment Score (NES)") +
+    theme_minimal()
+
+```
+
+
+```{r}
+# Select the top 20 NES
+top20_gsea <- caudate_astro_df[order(-abs(caudate_astro_df$NES)), ][1:20, ]
+top20_gsea
+
+```
+
+
+```{r}
+# Load ggplot2 library
+library(ggplot2)
+
+# Create a bar plot
+ggplot(top20_gsea, aes(x = reorder(pathway, NES), y = NES, fill = NES > 0)) +
+    geom_bar(stat = "identity") +
+    coord_flip() +  # Flip coordinates for better readability
+    scale_fill_manual(values = c("red", "blue")) +  # Custom colors for positive and negative NES
+    theme_minimal() +
+    labs(title = "Top 20 Gene Sets by Normalized Enrichment Score (NES)",
+         x = "Gene Set",
+         y = "NES",
+         fill = "NES > 0")
+```
+
+```{r}
+# Create a dot plot
+ggplot(top20_gsea, aes(x = reorder(pathway, NES), y = NES, color = NES > 0)) +
+    geom_point(aes(size = -log10(padj)), shape = 21, stroke = 1.5) +
+    coord_flip() +  # Flip coordinates for better readability
+    scale_color_manual(values = c("red", "blue")) +  # Custom colors for positive and negative NES
+    theme_minimal() +
+    labs(title = "Top 20 Gene Sets by Normalized Enrichment Score (NES)",
+         x = "Gene Set",
+         y = "NES",
+         size = "-log10(adjusted p-value)",
+         color = "NES > 0")
+
+```
+
+
+
+```{r}
+merged_caudate_gsea <- intersect(caudate_astro_df$pathway, caudate_neuron_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_oligo_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_microglia_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_opc_df$pathway)
+length(merged_caudate_gsea)
+
+```
+```{r}
+ca =caudate_astro_df
+```
+
+```{r}
+merged_caudate_gsea
+```
+
+
+
+```{r}
+nrow(caudate_astro_df)
+nrow(caudate_endo_df)
+nrow(caudate_ependymal_df)
+nrow(caudate_immune_df)
+nrow(caudate_microglia_df)
+nrow(caudate_oligo_df)
+nrow(caudate_neuron_df)
+nrow(caudate_opc_df)
+```
+
+
+
+
+
+```{r}
+caudate_cell_types = list("astro", "endo", "ependymal", "immune", "mg", "neuron", "oligo", "opc")
+putamen_cell_types = list("astro", "endo", "mg", "neuron", "oligo", "opc")
+caudate_gsea_df_list = list()
+
+for (cell_type in caudate_cell_types){
+gsea_file_name = paste("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/gsea/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep="")
+
+gsea_file = read.delim(gsea_file_name, header = TRUE)
+#caudate_gsea_df_list[[cell_type]] = gsea_file
+}
+
+```
+
+
+
+
+```{r}
+caudate_gsea_df_list[["astro"]]
+```
+
+
+
+```{r}
+df_ordered <- df[order(df$column_name), ]
+```
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_astro_df
+caudate_astro_df = caudate_astro_df[order(caudate_astro_df$NES),]
+caudate_astro_df
+```
+
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_astro_df = caudate_astro_df[caudate_astro_df$gene_set != "tf_perturbations",]
+caudate_astro_df
+
+caudate_endo_df= caudate_gsea_df_list[["endo"]]
+caudate_endo_df = caudate_endo_df[caudate_endo_df$gene_set != "tf_perturbations",]
+caudate_endo_df
+
+caudate_ependymal_df= caudate_gsea_df_list[["ependymal"]]
+caudate_ependymal_df = caudate_ependymal_df[caudate_ependymal_df$gene_set != "tf_perturbations",]
+caudate_ependymal_df
+
+caudate_immune_df =caudate_gsea_df_list[["immune"]]
+caudate_immune_df = caudate_immune_df[caudate_immune_df$gene_set != "tf_perturbations",]
+caudate_immune_df
+
+caudate_microglia_df = caudate_gsea_df_list[["mg"]]
+caudate_microglia_df = caudate_microglia_df[caudate_microglia_df$gene_set != "tf_perturbations",]
+caudate_microglia_df
+
+caudate_neuron_df = caudate_gsea_df_list[["neuron"]]
+caudate_neuron_df = caudate_neuron_df[caudate_neuron_df$gene_set != "tf_perturbations",]
+caudate_neuron_df
+
+caudate_oligo_df=caudate_gsea_df_list[["oligo"]]
+caudate_oligo_df = caudate_oligo_df[caudate_oligo_df$gene_set != "tf_perturbations",]
+caudate_oligo_df
+
+caudate_opc_df=caudate_gsea_df_list[["opc"]]
+caudate_opc_df = caudate_opc_df[caudate_opc_df$gene_set != "tf_perturbations",]
+caudate_opc_df
+```
+
+```{r}
+merged_caudate_gsea <- intersect(caudate_oligo_df$pathway, caudate_neuron_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea
+```
+
+
+```{r}
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_astro_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea
+```
+
+
+```{r}
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_microglia_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_opc_df$pathway)
+length(merged_caudate_gsea)
+```
+
+
+
+
+
+```{r}
+Dot_plot = function(cell_type_df, title){
+
+top10_gsea_pos <- cell_type_df[order(cell_type_df$NES, decreasing =TRUE), ][1:10, ]
+top10_gsea_pos
+
+top10_gsea_neg <- cell_type_df[order(cell_type_df$NES), ][1:10, ]
+top10_gsea_neg
+
+top20_gsea <- rbind(top10_gsea_pos, top10_gsea_neg)
+top20_gsea
+
+ggplot(top20_gsea, aes(x = reorder(pathway, NES), y = NES, color = NES > 0)) +
+    geom_point(aes(size = padj), shape = 21, stroke = 1.5) +
+    coord_flip() +  # Flip coordinates for better readability
+    scale_color_manual(values = c("red", "blue")) +  # Custom colors for positive and negative NES
+    theme_minimal() +
+    theme(
+        axis.text.x = element_text(size = 14),  # X-axis text size
+        axis.text.y = element_text(size = 14),  # Y-axis text size
+        axis.title.x = element_text(size = 16),  # X-axis title size
+        axis.title.y = element_text(size = 16),  # Y-axis title size
+        plot.title = element_text(size = 18, face = "bold"),  # Plot title size and bold
+        legend.title = element_text(size = 16),  # Legend title size
+        legend.text = element_text(size = 14)  # Legend text size
+    ) +
+    labs(title = title ,
+         x = "Gene Set",
+         y = "NES",
+         size = "adjusted p-value",
+         color = "NES > 0")
+}
+```
+
+```{r}
+Dot_plot(caudate_astro_df, "Astrocytes: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_endo_df, "Endo: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_ependymal_df, "Ependymal: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_immune_df, "Immune: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_microglia_df, "Microglia: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_neuron_df, "Neuron: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_oligo_df, "Oligo: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_opc_df, "OPC: Top 10 Gene Sets by NES +/-")
+
+```
+
+```{r}
+putamen_gsea_df_list
+```
+
+
+```{r}
+putamen_astro_df = putamen_gsea_df_list[["astro"]]
+
+putamen_endo_df= putamen_gsea_df_list[["endo"]]
+putamen_microglia_df = putamen_gsea_df_list[["mg"]]
+putamen_neuron_df = putamen_gsea_df_list[["neuron"]]
+putamen_oligo_df=putamen_gsea_df_list[["oligo"]]
+putamen_opc_df=putamen_gsea_df_list[["opc"]]
+```
+
+
+```{r}
+putamen_astro_df = putamen_gsea_df_list[["astro"]]
+putamen_astro_df = putamen_astro_df[putamen_astro_df$gene_set != "tf_perturbations",]
+putamen_astro_df
+
+putamen_endo_df= putamen_gsea_df_list[["endo"]]
+putamen_endo_df = putamen_endo_df[putamen_endo_df$gene_set != "tf_perturbations",]
+putamen_endo_df
+
+putamen_microglia_df = putamen_gsea_df_list[["mg"]]
+putamen_microglia_df = putamen_microglia_df[putamen_microglia_df$gene_set != "tf_perturbations",]
+putamen_microglia_df
+
+putamen_neuron_df = putamen_gsea_df_list[["neuron"]]
+putamen_neuron_df = putamen_neuron_df[putamen_neuron_df$gene_set != "tf_perturbations",]
+putamen_neuron_df
+
+putamen_oligo_df=putamen_gsea_df_list[["oligo"]]
+putamen_oligo_df = putamen_oligo_df[putamen_oligo_df$gene_set != "tf_perturbations",]
+putamen_oligo_df
+
+putamen_opc_df=putamen_gsea_df_list[["opc"]]
+putamen_opc_df = putamen_opc_df[putamen_opc_df$gene_set != "tf_perturbations",]
+putamen_opc_df
+```
+
+
+
+```{r}
+Dot_plot(putamen_astro_df, "Astrocytes: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_endo_df, "Endo: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_microglia_df, "Microglia: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_neuron_df, "Neuron: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_oligo_df, "Oligo: Top 10 Gene Sets by NES +/-")
+Dot_plot(putamen_opc_df, "OPC: Top 10 Gene Sets by NES +/-")
+
+```
+
+#Try with just positional geneset: I'm using chrXq13 from msigdb because TAF1 is on Xq13.1?
+
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/GSEA"
+DE_SUBDIR="de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30"
+#DE_SUBDIR="de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30"
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+
+
+```{r}
+print(gene_sets)
+```
+
+
+#example
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "positional_gsea_new")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+  Xchrome= "GSEA/genesets/allchrome.txt",  
+  #Xq13 = "GSEA/genesets/Xq13geneset.txt",
+    Xlinked_recessive = "GSEA/genesets/Xlinked_RESS.txt",
+    Xlinked_dominant = "GSEA/genesets/Xlinked_DOM.txt")
+
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+    if (! grepl("trend", de_slogan)){next}
+
+    #if (strsplit(de_slogan, "__")[[1]][[2]] != "opc"){next}
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$gene)
+    anno=anno[match(dataDE$gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="logFC", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_logfc.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+
+```{r}
+#caudate_cell_types = list("astro", "endo", "ependymal", "neuron", "oligo", "opc")
+putamen_cell_types = list("astro")
+putamen_gsea_df_list = list()
+
+for (cell_type in putamen_cell_types){
+gsea_file_name = paste("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/positional_gsea_new/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep="")
+
+#gsea_file_name = paste("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/positional_gsea_new/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep="")
+gsea_file = read.delim(gsea_file_name, header = TRUE)
+putamen_gsea_df_list[[cell_type]] = gsea_file
+}
+```
+
+```{r}
+caudate_gsea_df_list
+putamen_gsea_df_list
+```
+
+```{r}
+putamen_astro_df = putamen_gsea_df_list[["astro"]]
+```
+
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_endo_df = caudate_gsea_df_list[["endo"]]
+caudate_ependymal_df = caudate_gsea_df_list[["ependymal"]]
+caudate_neuron_df = caudate_gsea_df_list[["neuron"]]
+caudate_oligo_df = caudate_gsea_df_list[["oligo"]]
+caudate_opc_df = caudate_gsea_df_list[["opc"]]
+```
+
+```{r}
+Dot_plot(caudate_astro_df, "Astrocytes: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_endo_df, "Endo: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_ependymal_df, "Ependymal: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_neuron_df, "Neuron: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_oligo_df, "Oligo: Top 10 Gene Sets by NES +/-")
+Dot_plot(caudate_opc_df, "OPC: Top 10 Gene Sets by NES +/-")
+```
+
+
+
+
+
+
+```{r}
+# Define cell types
+caudate_cell_types <- list("astro", "endo", "ependymal", "immune", "mg", "neuron", "oligo", "opc")
+putamen_cell_types <- list("astro", "endo", "mg", "neuron", "oligo", "opc")
+
+# Initialize an empty named list to store the dataframes
+new_caudate_gsea_df_list <- list()
+#new_putamen_gsea_df_list <- list()
+
+# Loop through each cell type and read the corresponding file into a dataframe
+for (cell_type in caudate_cell_types) {
+  # Construct the file name
+  gsea_file_name <- paste("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/positional_gsea_new/trend__", cell_type, "__20240529.csv__gsea_logfc.tsv", sep = "")
+  
+  # Print the file name to verify the path
+  print(paste("Trying to read file:", gsea_file_name))
+  
+  # Check if the file exists
+  if (file.exists(gsea_file_name)) {
+    # Read the file into a dataframe
+    gsea_file <- read.delim(gsea_file_name, header = TRUE)
+    
+    # Store the dataframe in the list with the cell type as the name
+    new_caudate_gsea_df_list[[cell_type]] <- gsea_file
+  } else {
+    print(paste("File does not exist:", gsea_file_name))
+  }
+}
+
+```
+
+
+"
+
+```{r}
+caudate_astro_df$name = "CaH_astrocyte"
+caudate_endo_df$name = "CaH_endothelial"
+caudate_ependymal_df$name = "CaH_ependymal"
+caudate_neuron_df$name = "CaH_neuron"
+caudate_oligo_df$name = "CaH_oligo"
+caudate_opc_df$name = "CaH_opc"
+putamen_astro_df$name = "Put_astrocyte"
+```
+
+```{r}
+caudate_astro_df
+caudate_endo_df
+caudate_neuron_df
+caudate_ependymal_df
+caudate_oligo_df
+caudate_opc_df
+putamen_astro_df
+```
+
+
+```{r}
+merged_cah_positional = rbind(caudate_astro_df, caudate_endo_df, caudate_ependymal_df, caudate_neuron_df, caudate_oligo_df, caudate_opc_df, putamen_astro_df) 
+
+merged_cah_positional
+```
+
+
+
+
+
+```{r}
+data = merged_cah_positional
+
+data$NES_abs <- abs(data$NES)
+data$log10_padj <- -log10(data$padj)
+
+# Create the dot plot with the specified color gradient
+ggplot(data, aes(x = name, y = pathway)) +
+  geom_point(aes(size = NES_abs, color = padj, fill = NES), shape = 21, stroke = 1) +
+  scale_size_continuous(range = c(1, 10)) +  # Adjust the range as needed
+  scale_color_gradient(low = "black", high = "white") +
+  scale_fill_gradient2(low = "red", mid = "white", high = "green", midpoint = 0) +  # Gradient from blue to red
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "Positional GSEA DotPlot for X chromosome",
+    x = "Cell Type",
+    y = "Gene Sets",
+    size = "Absolute NES",
+    color = "p-value", 
+    fill = "NES"
+  ) +
+  guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+```
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+data$NES_abs <- abs(data$NES)
+data$log10_padj <- -log10(data$p.adjust)
+
+# Create the dot plot with the specified color gradient
+ggplot(data, aes(x = CellType, y = Description)) +
+  geom_point(aes(size = NES_abs, color = p.adjust, fill = NES), shape = 21, stroke = 1) +
+  scale_size_continuous(range = c(1, 10)) +  # Adjust the range as needed
+  scale_color_gradient(low = "white", high = "black") +
+  scale_fill_gradient2(low = "red", mid = "white", high = "green", midpoint = 0) +  # Gradient from blue to red
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "GSEA DotPlot by Cell Type",
+    x = "Cell Type",
+    y = "Gene Sets",
+    size = "Absolute NES",
+    color = "p-value", 
+    fill = "NES"
+  ) +
+  guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+
+```
+
+```{r}
+caudate_astro_df = caudate_gsea_df_list[["astro"]]
+caudate_endo_df= caudate_gsea_df_list[["endo"]]
+caudate_ependymal_df= caudate_gsea_df_list[["ependymal"]]
+caudate_immune_df= caudate_gsea_df_list[["immune"]]
+caudate_microglia_df = caudate_gsea_df_list[["mg"]]
+caudate_neuron_df = caudate_gsea_df_list[["neuron"]]
+caudate_oligo_df=caudate_gsea_df_list[["oligo"]]
+caudate_opc_df=caudate_gsea_df_list[["opc"]]
+```
+
+
+```{r}
+merged_caudate_gsea <- intersect(caudate_astro_df$pathway, caudate_neuron_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_oligo_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_microglia_df$pathway)
+length(merged_caudate_gsea)
+merged_caudate_gsea<- intersect(merged_caudate_gsea, caudate_opc_df$pathway)
+length(merged_caudate_gsea)
+```
+```{r}
+library(ggplot2)
+
+# Example data
+data <- data.frame(
+  CellType = rep(c("astro", "da", "endo", "immune", "mg", "nonda", "oligo", "opc"), times = 10),
+  Description = rep(paste("GeneSet", 1:10, sep = ""), each = 8),
+  NES = runif(80, -3, 3),
+  p.adjust = runif(80, 0, 0.1)
+)
+data
+```
+
+
+
+```{r}
+cah_astro_sub= subset(caudate_astro_df, caudate_astro_df$pathway %in% merged_caudate_gsea)
+cah_endo_sub= subset(caudate_endo_df, caudate_endo_df$pathway %in% merged_caudate_gsea)
+cah_ependymal_sub= subset(caudate_ependymal_df, caudate_ependymal_df$pathway %in% merged_caudate_gsea)
+cah_immune_sub= subset(caudate_immune_df, caudate_immune_df$pathway %in% merged_caudate_gsea)
+cah_microglia_sub= subset(caudate_microglia_df, caudate_microglia_df$pathway %in% merged_caudate_gsea)
+cah_neuron_sub= subset(caudate_neuron_df, caudate_neuron_df$pathway %in% merged_caudate_gsea)
+cah_oligo_sub= subset(caudate_oligo_df, caudate_oligo_df$pathway %in% merged_caudate_gsea)
+cah_opc_sub= subset(caudate_opc_df, caudate_opc_df$pathway %in% merged_caudate_gsea)
+```
+
+
+```{r}
+cah_astro_sub$cell_type = "Astrocyte"
+cah_endo_sub$cell_type = "Endo"
+cah_ependymal_sub$cell_type = "Ependymal"
+#cah_immune_sub$cell_type = "Immune"
+cah_microglia_sub$cell_type = "Microglia"
+cah_neuron_sub$cell_type = "Neuron"
+cah_oligo_sub$cell_type = "Oligo"
+cah_opc_sub$cell_type = "OPC"
+```
+
+
+```{r}
+cah_immune_sub
+```
+
+```{r}
+merged_cah_df = rbind(cah_astro_sub, cah_endo_sub,cah_ependymal_sub, cah_microglia_sub,cah_neuron_sub,cah_oligo_sub, cah_opc_sub)
+merged_cah_df
+```
+
+
+
+```{r}
+data = merged_cah_df
+
+data$NES_abs <- abs(data$NES)
+data$log10_padj <- -log10(data$padj)
+
+# Create the dot plot with the specified color gradient
+ggplot(data, aes(x = cell_type, y = pathway)) +
+  geom_point(aes(size = NES_abs, color = padj, fill = NES), shape = 21, stroke = 1) +
+  scale_size_continuous(range = c(1, 10)) +  # Adjust the range as needed
+  scale_color_gradient(low = "white", high = "black") +
+  scale_fill_gradient2(low = "red", mid = "white", high = "green", midpoint = 0) +  # Gradient from blue to red
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(
+    title = "GSEA DotPlot by Cell Type",
+    x = "Cell Type",
+    y = "Gene Sets",
+    size = "Absolute NES",
+    color = "p-value", 
+    fill = "NES"
+  ) +
+  guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+```
+
+
+
+```{r}
+putamen_astro_df = putamen_gsea_df_list[["astro"]]
+putamen_endo_df= putamen_gsea_df_list[["endo"]]
+putamen_microglia_df = putamen_gsea_df_list[["mg"]]
+putamen_neuron_df = putamen_gsea_df_list[["neuron"]]
+putamen_oligo_df=putamen_gsea_df_list[["oligo"]]
+putamen_opc_df=putamen_gsea_df_list[["opc"]]
+```
+
+
+```{r}
+merged_putamen_gsea <- intersect(putamen_astro_df$pathway, putamen_neuron_df$pathway)
+length(merged_putamen_gsea)
+merged_putamen_gsea<- intersect(merged_putamen_gsea, putamen_oligo_df$pathway)
+length(merged_putamen_gsea)
+merged_putamen_gsea<- intersect(merged_putamen_gsea, putamen_microglia_df$pathway)
+length(merged_putamen_gsea)
+merged_putamen_gsea<- intersect(merged_putamen_gsea, putamen_opc_df$pathway)
+length(merged_putamen_gsea)
+```
+
+
+```{r}
+```
+

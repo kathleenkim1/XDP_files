@@ -1,0 +1,333 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+#Recon_opc = qread("temphome/RECON/Recon_opc.qs")
+#Recon_oligo = qread("temphome/RECON/Recon_oligo.qs")
+#Recon_micro = qread("temphome/RECON/Recon_microglia.qs")
+#Recon_ependymal = qread("temphome/RECON/Recon_ependymal.qs")
+#Recon_endo = qread("temphome/RECON/Recon_endo.qs")
+#Recon_astrocyte = qread("temphome/RECON/Recon_astrocyte.qs")
+Recon_neuron_subclustered = qread("RECON_neuron_subclustered_102824.qs")
+```
+
+
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data
+DimPlot(clean_recon_sobj_with_neuron_subclusters, label = T)
+```
+
+```{r}
+Recon_sobj = subset(clean_recon_sobj_with_neuron_subclusters, subset = new_cell_class == "neuron")
+Recon_sobj = subset(Recon_sobj, subset = reclustered_patch_matrix_exotic != "non_SPN") 
+Recon_sobj@meta.data
+DimPlot(Recon_sobj, label = T)
+```
+```{r}
+n_dims_use=20
+
+Recon_sobj = (Recon_sobj
+%>% NormalizeData()
+%>% ScaleData()
+%>% FindVariableFeatures(nfeatures = 2500)
+%>% RunPCA()
+   %>% FindNeighbors(dims = 1:n_dims_use) 
+   %>% FindClusters(resolution = 0.01) 
+   %>% FindClusters(resolution = 0.05)
+   %>% FindClusters(resolution = 0.1)
+   %>% FindClusters(resolution = 0.15) 
+   %>% FindClusters(resolution = 0.2) 
+   %>% FindClusters(resolution = 0.3) 
+   %>% FindClusters(resolution = 0.4) 
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6) 
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% RunUMAP(dims = 1:n_dims_use) 
+)
+Recon_sobj
+DimPlot(Recon_sobj, label = T)
+```
+```{r}
+Recon_sobj@meta.data
+```
+
+
+```{r}
+DimPlot(Recon_sobj, label = T, group.by = "subclass")
+DimPlot(Recon_sobj, label = T, group.by = "reclustered_patch_matrix_exotic")
+```
+
+```{r}
+FeaturePlot(Recon_sobj, features = c("SYT1", "AQP4", "C1QA","FLT1"),raster=FALSE)
+FeaturePlot(Recon_sobj, features = c("OLIG1", "OLIG2", "MOG" ,"CD96"),raster=FALSE) 
+FeaturePlot(Recon_sobj, features = c("MBP", "MOBP", "TF", "ST18"),raster=FALSE)
+FeaturePlot(Recon_sobj, features = c("RBFOX3", "CX3CR1", "GFAP" ,"AQP4"),raster=FALSE) 
+FeaturePlot(Recon_sobj, features = c("GAD1", "GAD2", "SLC17A7" ,"SLC17A6"),raster=FALSE) 
+FeaturePlot(Recon_sobj, features = c("DRD1", "DRD2", "CASZ1" ,"PPP1R1B"),raster=FALSE) 
+FeaturePlot(Recon_sobj, features = c("EPHA4", "SEMA3E", "SLC17A7" ,"SLC17A6"),raster=FALSE) 
+FeaturePlot(Recon_sobj, features = c("P2RY12", "CX3CR1", "C1QB"),raster=FALSE) 
+```
+
+```{r}
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.01", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.05", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.1", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.15", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.2", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.3", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.4", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.5", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.6", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.7", raster = F, label = T)
+DimPlot(Recon_sobj, group.by = "RNA_snn_res.0.8", raster = F, label = T)
+```
+
+
+
+```{r}
+ggplot(Recon_sobj@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.8)) + geom_point(size = 0.2) + facet_wrap(~ RNA_snn_res.0.8) +theme_void() + theme(
+    plot.title = element_text(size = 20),
+    plot.subtitle = element_text(size = 20),
+    strip.text = element_text(size = 20),
+    plot.background = element_rect(fill = "white", color = NA))
+```
+```{r}
+Recon_sobj@meta.data
+```
+
+
+
+```{r}
+spatial_scores(clean_recon_sobj_with_neuron_subclusters@meta.data, "Neuron_inflammatory_neuron", "Neuron_inflammatory_neuron in Neurons")
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+Idents(Recon_sobj) = "RNA_snn_res.0.8"
+inflam_cluster <- FindMarkers(Recon_sobj, 
+                                  ident.1 = 26, # Cluster of interest
+                                  only.pos = TRUE) 
+inflam_cluster
+
+write.csv(inflam_cluster, "inflammatory_1202/neuron.csv")
+```
+
+
+
+
+
+
+```{r}
+inflam = read.csv("inflammatory_1202/neuron_inflam.csv")
+inflam
+
+inflam = subset(inflam, subset = p_val_adj <0.05)
+inflam
+```
+
+```{r}
+write.csv(inflam, "inflammatory_1202/significant/neuron_sig.csv")
+```
+
+
+```{r}
+xdp_cah_put@meta.data
+```
+
+```{r}
+neuron_inflammatory_markers = read.csv("~/inflammatory_1202/significant/neuron_sig.csv")
+neuron_inflammatory_markers
+neuron_inflammatory_markers$gene = neuron_inflammatory_markers$X
+neuron_inflammatory_markers
+```
+
+```{r}
+neuron_inflammatory_markers = subset(neuron_inflammatory_markers, subset = pct.2 < 0.05)
+neuron_inflammatory_markers = subset(neuron_inflammatory_markers, subset = pct.1 > 0.3)
+neuron_inflammatory_markers
+```
+
+```{r}
+neuron_inflammatory_markers = neuron_inflammatory_markers$gene
+head(neuron_inflammatory_markers)
+```
+
+
+```{r}
+neuron_inflammatory_markers
+```
+
+
+
+```{r}
+library(UCell)
+xdp_cah_put <- AddModuleScore_UCell(xdp_cah_put, features = list(Neuron_inflammatory = neuron_inflammatory_markers),
+                                                                 name = '_neuron'
+)
+```
+
+```{r}
+xdp_cah_put@meta.data
+```
+
+
+```{r}
+library(UCell)
+clean_recon_sobj_with_neuron_subclusters <- AddModuleScore_UCell(clean_recon_sobj_with_neuron_subclusters, features = list(Neuron_inflammatory = neuron_inflammatory_markers),
+                                                                 name = '_neuron'
+)
+```
+
+
+
+```{r}
+spatial_scores(clean_recon_sobj_with_neuron_subclusters@meta.data, "Neuron_inflammatory_neuron", "Neuron_inflammatory_neuron in Neurons")
+```
+
+
+
+
+
+
+
+```{r}
+spatial_scores(clean_recon_sobj_with_neuron_subclusters@meta.data, "ScoreNFKB", "NFKB in Neurons")
+
+histograms_by_all_celltype(xdp_cah_put@meta.data, "Neuron_inflammatory_neuron", "Neuron_inflammatory_neuron score", 20, 10)
+
+histograms_by_donor(xdp_cah_put@meta.data, "ScoreNFKB", "astrocyte" ,"NFKB score", 25, 15)
+```
+
+
+
+```{r}
+gene_of_interest = "CHAT" 
+
+#replace seurat_obj here
+metadata_df = Recon_sobj@meta.data
+metadata_df$cell_ids = rownames(metadata_df)
+
+#replace seurat_obj here
+gene_df = as.data.frame(FetchData(Recon_sobj, vars = gene_of_interest))
+gene_df$cell_ids = rownames(gene_df)
+
+df_final = merge(metadata_df, gene_df, by = "cell_ids" )
+df_final
+
+#Replace GENE with gene name
+ggplot(df_final, aes(x= x_um, y = y_um, color = CHAT)) + geom_point() +  scale_color_gradient(low = "lightgrey", high = "blue") +  labs(color = "Expression") +
+  theme_void() +  facet_wrap(~ subclass)+
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  
+    legend.title = element_text(size = 26)
+  ) +  ylab(NULL)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+table(clean_recon_sobj_with_neuron_subclusters$final_cell_class)
+table(clean_recon_sobj_with_neuron_subclusters$RNA_snn_res.0.2)
+```
+```{r}
+ggplot(clean_recon_sobj_with_neuron_subclusters@meta.data, aes(x= x_um, y = y_um, color = final_cell_class)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ final_cell_class) +theme_void()
+
+ggplot(clean_recon_sobj_with_neuron_subclusters@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.2)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.2) +theme_void()
+```
+```{r}
+clean_recon_sobj_with_neuron_subclusters@meta.data
+```
+
+```{r}
+Idents(clean_recon_sobj_with_neuron_subclusters) = "final_cell_class"
+DimPlot(clean_recon_sobj_with_neuron_subclusters, raster = F)
+```
+
+
+```{r}
+qsave(clean_recon_sobj_with_neuron_subclusters, "temphome/RECON/clean_recon_sobj_with_neuron_subclusters_103124.qs")
+```
+
+
+#change one ependymal to astrocyte
+```{r}
+clean_recon_sobj
+clean_recon_sobj_with_neuron_subclusters = qread("temphome/RECON/clean_recon_sobj_with_neuron_subclusters_103124.qs")
+clean_recon_sobj_with_neuron_subclusters
+```
+```{r}
+table(clean_recon_sobj_with_neuron_subclusters$final_cell_class)
+```
+
+
+```{r}
+DimPlot(clean_recon_sobj_with_neuron_subclusters, group.by = "final_cell_class", raster = F, label = T)
+DimPlot(clean_recon_sobj_with_neuron_subclusters, group.by = "RNA_snn_res.0.2", raster = F, label = T)
+```
+
+
+
+```{r}
+Idents(clean_recon_sobj_with_neuron_subclusters) = clean_recon_sobj_with_neuron_subclusters$RNA_snn_res.0.2
+
+classes = c("oligo", "astrocyte", "neuron", "microglia", "neuron", "opc", "oligo", "endothelial", "neuron", "astrocyte", "neuron", "neuron", "ependymal", "neuron", "neuron", "neuron", "neuron")
+
+
+clean_recon_sobj_with_neuron_subclusters= assignCellClasses(clean_recon_sobj_with_neuron_subclusters, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "new_cell_class")
+
+DimPlot(clean_recon_sobj_with_neuron_subclusters, group.by = "new_cell_class" ,label = T, raster = FALSE)
+```
+```{r}
+marker_genes <- c("SYT1", "RBFOX3", "GAD2", "SLC17A6", "AQP4", "GINS3", "GFAP","C1QA", "C1QB", "CX3CR1", "P2RY12", "FLT1", "DCN", "RGS5","OLIG1", "MOG", "MOBP","OLIG2", "VCAN", "ZBBX", "CFAP157", "CFAP299", "BSG", "CD96")
+
+
+Dotplot = DotPlot(object = clean_recon_sobj_with_neuron_subclusters, features = marker_genes, group.by = "new_cell_class")
+Dotplot  <- Dotplot  + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ coord_flip() 
+print(Dotplot)
+```
+```{r}
+table(clean_recon_sobj_with_neuron_subclusters$new_cell_class)
+```
+
+```{r}
+ggplot(clean_recon_sobj_with_neuron_subclusters@meta.data, aes(x= x_um, y = y_um, color = new_cell_class)) + geom_point(alpha = 0.2, size = 0.4) + facet_wrap(~ new_cell_class) +theme_void() + theme(
+    plot.title = element_text(size = 20),
+    plot.subtitle = element_text(size = 20),
+    strip.text = element_text(size = 20),
+    plot.background = element_rect(fill = "white", color = NA))
+```
+```{r}
+clean_recon_sobj_with_neuron_subclusters
+```
+```{r}
+qsave(clean_recon_sobj_with_neuron_subclusters, "temphome/RECON/clean_recon_sobj_with_neuron_subclusters_103124.qs")
+```

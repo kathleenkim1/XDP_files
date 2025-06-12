@@ -1,0 +1,878 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(UCell)
+library(ggplot2)
+library(qs)
+library(ggExtra)
+```
+
+
+```{r}
+xdp_recon_full_meta
+xdp_cah_put_sct_meta
+bican_recon_meta = bican_recon@meta.data
+bican_recon_meta
+```
+```{r}
+a = ggplot(xdp_recon_full_meta, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+   # facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() +
+    theme_minimal()+
+    coord_fixed(ratio = 1)
+
+print(a)
+
+ggsave(a, filename = "spatial.png", width = 6, height = 5)
+
+
+
+a = ggplot(bican_recon_meta, aes(x = x_um, y = y_um, color =cell_class_annot)) +
+    geom_point(size = 0.8, alpha = 0.5) +
+   # facet_wrap(~ reclustered_patch_matrix_exotic) +
+    theme_minimal()+
+    coord_fixed(ratio = 1)
+
+print(a)
+
+ggsave(a, filename = "spatial.png", width = 6, height = 5)
+```
+
+```{r}
+a = ggplot(xdp_recon_full_meta, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+    facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() +
+    theme_minimal()+
+    coord_fixed(ratio = 1)
+
+print(a)
+
+ggsave(a, filename = "spatial.png", width = 12, height = 10)
+
+
+a = ggplot(bican_recon_meta, aes(x = x_um, y = y_um, color = cell_class_annot)) +
+geom_point(alpha = 0.5, size = 0.5)+
+    facet_wrap(~ cell_class_annot) +
+    theme_minimal()+
+    coord_fixed(ratio = 1)
+
+print(a)
+
+ggsave(a, filename = "spatial.png", width = 12, height = 10)
+```
+
+
+
+
+```{r}
+a = ggplot(bican_recon_meta, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+   # facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() +
+    theme_minimal()+
+    coord_fixed(ratio = 1)
+
+print(a)
+
+ggsave(a, filename = "spatial.png", width = 6, height = 5)
+```
+```{r}
+a = ggplot(bican_recon_meta, aes(x = x_um_rotated, y = y_um_rotated)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+   facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() +
+    theme_minimal()+
+    coord_fixed(ratio = 1)
+
+print(a)
+
+ggsave(a, filename = "spatial.png", width = 12, height = 12)
+```
+
+
+```{r}
+# Generate the hexbin statistics
+hex_data <- ggplot(xdp_recon_full_meta, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+   # facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() +
+    theme_minimal()+
+    coord_fixed(ratio = 1)
+
+# Extract the data from the plot object
+xdp_bin_info <- ggplot_build(hex_data)$data[[1]]
+
+# View the bin information
+xdp_bin_info
+
+
+
+
+hex_data = ggplot(bican_recon_meta, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+   # facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() +
+    theme_minimal()+
+    coord_fixed(ratio = 1)
+
+bican_bin_info <- ggplot_build(hex_data)$data[[1]]
+
+# View the bin information
+bican_bin_info
+```
+
+
+```{r}
+ggplot(xdp_bin_info, aes(x = count)) + geom_histogram(bins = 100) + xlab("Number of Total Cells in bin") + ggtitle("XDP - All Cells")
+
+ggplot(bican_bin_info, aes(x = count)) + geom_histogram(bins = 100) + xlab("Number of Total Cells in bin") + ggtitle("BICAN - All Cells")
+```
+
+
+```{r}
+cell_classes = unique(xdp_recon_full_meta$reclustered_patch_matrix_exotic)
+plot_list = list()
+xdp_data_list = list()  
+
+for(cell_type in cell_classes){
+class = subset(xdp_recon_full_meta, subset = reclustered_patch_matrix_exotic == cell_type)
+
+hex_data <- ggplot(class, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+    scale_fill_viridis_c() +
+    theme_minimal()
+
+# Extract the data from the plot object
+xdp_bin_info <- ggplot_build(hex_data)$data[[1]]
+
+# View the bin information
+print(xdp_bin_info)
+ xdp_data_list[[cell_type]] = xdp_bin_info
+
+a = ggplot(xdp_bin_info, aes(x = count)) + geom_histogram(bins = 100) + xlab("Number of Total Cells in bin") + ggtitle(paste0("XDP - ", cell_type))
+
+  plot_list[[cell_type]] = a
+}
+
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 4))  # Adjust ncol for the desired layout
+
+# Save the combined plot as a PNG file
+ggsave("combined_plots.png", combined_plot, width = 15, height = 10)  # Adjust dimensions as needed
+```
+
+
+
+```{r}
+a = DimPlot(bican_recon, group.by = "cell_class_annot", label = T, raster = F)
+
+ggsave(a, filename= "spatial.png", width = 15, height = 10)
+```
+
+
+```{r}
+cell_classes = unique(bican_recon_meta$reclustered_patch_matrix_exotic)
+plot_list = list()
+bican_data_list = list()  
+
+for(cell_type in cell_classes){
+class = subset(bican_recon_meta, subset = reclustered_patch_matrix_exotic == cell_type)
+
+hex_data <- ggplot(class, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+    scale_fill_viridis_c() +
+    theme_minimal()
+
+# Extract the data from the plot object
+xdp_bin_info <- ggplot_build(hex_data)$data[[1]]
+
+# View the bin information
+print(xdp_bin_info)
+ bican_data_list[[cell_type]] = xdp_bin_info
+
+a = ggplot(xdp_bin_info, aes(x = count)) + geom_histogram(bins = 100) + xlab("Number of Total Cells in bin") + ggtitle(paste0("XDP - ", cell_type))
+
+  plot_list[[cell_type]] = a
+}
+
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 4))  # Adjust ncol for the desired layout
+
+# Save the combined plot as a PNG file
+ggsave("combined_plots.png", combined_plot, width = 15, height = 10)  # Adjust dimensions as needed
+```
+
+```{r}
+xdp_data_list
+```
+
+
+```{r}
+bican_data_list
+```
+
+
+```{r}
+xdp_bin_info
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Calculate hexbin counts for each cell type
+hex_data <- xdp_recon_full_meta %>%
+  group_by(bin_x = cut(x_um, breaks = 50), bin_y = cut(y_um, breaks = 50), reclustered_patch_matrix_exotic) %>%
+  summarise(cell_count = n(), .groups = "drop")
+
+hex_data_wide <- hex_data %>%
+  pivot_wider(names_from = reclustered_patch_matrix_exotic, 
+              values_from = cell_count, 
+              values_fill = list(cell_count = 0)) %>%
+  mutate(total_count = rowSums(select(., -bin_x, -bin_y), na.rm = TRUE))
+
+hex_data
+hex_data_wide
+
+# List of unique cell types
+cell_types <- unique(xdp_recon_full_meta$reclustered_patch_matrix_exotic)
+
+# For loop to calculate fractions for each cell type
+for (cell_type in cell_types) {
+  # Create dynamic column name for the fraction
+  fraction_col <- paste0(tolower(cell_type), "_fraction")
+  
+  # Calculate the fraction for each cell type
+  hex_data_wide[[fraction_col]] <- hex_data_wide[[cell_type]] / hex_data_wide$total_count
+}
+
+# View the updated hex_data_wide
+hex_data_wide
+
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+
+# List of fraction columns to plot (assuming fractions are column names ending with '_fraction')
+fraction_cols <- grep("_fraction", colnames(hex_data_wide), value = TRUE)
+
+# List to store the plots
+plot_list <- list()
+
+# For loop to create a plot for each fraction column
+for (cell_type in fraction_cols) {
+  # Create the plot for the current fraction column
+  p <- ggplot(hex_data_wide, aes(x = bin_x, y = bin_y, fill = .data[[cell_type]])) + 
+    geom_tile() + 
+    scale_fill_viridis_c() + 
+    theme_minimal() + 
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),   
+      axis.title = element_text(size = 14),
+      plot.title = element_text(size = 16, face = "bold")
+    ) +
+    labs(
+      title = paste(cell_type),
+      x = "X Bins",
+      y = "Y Bins",
+      fill = paste(cell_type)
+    ) +
+    coord_fixed(ratio = 1)  # Ensures the aspect ratio is fixed
+  
+  # Append the plot to the plot_list
+  plot_list[[cell_type]] <- p
+}
+
+# Print the plots in a grid layout
+grid.arrange(grobs = plot_list, ncol = 2)  # Adjust `ncol` based on how many plots you want per row
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 4))  # Adjust ncol for the desired layout
+
+# Save the combined plot as a PNG file
+ggsave("combined_plots.png", combined_plot, width = 20, height = 10) 
+
+
+#xdp_hex_data_wide = hex_data_wide
+```
+
+
+
+#bican
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Calculate hexbin counts for each cell type
+hex_data <- bican_recon_meta %>%
+  group_by(bin_x = cut(x_um_rotated, breaks = 30), bin_y = cut(y_um_rotated, breaks = 30), reclustered_patch_matrix_exotic) %>%
+  summarise(cell_count = n(), .groups = "drop")
+
+hex_data_wide <- hex_data %>%
+  pivot_wider(names_from = reclustered_patch_matrix_exotic, 
+              values_from = cell_count, 
+              values_fill = list(cell_count = 0)) %>%
+  mutate(total_count = rowSums(select(., -bin_x, -bin_y), na.rm = TRUE))
+
+hex_data
+hex_data_wide
+
+# List of unique cell types
+cell_types <- unique(bican_recon_meta$reclustered_patch_matrix_exotic)
+
+# For loop to calculate fractions for each cell type
+for (cell_type in cell_types) {
+  # Create dynamic column name for the fraction
+  fraction_col <- paste0(tolower(cell_type), "_fraction")
+  
+  # Calculate the fraction for each cell type
+  hex_data_wide[[fraction_col]] <- hex_data_wide[[cell_type]] / hex_data_wide$total_count
+}
+
+# View the updated hex_data_wide
+hex_data_wide
+
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+
+# List of fraction columns to plot (assuming fractions are column names ending with '_fraction')
+fraction_cols <- grep("_fraction", colnames(hex_data_wide), value = TRUE)
+
+# List to store the plots
+plot_list <- list()
+
+# For loop to create a plot for each fraction column
+for (cell_type in fraction_cols) {
+  # Create the plot for the current fraction column
+  p <- ggplot(hex_data_wide, aes(x = bin_x, y = bin_y, fill = .data[[cell_type]])) + 
+    geom_tile() + 
+    scale_fill_viridis_c() + 
+    theme_minimal() + 
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),   
+      axis.title = element_text(size = 14),
+      plot.title = element_text(size = 16, face = "bold")
+    ) +
+    labs(
+      title = paste(cell_type),
+      x = "X Bins",
+      y = "Y Bins",
+      fill = paste(cell_type)
+    ) +
+    coord_fixed(ratio = 1)  # Ensures the aspect ratio is fixed
+  
+  # Append the plot to the plot_list
+  plot_list[[cell_type]] <- p
+}
+
+# Print the plots in a grid layout
+grid.arrange(grobs = plot_list, ncol = 3)  # Adjust `ncol` based on how many plots you want per row
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 3))  # Adjust ncol for the desired layout
+
+# Save the combined plot as a PNG file
+ggsave("combined_plots.png", combined_plot, width = 15, height = 10) 
+#bican_hex_data_wide = hex_data_wide
+```
+
+```{r}
+xdp_hex_data_wide
+```
+
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+# Get the columns corresponding to fractions
+fraction_cols <- grep("_fraction", colnames(xdp_hex_data_wide), value = TRUE)
+
+# Initialize an empty list to store plots
+plot_list = list()
+
+# Loop through each fraction column and create a histogram
+for(fraction_col in fraction_cols){
+  # Create the histogram for the current fraction column
+  a = ggplot(xdp_hex_data_wide, aes_string(x = fraction_col)) + 
+    geom_histogram(bins = 100) + 
+    xlab("Fraction of Total Cells in Bin") + 
+    ggtitle(paste0("XDP - ", fraction_col))
+  
+  # Add the plot to the list
+  plot_list[[fraction_col]] = a
+}
+
+# Combine the plots into a single plot with grid.arrange
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 4))  # Adjust ncol for the desired layout
+
+# Save the combined plot as a PNG file
+ggsave("combined_plots.png", combined_plot, width = 15, height = 10)
+
+
+```
+
+
+```{r}
+library(ggplot2)
+library(gridExtra)
+
+# Get the columns corresponding to fractions
+fraction_cols <- grep("_fraction", colnames(bican_hex_data_wide), value = TRUE)
+
+# Initialize an empty list to store plots
+plot_list = list()
+
+# Loop through each fraction column and create a histogram
+for(fraction_col in fraction_cols){
+  # Create the histogram for the current fraction column
+  a = ggplot(bican_hex_data_wide, aes_string(x = fraction_col)) + 
+    geom_histogram(bins = 100) + 
+    xlab("Fraction of Total Cells in Bin") + 
+    ggtitle(paste0("BICAN - ", fraction_col))
+  
+  # Add the plot to the list
+  plot_list[[fraction_col]] = a
+}
+
+# Combine the plots into a single plot with grid.arrange
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 3))  # Adjust ncol for the desired layout
+
+# Save the combined plot as a PNG file
+ggsave("combined_plots.png", combined_plot, width = 12, height = 10)
+
+
+```
+
+
+```{r}
+write.csv(xdp_hex_data_wide, "spatial_analysis_files/xdp_hex_data_wide.csv")
+write.csv(bican_hex_data_wide, "spatial_analysis_files/bican_hex_data_wide.csv")
+```
+
+
+
+
+
+
+#different cell class
+```{r}
+xdp_recon_full_meta
+table(xdp_recon_full_meta$new_cell_class)
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Calculate hexbin counts for each cell type
+hex_data <- xdp_recon_full_meta %>%
+  group_by(bin_x = cut(x_um, breaks = 50), bin_y = cut(y_um, breaks = 50), new_cell_class) %>%
+  summarise(cell_count = n(), .groups = "drop")
+
+hex_data_wide <- hex_data %>%
+  pivot_wider(names_from = new_cell_class, 
+              values_from = cell_count, 
+              values_fill = list(cell_count = 0)) %>%
+  mutate(total_count = rowSums(select(., -bin_x, -bin_y), na.rm = TRUE))
+
+hex_data
+hex_data_wide
+```
+
+```{r}
+# List of unique cell types
+cell_types <- unique(xdp_recon_full_meta$new_cell_class)
+
+# For loop to calculate fractions for each cell type
+for (cell_type in cell_types) {
+  # Create dynamic column name for the fraction
+  fraction_col <- paste0(tolower(cell_type), "_fraction")
+  
+  # Calculate the fraction for each cell type
+  hex_data_wide[[fraction_col]] <- hex_data_wide[[cell_type]] / hex_data_wide$total_count
+}
+
+# View the updated hex_data_wide
+hex_data_wide
+
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+
+# List of fraction columns to plot (assuming fractions are column names ending with '_fraction')
+fraction_cols <- grep("_fraction", colnames(hex_data_wide), value = TRUE)
+
+# List to store the plots
+plot_list <- list()
+
+# For loop to create a plot for each fraction column
+for (cell_type in fraction_cols) {
+  # Create the plot for the current fraction column
+  p <- ggplot(hex_data_wide, aes(x = bin_x, y = bin_y, fill = .data[[cell_type]])) + 
+    geom_tile() + 
+    scale_fill_viridis_c() + 
+    theme_minimal() + 
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),   
+      axis.title = element_text(size = 14),
+      plot.title = element_text(size = 16, face = "bold")
+    ) +
+    labs(
+      title = paste(cell_type),
+      x = "X Bins",
+      y = "Y Bins",
+      fill = paste(cell_type)
+    ) +
+    coord_fixed(ratio = 1)  # Ensures the aspect ratio is fixed
+  
+  # Append the plot to the plot_list
+  plot_list[[cell_type]] <- p
+}
+
+# Print the plots in a grid layout
+grid.arrange(grobs = plot_list, ncol = 3)  # Adjust `ncol` based on how many plots you want per row
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 3))  # Adjust ncol for the desired layout
+
+# Save the combined plot as a PNG file
+ggsave("combined_plots.png", combined_plot, width = 15, height = 10) 
+
+
+#xdp_hex_data_wide = hex_data_wide
+```
+
+
+
+```{r}
+bican_recon_meta
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+# Calculate hexbin counts for each cell type
+hex_data <- bican_recon_meta %>%
+  group_by(bin_x = cut(x_um_rotated, breaks = 50), bin_y = cut(y_um_rotated, breaks = 50), cell_class_annot) %>%
+  summarise(cell_count = n(), .groups = "drop")
+
+hex_data_wide <- hex_data %>%
+  pivot_wider(names_from = cell_class_annot, 
+              values_from = cell_count, 
+              values_fill = list(cell_count = 0)) %>%
+  mutate(total_count = rowSums(select(., -bin_x, -bin_y), na.rm = TRUE))
+
+hex_data
+hex_data_wide
+```
+
+```{r}
+# List of unique cell types
+cell_types <- unique(bican_recon_meta$cell_class_annot)
+
+# For loop to calculate fractions for each cell type
+for (cell_type in cell_types) {
+  # Create dynamic column name for the fraction
+  fraction_col <- paste0(tolower(cell_type), "_fraction")
+  
+  # Calculate the fraction for each cell type
+  hex_data_wide[[fraction_col]] <- hex_data_wide[[cell_type]] / hex_data_wide$total_count
+}
+
+# View the updated hex_data_wide
+hex_data_wide
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(gridExtra)
+
+# List of fraction columns to plot (assuming fractions are column names ending with '_fraction')
+fraction_cols <- grep("_fraction", colnames(hex_data_wide), value = TRUE)
+
+# List to store the plots
+plot_list <- list()
+
+# For loop to create a plot for each fraction column
+for (cell_type in fraction_cols) {
+  # Create the plot for the current fraction column
+  p <- ggplot(hex_data_wide, aes(x = bin_x, y = bin_y, fill = .data[[cell_type]])) + 
+    geom_tile() + 
+    scale_fill_viridis_c() + 
+    theme_minimal() + 
+    theme(
+      axis.text.x = element_blank(),
+      axis.text.y = element_blank(),   
+      axis.title = element_text(size = 14),
+      plot.title = element_text(size = 16, face = "bold")
+    ) +
+    labs(
+      title = paste(cell_type),
+      x = "X Bins",
+      y = "Y Bins",
+      fill = paste(cell_type)
+    ) +
+    coord_fixed(ratio = 1)  # Ensures the aspect ratio is fixed
+  
+  # Append the plot to the plot_list
+  plot_list[[cell_type]] <- p
+}
+
+# Print the plots in a grid layout
+grid.arrange(grobs = plot_list, ncol = 3)  # Adjust `ncol` based on how many plots you want per row
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol = 3))  # Adjust ncol for the desired layout
+
+# Save the combined plot as a PNG file
+ggsave("combined_plots.png", combined_plot, width = 10, height = 5) 
+#bican_hex_data_wide = hex_data_wide
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+cell_classes = unique(bican_recon_meta$reclustered_patch_matrix_exotic)
+
+for(cell_type in cell_classes){
+opc = subset(bican_recon_meta, subset = reclustered_patch_matrix_exotic == cell_type)
+
+a = ggplot(opc, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+    #facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() + ggtitle(paste0(cell_type))+
+    theme_minimal()
+
+print(a)
+}
+```
+
+```{r}
+theta <- 142
+radians <- theta * pi / 180  # Convert degrees to radians
+cos_theta <- cos(radians)
+sin_theta <- sin(radians)
+
+bican_recon_meta$x_um_rotated = bican_recon_meta$x_um * cos_theta + bican_recon_meta$y_um * sin_theta
+bican_recon_meta$y_um_rotated = -bican_recon_meta$x_um * sin_theta + bican_recon_meta$y_um * cos_theta
+bican_recon_meta
+```
+
+```{r}
+
+ggplot(bican_recon_meta, aes(x = x_um_rotated, y = y_um_rotated)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+    facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() + ggtitle(paste0(cell_type))+
+    theme_minimal()
+
+```
+
+
+
+
+```{r}
+df = bican_recon_meta[na.omit(bican_recon_meta$x_um),] 
+df
+```
+
+```{r}
+opx
+```
+
+```{r}
+recon_xdp = qread("/broad/macosko/kimkathl/recon_meta.qs")
+recon_xdp
+```
+
+```{r}
+cell_classes = unique(recon_xdp$reclustered_patch_matrix_exotic)
+
+for(cell_type in cell_classes){
+opc = subset(recon_xdp, subset = reclustered_patch_matrix_exotic == cell_type)
+a = ggplot(opc, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+    geom_point(size = 0.0001)+
+    #facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() + ggtitle(paste0(cell_type))+
+    theme_minimal()
+
+a <- ggMarginal(a, type = "density", size = 10)
+print(a)
+}
+```
+
+
+
+```{r}
+cell_classes = unique(df$reclustered_patch_matrix_exotic)
+
+for(cell_type in cell_classes){
+opc = subset(df, subset = reclustered_patch_matrix_exotic == cell_type)
+
+a = ggplot(opc, aes(x = x_um_rotated, y = y_um_rotated)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+    geom_point(size = 0.0001)+
+    #facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() + ggtitle(paste0(cell_type))+
+    theme_minimal()
+
+a <- ggMarginal(a, type = "histogram", size = 10)
+print(a)
+}
+```
+
+
+
+
+```{r}
+bican_recon
+bican_recon@meta.data
+```
+
+```{r}
+table(bican_recon$cell_class_annot)
+```
+
+```{r}
+bican_recon = subset(bican_recon, subset = cell_class_annot != "doublet")
+```
+
+
+
+```{r}
+xdp_recon_full = qread("/broad/macosko/kimkathl/temp_disco/more_temp_1205/clean_recon_sobj_with_neuron_subclusters_sct_new.qs")
+xdp_recon_full
+```
+
+
+```{r}
+recon_xdp_full = xdp_recon_full@meta.data
+recon_xdp_full
+```
+
+
+```{r}
+cell_classes = unique(recon_xdp_full$reclustered_patch_matrix_exotic)
+
+for(cell_type in cell_classes){
+opc = subset(recon_xdp_full, subset = reclustered_patch_matrix_exotic == cell_type)
+a = ggplot(opc, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 50, aes(fill = ..count..)) +
+    geom_point(size = 0.0001)+
+    #facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() + ggtitle(paste0(cell_type))+
+    theme_minimal()
+
+a <- ggMarginal(a, type = "density", size = 10)
+print(a)
+}
+```
+
+```{r}
+cell_classes = unique(recon_xdp_full$reclustered_patch_matrix_exotic)
+
+for(cell_type in cell_classes){
+opc = subset(recon_xdp_full, subset = reclustered_patch_matrix_exotic == cell_type)
+a = ggplot(opc, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 10, aes(fill = ..count..)) +
+    geom_point(size = 0.0001)+
+    #facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() + ggtitle(paste0(cell_type))+
+    theme_minimal()
+
+a <- ggMarginal(a, type = "density", size = 10)
+print(a)
+}
+```
+
+
+
+```{r}
+a =ggplot(recon_xdp_full, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 40, aes(fill = ..count..)) +
+    scale_fill_viridis_c()+
+    theme_minimal()+xlab("Spatial_1") +ylab("Spatial_2")
+
+ggsave(a, filename = "a.png", width = 8, height = 7)
+```
+
+```{r}
+
+opc = subset(recon_xdp_full, subset = reclustered_patch_matrix_exotic == "opc")
+a = ggplot(opc, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 40, aes(fill = ..count..)) +
+      geom_point(size = 0.0001)+
+    #facet_wrap(~ reclustered_patch_matrix_exotic) +
+    scale_fill_viridis_c() + 
+    theme_minimal() +xlab("Spatial_1") +ylab("Spatial_2") +xlim(0,20000) +ylim(0, 20000)
+a <- ggMarginal(a, type = "density", size = 10)
+
+ggsave(a, filename = "a.png", width = 8, height = 7)
+```
+
+
+ˆ
+```{r}
+xdp = qread("/broad/macosko/kimkathl/temp_disco/more_temp_1205/xdp_cah_put_sct_new.qs")
+xdp
+```
+```{r}
+DimPlot(xdp, label = T)
+```
+
+
+```{r}
+FeaturePlot(xdp_recon_full, features = c("TAF1"), label = T)
+```
+
+
+```{r}
+xdp_recon_full@meta.data
+```
+
+
+```{r}
+taf1_data <- FetchData(
+  xdp_recon_full,
+  vars = c("TAF1", "reclustered_patch_matrix_exotic", "logumi", "x_um", "y_um" ), 
+  slot = "counts" 
+)
+taf1_data
+```
+
+```{r}
+ggplot(taf1_data, aes(x = x_um, y = y_um)) +
+  geom_hex(aes(fill = TAF1), bins = 30) +  # Adjust 'bins' for spatial resolution
+  scale_fill_viridis_c(option = "plasma") +           # Choose color scale
+  labs(
+    title = "Hexbin Plot of TAF1 Counts",
+    x = "X Coordinate",
+    y = "Y Coordinate",
+    fill = "TAF1 Counts"
+  ) +
+  theme_minimal() +
+  theme(aspect.ratio = 1)  # Ensure proper spatial proportions
+
+```
+

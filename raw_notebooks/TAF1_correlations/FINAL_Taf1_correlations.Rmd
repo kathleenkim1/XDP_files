@@ -1,0 +1,1652 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+caudate_neuron1= qread("Subclustering/caudate_neurons_integrated_subcluster.qs")
+DimPlot(caudate_neuron1, label= TRUE)
+DimPlot(caudate_neuron, label= TRUE)
+```
+
+
+#lowkey think this code made rstudio freeze up
+```{r}
+#caudate_neuron= qread("Subclustering/caudate_neurons_integrated_subcluster.qs")
+#putamen_neuron= qread("Subclustering/putamen_neurons_integrated_subcluster.qs")
+
+caudate_neuron = qread("UPDATED_caudate_neuron_subclustered.qs")
+putamen_neuron= qread("UPDATED_caudate_neuron_subclustered.qs")
+```
+
+```{r}
+#caudate_neuron_final = subset(caudate_neuron, subset = cell_class != "spn_delete")
+#caudate_neuron_final = subset(caudate_neuron_final, subset = cell_class != "interneuron_6delete")
+
+#caudate_neuron_final@meta.data
+#unique(caudate_neuron_final$cell_class)
+```
+
+```{r}
+unique(caudate_neuron$cell_class)
+```
+
+```{r}
+caudate_neuron_final@meta.data$general_class = caudate_neuron_final@meta.data$cell_class
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_matrix_1"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN_patch_2"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_2"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "eSPN"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_3"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_1"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN"] = "SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN_patch_1"] = "SPN"
+
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_2"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_5"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_6"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_3"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_1"] = "interneuron"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "interneuron_4"] = "interneuron"
+
+caudate_neuron_final@meta.data
+
+```
+
+#subset for SPN, interneurons, XDP vs Control
+```{r}
+XDP_SPN = subset(caudate_neuron_final, subset = general_class == "SPN" & Condition == "XDP")
+Control_SPN= subset(caudate_neuron_final, subset = general_class == "SPN" & Condition == "Control")
+
+XDP_Interneuron= subset(caudate_neuron_final, subset = general_class == "interneuron" & Condition == "XDP")
+Control_Interneuron= subset(caudate_neuron_final, subset = general_class == "interneuron" & Condition == "Control")
+
+XDP_SPN@meta.data
+Control_SPN@meta.data
+XDP_Interneuron@meta.data
+Control_Interneuron@meta.data
+
+XDP_SPN
+Control_SPN
+XDP_Interneuron
+Control_Interneuron
+```
+
+```{r}
+DimPlot(XDP_SPN, group.by = "Condition")
+DimPlot(XDP_SPN, group.by = "cell_class")
+FeaturePlot(XDP_SPN, features = c("TAF1"))
+
+DimPlot(Control_SPN, group.by = "Condition")
+DimPlot(Control_SPN, group.by = "cell_class")
+FeaturePlot(Control_SPN, features = c("TAF1"))
+
+DimPlot(XDP_Interneuron, group.by = "Condition")
+DimPlot(XDP_Interneuron, group.by = "cell_class")
+FeaturePlot(XDP_Interneuron, features = c("TAF1"))
+
+DimPlot(Control_Interneuron, group.by = "Condition")
+DimPlot(Control_Interneuron, group.by = "cell_class")
+FeaturePlot(Control_Interneuron, features = c("TAF1"))
+```
+
+```{r}
+#sobj =Control_SPN
+#title = "Control_SPN"
+#csv = "GSEA/de/new_caudate_neurons/Control_SPN_df.csv"
+ 
+TAF1correlation = function(sobj, title, csv){
+sobj_counts = as.matrix(sobj@assays$RNA@counts)
+sobj_taf1 = FetchData(sobj, c("TAF1"))$TAF1
+
+gene_names = rownames(sobj_counts)
+correlations = numeric(length(gene_names))
+p_values = numeric(length(gene_names))
+
+
+for (i in seq_along(gene_names)) {
+  gene_expr = sobj_counts[i, ]
+  result = cor.test(gene_expr, sobj_taf1, method = "spearman")
+  correlations[i] = result$estimate
+  p_values[i] = result$p.value
+}
+
+sobj_corr_df = data.frame(
+  gene = gene_names,
+  spearman_correlation = correlations,
+  p_value = p_values
+)
+# Display the data frame
+print(sobj_corr_df)
+
+
+sobj_corr_df_filtered = sobj_corr_df[sobj_corr_df$p_value < 0.05,]
+sobj_corr_df_filtered = na.omit(sobj_corr_df_filtered)
+rownames(sobj_corr_df_filtered) = sobj_corr_df_filtered$gene 
+sobj_avg_exp = rowMeans(sobj_counts)
+sobj_avg_exp = as.data.frame(sobj_avg_exp)
+sobj_avg_exp$gene = rownames(sobj_avg_exp)
+sobj_df = merge(sobj_corr_df_filtered, sobj_avg_exp, by ="gene")
+sobj_df <- sobj_df[sobj_df$gene != "TAF1",]
+print(sobj_df)
+rownames(sobj_df) = sobj_df$gene 
+
+
+write.csv(sobj_df, csv)
+
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point() +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red") + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black")
+}
+```
+
+
+```{r}
+TAF1correlation(XDP_SPN, "XDP_SPN", "GSEA/de/new_caudate_neurons/XDP_SPN_df.csv")
+TAF1correlation(Control_SPN, "Control_SPN","GSEA/de/new_caudate_neurons/Control_SPN_df.csv")
+TAF1correlation(XDP_Interneuron,"XDP_Interneuron","GSEA/de/new_caudate_neurons/XDP_Interneuron_df.csv")
+TAF1correlation(Control_Interneuron,"Control_Interneuron","GSEA/de/new_caudate_neurons/Control_Interneuron_df.csv")
+```
+
+
+```{r}
+XDP_SPN = read.csv("~/GSEA/de/new_caudate_neurons/XDP_SPN_df.csv")
+Control_SPN = read.csv("~/GSEA/de/new_caudate_neurons/Control_SPN_df.csv")
+XDP_Interneuron = read.csv("~/GSEA/de/new_caudate_neurons/XDP_Interneuron_df.csv")
+Control_Interneuron = read.csv("~/GSEA/de/new_caudate_neurons/Control_Interneuron_df.csv")
+
+XDP_SPN$X = NULL
+Control_SPN$X = NULL
+XDP_Interneuron$X = NULL
+Control_Interneuron$X = NULL
+
+XDP_SPN
+Control_SPN
+XDP_Interneuron
+Control_Interneuron
+```
+#GSEA
+
+```{r}
+sobj_df = XDP_SPN
+title= "XDP SPN"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.15, 0.35) + ylim(0,300)
+
+sobj_df = Control_SPN
+title= "Control SPN"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.15, 0.35) + ylim(0,300)
+
+sobj_df = XDP_Interneuron
+title= "XDP Interneuron"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.2, 0.35) + ylim(0,300)
+
+sobj_df = Control_Interneuron
+title= "Control Interneuron"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.2, 0.35) + ylim(0,300)
+```
+
+
+
+#change around the logfc and stuff
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/GSEA"
+DE_SUBDIR= "de/new_caudate_neurons"
+
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+
+
+#example
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "gsea")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+    kegg_2021_human = "GSEA/genesets/KEGG_2021_Human.txt",
+    go_process = "GSEA/genesets/GO_Biological_Process_2021.txt",
+    go_function = "GSEA/genesets/GO_Molecular_Function_2021.txt",
+    disgenet = "GSEA/genesets/DisGeNET.txt",
+    msigdb_hallmark = "GSEA/genesets/MSigDB_Hallmark_2020.txt",
+    #neural_activity = "GSEA/genesets/neural_activity_arranged.txt",
+    wikipathways = "GSEA/genesets/WikiPathways_2019_Human.txt",
+    #tf_perturbations = "GSEA/genesets/TF_Perturbations_Followed_by_Expression.txt",
+    jensen_diseases = "GSEA/genesets/Jensen_DISEASES.txt"
+    #X_chromsome_positional= "GSEA/genesets/allchrome.txt",  
+    #Xlinked_recessive = "GSEA/genesets/Xlinked_RESS.txt",
+    #Xlinked_dominant = "GSEA/genesets/Xlinked_DOM.txt",
+    #similar_diseases = "GSEA/genesets/similardiseases.txt"
+)
+
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+    #if (! grepl("trend", de_slogan)){next}
+
+    #if (strsplit(de_slogan, "__")[[1]][[2]] != "opc"){next}
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$gene)
+    anno=anno[match(dataDE$gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="spearman_correlation", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_taf1correlation.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+```{r}
+caudate_neurons_types = list("XDP_SPN_df", "Control_SPN_df", "XDP_Interneuron_df", "Control_Interneuron_df")
+caudate_neurons_gsea_list = list()
+
+# Loop through each cell type and read the corresponding file into a dataframe
+for (cell_type in caudate_neurons_types) {
+  # Construct the file name
+  gsea_file_name <- paste("~/GSEA/de/new_caudate_neurons/gsea/", cell_type, ".csv__gsea_taf1correlation.tsv", sep = "")
+  
+  # Print the file name to verify the path
+  print(paste("Trying to read file:", gsea_file_name))
+  
+  # Check if the file exists
+  if (file.exists(gsea_file_name)) {
+    # Read the file into a dataframe
+    gsea_file <- read.delim(gsea_file_name, header = TRUE)
+    
+    # Store the dataframe in the list with the cell type as the name
+    caudate_neurons_gsea_list[[cell_type]] <- gsea_file
+  } else {
+    print(paste("File does not exist:", gsea_file_name))
+  }
+}
+caudate_neurons_gsea_list
+```
+
+
+```{r}
+XDP_SPN_gsea_df = caudate_neurons_gsea_list[["XDP_SPN_df"]]
+Control_SPN_gsea_df = caudate_neurons_gsea_list[["Control_SPN_df"]]
+XDP_Interneuron_gsea_df = caudate_neurons_gsea_list[["XDP_Interneuron_df"]]
+Control_Interneuron_gsea_df = caudate_neurons_gsea_list[["Control_Interneuron_df"]]
+
+XDP_SPN_gsea_df
+Control_SPN_gsea_df
+XDP_Interneuron_gsea_df
+Control_Interneuron_gsea_df
+```
+
+
+#gsea with leading edge annotations
+```{r}
+plot_gsea_result_hdot = function(
+    df,
+    title=NULL,
+    xlim=c(-4, 4),
+    fig_filename = NULL,
+    leading_edge_n=10,
+    leading_edge_linebreak_n=5,
+    top_n=10) {
+    #takes in a df with the following columns: NES, pathway, size, leading_edge
+    # along with a title, xlim, fig_filename (nullable)
+    # leading_edge_n is the max number of leading_edge genes to be annotated
+    # leading_edge_linebreak_n is the number of leading_edge genes to be displayed before a line break
+    # top_n is the number of pathways to be displayed on the plot for each direction
+    # (i.e. max rows is 2*top_n for up- and down-regulated genesets)
+    # the df is filtered to the top_n pathways by NES above 0 and below 0
+    # Y axis: pathway. every 30 characters, replace the next space with a \n and then start over
+    # X axis: NES, appearing as an open circle. If NES > 0, this circle is blue, < 0 red. The size of the circle relates to the Gene Set Size.
+    # The plot is annotated on the right with the leading_edge_top_n.
+    # first, turn the leading edge into something we can read by taking the first `leading_edge_n` elemnets
+    # separating them with `, ` and finally adding line breaks
+    df_pos = df[df$NES > 0,]
+    df_neg = df[df$NES < 0,]
+    df_pos = df_pos[order(df_pos$NES, decreasing = TRUE),]
+    df_neg = df_neg[order(df_neg$NES, decreasing = FALSE),]
+    df = rbind(df_pos[1:top_n,], df_neg[1:top_n,])
+    df = df[order(df$NES),]
+    df = df[!is.na(df$NES),]
+    # Function to insert line breaks every `n` entries
+    insert_line_breaks = function(text, n = leading_edge_linebreak_n) {
+        parts = strsplit(text, ",\\s*")[[1]]
+        if (length(parts) <= n) {
+            return(text)
+        }
+        new_text = ""
+        for (i in seq_along(parts)) {
+            new_text = paste0(new_text, parts[i])
+            if (i < length(parts)) {
+                new_text = paste0(new_text, ",")
+            }
+            if (i %% n == 0 && i != length(parts)) {
+                new_text = paste0(new_text, "\n")
+            } else if (i != length(parts)) {
+                new_text = paste0(new_text, " ")
+            }
+        }
+        return(new_text)
+    }
+    df$leading_edge_top_n = sapply(df$leadingEdge, function(x){
+        edge_list = strsplit(x, ",")[[1]]
+        len = length(edge_list)
+        if (len > leading_edge_n){
+            len=leading_edge_n
+        }
+        return(insert_line_breaks(paste(edge_list[1:len], collapse=", ")))
+    })
+    if (is.null(title)){
+        title = "GSEA NES by Pathway"
+    }
+    # Format the pathway names to include newline every 30 characters
+    df$pathway = gsub("(.{30}\\s)", "\\1\n", df$pathway, perl = TRUE)
+    df$NES_direction = ifelse(df$NES > 0, "NES > 0", "NES < 0")
+    # Create the plot
+    p = ggplot(df, aes(x = NES, y = reorder(pathway, NES))) +
+        geom_point(aes(size = size, color = NES_direction), shape = 1) +
+        scale_color_manual(name = "NES Direction", values = c("NES > 0" = "blue", "NES < 0" = "red")) +
+        scale_size_continuous(name = "Size") +
+        geom_vline(xintercept = 0, linetype = "dotted", color = "black") +
+        labs(title = title, x = "NES", y = "Pathway") +
+        xlim(xlim) +
+        theme(
+            panel.grid.major = element_line(color = "gray", linetype = "dotted"),
+            panel.grid.minor = element_blank(),
+            legend.position = "left",
+            plot.title = element_text(size = 14),
+            plot.caption = element_text(hjust = 0.1),
+            plot.title.position = "plot",
+            axis.line = element_line(color = "black"),
+            axis.ticks = element_line(color = "black"),
+            axis.text = element_text(size = 13),
+            axis.title = element_text(size = 13),
+            axis.text.y.right = element_text(hjust = 1)
+        )
+        # Create a secondary y-axis with leading_edge_top_n labels
+    p = p + geom_text(aes(y = reorder(pathway, NES), x = Inf, label = leading_edge_top_n),
+                      hjust = -0.1, size = 4) +
+        coord_cartesian(clip = 'off') +
+        theme(
+            plot.margin = margin(5.5, 340, 5.5, 5.5),  # Increase right margin to make space for secondary labels
+            axis.text.y.right = element_text(hjust = 1)
+        )
+    # Save the plot to file if a filename is provided
+    if (!is.null(fig_filename)) {
+        ggsave(fig_filename, plot = p, width = 5, height = 2*nrow(df)/3)
+    }
+    # Print the plot to the R console
+    print(p)
+}
+```
+
+
+```{r}
+plot_gsea_result_hdot = function(
+    df,
+    title=NULL,
+    xlim=c(-4, 4),
+    fig_filename = NULL,
+    leading_edge_n=10,
+    leading_edge_linebreak_n=5,
+    top_n=10)
+```
+
+
+```{r}
+plot_gsea_result_hdot(XDP_SPN_gsea_df, title = "XDP SPN", leading_edge_n=5)
+plot_gsea_result_hdot(Control_SPN_gsea_df, title = "Control SPN", leading_edge_n=5)
+plot_gsea_result_hdot(XDP_Interneuron_gsea_df, title = "XDP Interneuron", leading_edge_n=5)
+plot_gsea_result_hdot(Control_Interneuron_gsea_df, title = "Control Interneuron", leading_edge_n=5)
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+unique(caudate_neuron$cell_class)
+```
+
+
+
+
+```{r}
+caudate_neuron_final@meta.data$general_class = caudate_neuron_final@meta.data$cell_class
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_matrix_1"] = "D1_SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN_patch_2"] = "D2_SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_2"] = "D1_SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "eSPN"] = "eSPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_3"] = "D1_SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN_patch_1"] = "D1_SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN"] = "D2_SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D1_SPN"] = "D1_SPN"
+caudate_neuron_final$general_class[caudate_neuron_final$general_class == "D2_SPN_patch_1"] = "D2_SPN"
+
+caudate_neuron_final@meta.data
+```
+
+#subset for SPN, interneurons, XDP vs Control
+```{r}
+XDP_D1_SPN = subset(caudate_neuron_final, subset = general_class == "D1_SPN" & Condition == "XDP")
+XDP_D2_SPN = subset(caudate_neuron_final, subset = general_class == "D2_SPN" & Condition == "XDP")
+XDP_eSPN = subset(caudate_neuron_final, subset = general_class == "eSPN" & Condition == "XDP")
+
+Control_D1_SPN= subset(caudate_neuron_final, subset = general_class == "D1_SPN" & Condition == "Control")
+Control_D2_SPN= subset(caudate_neuron_final, subset = general_class == "D2_SPN" & Condition == "Control")
+Control_eSPN= subset(caudate_neuron_final, subset = general_class == "eSPN" & Condition == "Control")
+
+XDP_D1_SPN@meta.data
+XDP_D2_SPN@meta.data
+Control_eSPN@meta.data
+XDP_eSPN@meta.data
+
+XDP_D1_SPN
+XDP_D2_SPN
+XDP_eSPN
+Control_D1_SPN
+Control_D2_SPN
+Control_eSPN
+```
+
+#computer is not happy
+```{r}
+
+TAF1correlation = function(sobj, title, csv){
+
+sobj_counts = as.matrix(sobj@assays$RNA@counts)
+sobj_taf1 = FetchData(sobj, c("TAF1"))$TAF1
+
+gene_names = rownames(sobj_counts)
+correlations = numeric(length(gene_names))
+p_values = numeric(length(gene_names))
+
+
+for (i in seq_along(gene_names)) {
+  gene_expr = sobj_counts[i, ]
+  result = cor.test(gene_expr, sobj_taf1, method = "spearman")
+  correlations[i] = result$estimate
+  p_values[i] = result$p.value
+}
+
+sobj_corr_df = data.frame(
+  gene = gene_names,
+  spearman_correlation = correlations,
+  p_value = p_values
+)
+# Display the data frame
+print(sobj_corr_df)
+
+
+sobj_corr_df_filtered = sobj_corr_df[sobj_corr_df$p_value < 0.05,]
+sobj_corr_df_filtered = na.omit(sobj_corr_df_filtered)
+rownames(sobj_corr_df_filtered) = sobj_corr_df_filtered$gene 
+sobj_avg_exp = rowMeans(sobj_counts)
+sobj_avg_exp = as.data.frame(sobj_avg_exp)
+sobj_avg_exp$gene = rownames(sobj_avg_exp)
+sobj_df = merge(sobj_corr_df_filtered, sobj_avg_exp, by ="gene")
+sobj_df <- sobj_df[sobj_df$gene != "TAF1",]
+print(sobj_df)
+rownames(sobj_df) = sobj_df$gene 
+
+
+write.csv(sobj_df, csv)
+
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point() +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red") + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black")
+}
+```
+
+
+
+```{r}
+#TAF1correlation(XDP_D1_SPN, "XDP_D1_SPN", "GSEA/de/new_caudate_neurons_SPN/XDP_D1_SPN_df.csv")
+TAF1correlation(XDP_D2_SPN, "XDP_D2_SPN","GSEA/de/new_caudate_neurons_SPN/XDP_D2_SPN_df.csv")
+TAF1correlation(XDP_eSPN,"XDP_eSPN","GSEA/de/new_caudate_neurons_SPN/XDP_eSPN_df.csv")
+TAF1correlation(Control_D1_SPN,"Control_D1_SPN","GSEA/de/new_caudate_neurons_SPN/Control_D1_SPN_df.csv")
+TAF1correlation(Control_D2_SPN,"Control_D2_SPN","GSEA/de/new_caudate_neurons_SPN/Control_D2_SPN_df.csv")
+TAF1correlation(Control_eSPN,"Control_eSPN","GSEA/de/new_caudate_neurons_SPN/Control_eSPN_df.csv")
+```
+
+
+```{r}
+XDP_D1_SPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/XDP_D1_SPN_df.csv")
+XDP_D2_SPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/XDP_D2_SPN_df.csv")
+XDP_eSPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/XDP_eSPN_df.csv")
+Control_D1_SPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/Control_D1_SPN_df.csv")
+Control_D2_SPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/Control_D2_SPN_df.csv")
+Control_eSPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/Control_eSPN_df.csv")
+
+XDP_D1_SPN$X = NULL
+XDP_D2_SPN$X = NULL
+XDP_eSPN$X = NULL
+Control_D1_SPN$X = NULL
+Control_D2_SPN$X = NULL
+Control_eSPN$X = NULL
+
+XDP_D1_SPN
+XDP_D2_SPN
+XDP_eSPN
+Control_D1_SPN
+Control_D2_SPN
+Control_eSPN
+```
+
+#GSEA
+
+```{r}
+sobj_df = XDP_D1_SPN
+title= "XDP D1 SPN"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.15, 0.2) + ylim(0,450)
+
+sobj_df = XDP_D2_SPN
+title= "XDP D2 SPN"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.15, 0.5) + ylim(0,300)
+
+sobj_df = XDP_eSPN
+title= "XDP eSPN"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.15, 0.35) + ylim(0,300)
+
+sobj_df = Control_D1_SPN
+title= "Control D1 SPN"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.15, 0.20) + ylim(0,450)
+
+sobj_df = Control_D2_SPN
+title= "Control D2 SPN"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.15, 0.5) + ylim(0,300)
+
+sobj_df = Control_eSPN
+title= "Control eSPN"
+
+top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+top_5
+
+ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+  geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red", alpha = 0.3) + 
+  labs(
+    x = "Taf1 correlation",
+    y = "Average gene expression", title= title) +
+  geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") + xlim(-0.15, 0.35) + ylim(0,300)
+```
+
+
+
+#change around the logfc and stuff
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/GSEA"
+DE_SUBDIR= "de/new_caudate_neurons_SPN"
+
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='logFC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+
+
+#example
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "gsea")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+    kegg_2021_human = "GSEA/genesets/KEGG_2021_Human.txt",
+    go_process = "GSEA/genesets/GO_Biological_Process_2021.txt",
+    go_function = "GSEA/genesets/GO_Molecular_Function_2021.txt",
+    disgenet = "GSEA/genesets/DisGeNET.txt",
+    msigdb_hallmark = "GSEA/genesets/MSigDB_Hallmark_2020.txt",
+    #neural_activity = "GSEA/genesets/neural_activity_arranged.txt",
+    wikipathways = "GSEA/genesets/WikiPathways_2019_Human.txt",
+    #tf_perturbations = "GSEA/genesets/TF_Perturbations_Followed_by_Expression.txt",
+    jensen_diseases = "GSEA/genesets/Jensen_DISEASES.txt"
+    #X_chromsome_positional= "GSEA/genesets/allchrome.txt",  
+    #Xlinked_recessive = "GSEA/genesets/Xlinked_RESS.txt",
+    #Xlinked_dominant = "GSEA/genesets/Xlinked_DOM.txt",
+    #similar_diseases = "GSEA/genesets/similardiseases.txt"
+)
+
+for (de_file in de_files){
+    de_slogan = sub(".txt$", "", de_file)
+
+    #if (! grepl("trend", de_slogan)){next}
+
+    #if (strsplit(de_slogan, "__")[[1]][[2]] != "opc"){next}
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno=.extraHumanGeneAnnoAdderFn(inputGeneNames=dataDE$gene)
+    anno=anno[match(dataDE$gene,anno$gene_id),]
+    dataDE=cbind(dataDE,anno)
+    dataDE=dataDE[which(dataDE$gene_biotype=="protein_coding"),]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)){
+        path = gene_sets[[gene_set]]
+
+        gs=.sconline.GSEA.readGMT(file=path,bkg_genes=dataDE$gene_short_name,min.gs.size=15,max.gs.size=500)
+        gsea = runGSEA(dataDE, gs, rank_col="spearman_correlation", abs=FALSE, desc=TRUE)
+        gsea$gene_set = gene_set
+        gsea = gsea[which(gsea$padj<0.05),]
+
+        if (nrow(gsea) > 0){
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+    gsea_df = do.call(rbind, gsea_list)
+
+    write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea_taf1correlation.tsv")), sep="\t", quote=FALSE, row.names=FALSE)
+}
+```
+
+```{r}
+caudate_neurons_types = list("XDP_D1_SPN_df", "XDP_D2_SPN_df", "XDP_eSPN_df", "Control_D2_SPN_df")
+caudate_neurons_gsea_list = list()
+
+# Loop through each cell type and read the corresponding file into a dataframe
+for (cell_type in caudate_neurons_types) {
+  # Construct the file name
+  gsea_file_name <- paste("~/GSEA/de/new_caudate_neurons_SPN/gsea/", cell_type, ".csv__gsea_taf1correlation.tsv", sep = "")
+  
+  # Print the file name to verify the path
+  print(paste("Trying to read file:", gsea_file_name))
+  
+  # Check if the file exists
+  if (file.exists(gsea_file_name)) {
+    # Read the file into a dataframe
+    gsea_file <- read.delim(gsea_file_name, header = TRUE)
+    
+    # Store the dataframe in the list with the cell type as the name
+    caudate_neurons_gsea_list[[cell_type]] <- gsea_file
+  } else {
+    print(paste("File does not exist:", gsea_file_name))
+  }
+}
+caudate_neurons_gsea_list
+```
+
+
+
+```{r}
+XDP_D1_SPN_gsea_df = caudate_neurons_gsea_list[["XDP_D1_SPN_df"]]
+XDP_D2_SPN_gsea_df= caudate_neurons_gsea_list[["XDP_D2_SPN_df"]]
+XDP_eSPN_gsea_df= caudate_neurons_gsea_list[["XDP_eSPN_df"]]
+#Control_D1_SPN_gsea_df = caudate_neurons_gsea_list[["Control_D1_SPN_df"]]
+Control_D2_SPN_gsea_df= caudate_neurons_gsea_list[["Control_D2_SPN_df"]]
+#Control_eSPN_gsea_df= caudate_neurons_gsea_list[["Control_eSPN_df"]]
+
+XDP_D1_SPN_gsea_df
+XDP_D2_SPN_gsea_df
+XDP_eSPN_gsea_df
+#Control_D1_SPN_gsea_df
+Control_D2_SPN_gsea_df
+#Control_eSPN_gsea_df
+```
+
+#gsea with leading edge annotations
+```{r}
+plot_gsea_result_hdot = function(
+    df,
+    title=NULL,
+    xlim=c(-4, 4),
+    fig_filename = NULL,
+    leading_edge_n=10,
+    leading_edge_linebreak_n=5,
+    top_n=10) {
+    #takes in a df with the following columns: NES, pathway, size, leading_edge
+    # along with a title, xlim, fig_filename (nullable)
+    # leading_edge_n is the max number of leading_edge genes to be annotated
+    # leading_edge_linebreak_n is the number of leading_edge genes to be displayed before a line break
+    # top_n is the number of pathways to be displayed on the plot for each direction
+    # (i.e. max rows is 2*top_n for up- and down-regulated genesets)
+    # the df is filtered to the top_n pathways by NES above 0 and below 0
+    # Y axis: pathway. every 30 characters, replace the next space with a \n and then start over
+    # X axis: NES, appearing as an open circle. If NES > 0, this circle is blue, < 0 red. The size of the circle relates to the Gene Set Size.
+    # The plot is annotated on the right with the leading_edge_top_n.
+    # first, turn the leading edge into something we can read by taking the first `leading_edge_n` elemnets
+    # separating them with `, ` and finally adding line breaks
+    df_pos = df[df$NES > 0,]
+    df_neg = df[df$NES < 0,]
+    df_pos = df_pos[order(df_pos$NES, decreasing = TRUE),]
+    df_neg = df_neg[order(df_neg$NES, decreasing = FALSE),]
+    df = rbind(df_pos[1:top_n,], df_neg[1:top_n,])
+    df = df[order(df$NES),]
+    df = df[!is.na(df$NES),]
+    # Function to insert line breaks every `n` entries
+    insert_line_breaks = function(text, n = leading_edge_linebreak_n) {
+        parts = strsplit(text, ",\\s*")[[1]]
+        if (length(parts) <= n) {
+            return(text)
+        }
+        new_text = ""
+        for (i in seq_along(parts)) {
+            new_text = paste0(new_text, parts[i])
+            if (i < length(parts)) {
+                new_text = paste0(new_text, ",")
+            }
+            if (i %% n == 0 && i != length(parts)) {
+                new_text = paste0(new_text, "\n")
+            } else if (i != length(parts)) {
+                new_text = paste0(new_text, " ")
+            }
+        }
+        return(new_text)
+    }
+    df$leading_edge_top_n = sapply(df$leadingEdge, function(x){
+        edge_list = strsplit(x, ",")[[1]]
+        len = length(edge_list)
+        if (len > leading_edge_n){
+            len=leading_edge_n
+        }
+        return(insert_line_breaks(paste(edge_list[1:len], collapse=", ")))
+    })
+    if (is.null(title)){
+        title = "GSEA NES by Pathway"
+    }
+    # Format the pathway names to include newline every 30 characters
+    df$pathway = gsub("(.{30}\\s)", "\\1\n", df$pathway, perl = TRUE)
+    df$NES_direction = ifelse(df$NES > 0, "NES > 0", "NES < 0")
+    # Create the plot
+    p = ggplot(df, aes(x = NES, y = reorder(pathway, NES))) +
+        geom_point(aes(size = size, color = NES_direction), shape = 1) +
+        scale_color_manual(name = "NES Direction", values = c("NES > 0" = "blue", "NES < 0" = "red")) +
+        scale_size_continuous(name = "Size") +
+        geom_vline(xintercept = 0, linetype = "dotted", color = "black") +
+        labs(title = title, x = "NES", y = "Pathway") +
+        xlim(xlim) +
+        theme(
+            panel.grid.major = element_line(color = "gray", linetype = "dotted"),
+            panel.grid.minor = element_blank(),
+            legend.position = "left",
+            plot.title = element_text(size = 14),
+            plot.caption = element_text(hjust = 0.1),
+            plot.title.position = "plot",
+            axis.line = element_line(color = "black"),
+            axis.ticks = element_line(color = "black"),
+            axis.text = element_text(size = 13),
+            axis.title = element_text(size = 13),
+            axis.text.y.right = element_text(hjust = 1)
+        )
+        # Create a secondary y-axis with leading_edge_top_n labels
+    p = p + geom_text(aes(y = reorder(pathway, NES), x = Inf, label = leading_edge_top_n),
+                      hjust = -0.1, size = 4) +
+        coord_cartesian(clip = 'off') +
+        theme(
+            plot.margin = margin(5.5, 340, 5.5, 5.5),  # Increase right margin to make space for secondary labels
+            axis.text.y.right = element_text(hjust = 1)
+        )
+    # Save the plot to file if a filename is provided
+    if (!is.null(fig_filename)) {
+        ggsave(fig_filename, plot = p, width = 5, height = 2*nrow(df)/3)
+    }
+    # Print the plot to the R console
+    print(p)
+}
+```
+
+
+
+```{r}
+plot_gsea_result_hdot(XDP_D1_SPN_gsea_df, title = "XDP D1 SPN", leading_edge_n=5)
+plot_gsea_result_hdot(XDP_D2_SPN_gsea_df, title = "XDP D2 SPN", leading_edge_n=5)
+plot_gsea_result_hdot(XDP_eSPN_gsea_df, title = "XDP eSPN", leading_edge_n=5)
+plot_gsea_result_hdot(Control_D2_SPN_gsea_df, title = "Control D2 SPN", leading_edge_n=5)
+
+```
+
+
+
+```{r}
+hist(XDP_SPN$spearman_correlation)
+```
+
+
+#ADGHH I THINK R DELETED MY CODE
+```{r}
+hist(XDP_SPN$spearman_correlation, main = "XDP SPN TAF1 Correlation", xlim=c(-0.15,0.35), breaks =20, xlab = "TAF1 Spearman Coefficient")
+hist(Control_SPN$spearman_correlation, main = "Control SPN TAF1 Correlation", xlim=c(-0.15,0.35), breaks =20, xlab = "TAF1 Spearman Coefficient")
+hist(XDP_Interneuron$spearman_correlation, main = "XDP Interneuron TAF1 Correlation", xlim=c(-0.2,0.35), breaks =20, xlab = "TAF1 Spearman Coefficient")
+hist(Control_Interneuron$spearman_correlation, main = "Control Interneuron TAF1 Correlation", xlim=c(-0.2,0.35), breaks =20, xlab = "TAF1 Spearman Coefficient")
+
+XDP_D1_SPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/XDP_D1_SPN_df.csv")
+XDP_D2_SPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/XDP_D2_SPN_df.csv")
+XDP_eSPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/XDP_eSPN_df.csv")
+Control_D1_SPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/Control_D1_SPN_df.csv")
+Control_D2_SPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/Control_D2_SPN_df.csv")
+Control_eSPN = read.csv("~/GSEA/de/new_caudate_neurons_SPN/Control_eSPN_df.csv")
+XDP_D1_SPN$X = NULL
+XDP_D2_SPN$X = NULL
+XDP_eSPN$X = NULL
+Control_D1_SPN$X = NULL
+Control_D2_SPN$X = NULL
+Control_eSPN$X = NULL
+
+XDP_D1_SPN
+XDP_D2_SPN
+XDP_eSPN
+Control_D1_SPN
+Control_D2_SPN
+Control_eSPN
+
+hist(XDP_D1_SPN$spearman_correlation, main = "XDP D1 SPN TAF1 Correlation", xlim=c(-0.15,0.2), breaks =20, xlab = "TAF1 Spearman Coefficient")
+hist(XDP_D2_SPN$spearman_correlation, main = "XDP D2 SPN TAF1 Correlation", xlim=c(-0.15,0.5), breaks =20, xlab = "TAF1 Spearman Coefficient")
+hist(XDP_eSPN$spearman_correlation, main = "XDP eSPN TAF1 Correlation", xlim=c(-0.15,0.35), breaks =20, xlab = "TAF1 Spearman Coefficient")
+hist(Control_D1_SPN$spearman_correlation, main = "Control D1 SPN TAF1 Correlation", xlim=c(-0.15,0.2), breaks =20, xlab = "TAF1 Spearman Coefficient")
+hist(Control_D2_SPN$spearman_correlation, main = "Control D2 SPN TAF1 Correlation", xlim=c(-0.15,0.5), breaks =20, xlab = "TAF1 Spearman Coefficient")
+hist(Control_eSPN$spearman_correlation, main = "Control eSPN TAF1 Correlation", xlim=c(-0.15,0.35), breaks =20, xlab = "TAF1 Spearman Coefficient")
+degraphs(merged_CaH_XDP_endo, "XDP endo") 
+degraphs(merged_CaH_Control_endo, "Control endo") 
+degraphs(merged_CaH_XDP_immune, "XDP immune") 
+degraphs(merged_CaH_Control_immune, "Control immune")
+```
+
+
+```{r}
+DE_CaH_astro= DE_CaH_astro[DE_CaH_astro$adj.P.Val < 0.05,]
+DE_CaH_neuron= DE_CaH_neuron[DE_CaH_neuron$adj.P.Val < 0.05,]
+ DE_CaH_oligo= DE_CaH_oligo[DE_CaH_oligo$adj.P.Val < 0.05,]
+ DE_CaH_opc= DE_CaH_opc[DE_CaH_opc$adj.P.Val < 0.05,]
+ DE_CaH_mg= DE_CaH_mg[DE_CaH_mg$adj.P.Val < 0.05,]
+ DE_CaH_ependymal= DE_CaH_ependymal[DE_CaH_ependymal$adj.P.Val < 0.05,]
+ DE_CaH_endo= DE_CaH_endo[DE_CaH_endo$adj.P.Val < 0.05,]
+ DE_CaH_immune= DE_CaH_immune[DE_CaH_immune$adj.P.Val < 0.05,]
+
+ DE_CaH_astro
+ DE_CaH_neuron
+ DE_CaH_oligo
+ DE_CaH_opc
+ DE_CaH_mg
+ DE_CaH_ependymal
+ DE_CaH_endo
+ DE_CaH_immune
+```
+
+
+```{r}
+merged_CaH_XDP_astro = merge(DE_CaH_astro, XDP_astro, by = "gene")
+merged_CaH_Control_astro =merge(DE_CaH_astro, Control_astro, by = "gene")
+merged_CaH_XDP_neuron  =merge(DE_CaH_neuron, XDP_neuron, by = "gene")
+merged_CaH_Control_neuron =merge(DE_CaH_neuron, Control_neuron, by = "gene")
+merged_CaH_XDP_oligo =merge(DE_CaH_oligo, XDP_oligo, by = "gene")
+merged_CaH_Control_oligo=merge(DE_CaH_oligo, Control_oligo, by = "gene")
+merged_CaH_XDP_opc =merge(DE_CaH_opc, XDP_opc, by = "gene")
+merged_CaH_Control_opc =merge(DE_CaH_opc, Control_opc, by = "gene")
+merged_CaH_XDP_mg  =merge(DE_CaH_mg, XDP_mg, by = "gene")
+merged_CaH_Control_mg =merge(DE_CaH_mg, Control_mg, by = "gene")
+merged_CaH_XDP_ependymal =merge(DE_CaH_ependymal, XDP_ependymal, by = "gene")
+merged_CaH_Control_ependymal=merge(DE_CaH_ependymal, Control_ependymal, by = "gene")
+merged_CaH_XDP_endo=merge(DE_CaH_endo, XDP_endo, by = "gene")
+merged_CaH_Control_endo=merge(DE_CaH_endo, Control_endo, by = "gene")
+merged_CaH_XDP_immune=merge(DE_CaH_immune, XDP_immune, by = "gene")
+merged_CaH_Control_immune=merge(DE_CaH_immune, Control_immune, by = "gene")
+
+
+merged_CaH_XDP_astro 
+merged_CaH_Control_astro
+merged_CaH_XDP_neuron 
+merged_CaH_Control_neuron
+merged_CaH_XDP_oligo
+merged_CaH_Control_oligo
+merged_CaH_XDP_opc 
+merged_CaH_Control_opc
+merged_CaH_XDP_mg 
+merged_CaH_Control_mg
+merged_CaH_XDP_ependymal
+merged_CaH_Control_ependymal
+merged_CaH_XDP_endo
+merged_CaH_Control_endo
+merged_CaH_XDP_immune
+merged_CaH_Control_immune
+```
+
+
+
+```{r}
+degraphs = function(sobj_df, title){
+ sobj_df$significant_DE = sobj_df$adj.P.Val < 0.05
+ 
+ significant_genes = sobj_df[sobj_df$significant_DE, ]
+ 
+ # Order the filtered dataframe by spearman correlation in decreasing order
+ top_5 <- significant_genes[order(significant_genes$spearman_correlation, decreasing = TRUE), ][1:5, ]
+ print(top_5)
+ 
+ ggplot(sobj_df, aes(x = spearman_correlation, y = logFC)) +
+   geom_point(aes(x = spearman_correlation, y = logFC, color = significant_DE), alpha = 0.3) + scale_color_manual(values = c("black", "red"))+
+   labs(
+     x = "Taf1 correlation",
+     y = "DE logFC", title= title) +
+   geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") 
+ }
+```
+
+
+
+```{r}
+degraphs = function(sobj_df, title){
+
+ # Order the filtered dataframe by spearman correlation in decreasing order
+ top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+ print(top_5)
+ 
+ ggplot(sobj_df, aes(x = spearman_correlation, y = logFC)) +
+   geom_point(aes(x = spearman_correlation, y = logFC), alpha = 0.3) +
+   labs(
+     x = "Taf1 correlation",
+     y = "DE logFC", title= title) +
+   geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") 
+ }
+```
+
+
+```{r}
+degraphs(merged_CaH_XDP_astro, "XDP astrocytes") 
+degraphs(merged_CaH_Control_astro, "Control astrocytes") 
+degraphs(merged_CaH_XDP_neuron, "XDP neurons")  
+degraphs(merged_CaH_Control_neuron, "Control neurons") 
+degraphs(merged_CaH_XDP_oligo, "XDP oligos") 
+degraphs(merged_CaH_Control_oligo, "Control oligos")
+```
+
+
+```{r}
+degraphs = function(sobj_df, title){
+ 
+# Order the filtered dataframe by spearman correlation in decreasing order
+ top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+ print(top_5)
+ 
+ ggplot(sobj_df, aes(x = spearman_correlation, y = logFC)) +
+   geom_point(aes(x = spearman_correlation, y = logFC), color="red", alpha = 0.3) +
+   labs(
+     x = "Taf1 correlation",
+     y = "DE logFC", title= title) +
+   geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") 
+ }
+```
+
+
+```{r}
+degraphs(merged_CaH_XDP_astro, "XDP astrocytes") 
+degraphs(merged_CaH_Control_astro, "Control astrocytes") 
+degraphs(merged_CaH_XDP_neuron, "XDP neurons")  
+degraphs(merged_CaH_Control_neuron, "Control neurons") 
+degraphs(merged_CaH_XDP_oligo, "XDP oligos") 
+degraphs(merged_CaH_Control_oligo, "Control oligos")
+degraphs(merged_CaH_XDP_opc, "XDP opc") 
+degraphs(merged_CaH_Control_opc, "Control opc") 
+degraphs(merged_CaH_XDP_mg, "XDP microglia")  
+degraphs(merged_CaH_Control_mg, "Control microglia") 
+degraphs(merged_CaH_XDP_ependymal, "XDP ependymal") 
+degraphs(merged_CaH_Control_ependymal, "Control ependymal")
+degraphs(merged_CaH_XDP_endo, "XDP endo") 
+degraphs(merged_CaH_Control_endo, "Control endo") 
+degraphs(merged_CaH_XDP_immune, "XDP immune") 
+degraphs(merged_CaH_Control_immune, "Control immune")
+```
+
+
+```{r}
+TAF1correlation = function(sobj, title, csv){
+sobj_counts = as.matrix(sobj@assays$RNA@counts)
+sobj_taf1 = FetchData(sobj, c("TAF1"))$TAF1
+
+ gene_names = rownames(sobj_counts)
+ correlations = numeric(length(gene_names))
+ p_values = numeric(length(gene_names))
+ 
+ 
+ for (i in seq_along(gene_names)) {
+   gene_expr = sobj_counts[i, ]
+   result = cor.test(gene_expr, sobj_taf1, method = "spearman")
+   correlations[i] = result$estimate
+   p_values[i] = result$p.value
+ }
+ 
+ sobj_corr_df = data.frame(
+   gene = gene_names,
+   spearman_correlation = correlations,
+   p_value = p_values
+ )
+ # Display the data frame
+ print(sobj_corr_df)
+ 
+ 
+ #sobj_corr_df_filtered = sobj_corr_df[sobj_corr_df$p_value < 0.05,]
+ #sobj_corr_df_filtered = na.omit(sobj_corr_df_filtered)
+ sobj_corr_df_filtered = na.omit(sobj_corr_df) #new
+ rownames(sobj_corr_df_filtered) = sobj_corr_df_filtered$gene 
+ sobj_avg_exp = rowMeans(sobj_counts)
+ sobj_avg_exp = as.data.frame(sobj_avg_exp)
+ sobj_avg_exp$gene = rownames(sobj_avg_exp)
+ sobj_df = merge(sobj_corr_df_filtered, sobj_avg_exp, by ="gene")
+ sobj_df <- sobj_df[sobj_df$gene != "TAF1",]
+ print(sobj_df)
+ rownames(sobj_df) = sobj_df$gene 
+ 
+ 
+ write.csv(sobj_df, csv)
+ 
+ 
+ top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+ top_5
+ 
+ ggplot(sobj_df, aes(x = spearman_correlation, y = sobj_avg_exp)) +
+   geom_point() +
+   geom_point(aes(x = spearman_correlation, y = sobj_avg_exp), color = "red") + 
+   labs(
+     x = "Taf1 correlation",
+     y = "Average gene expression", title= title) +
+   geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black")
+ }
+```
+
+
+```{r}
+XDP_astro = subset(caudate_sobj, subset = cell_class == "astro" & Condition == "XDP")
+Control_astro= subset(caudate_sobj, subset = cell_class == "astro" & Condition == "Control")
+
+XDP_neuron = subset(caudate_sobj, subset = cell_class == "neuron" & Condition == "XDP")
+Control_neuron= subset(caudate_sobj, subset = cell_class == "neuron" & Condition == "Control")
+
+XDP_oligo = subset(caudate_sobj, subset = cell_class == "oligo" & Condition == "XDP")
+Control_oligo= subset(caudate_sobj, subset = cell_class == "oligo" & Condition == "Control")
+
+XDP_opc = subset(caudate_sobj, subset = cell_class == "opc" & Condition == "XDP")
+Control_opc= subset(caudate_sobj, subset = cell_class == "opc" & Condition == "Control")
+
+XDP_mg = subset(caudate_sobj, subset = cell_class == "mg" & Condition == "XDP")
+Control_mg= subset(caudate_sobj, subset = cell_class == "mg" & Condition == "Control")
+
+XDP_ependymal = subset(caudate_sobj, subset = cell_class == "ependymal" & Condition == "XDP")
+Control_ependymal= subset(caudate_sobj, subset = cell_class == "ependymal" & Condition == "Control")
+
+XDP_endo = subset(caudate_sobj, subset = cell_class == "endo" & Condition == "XDP")
+Control_endo= subset(caudate_sobj, subset = cell_class == "endo" & Condition == "Control")
+
+XDP_immune = subset(caudate_sobj, subset = cell_class == "immune" & Condition == "XDP")
+Control_immune= subset(caudate_sobj, subset = cell_class == "immune" & Condition == "Control")
+```
+
+#THIS CAUSED EVERYTHING TO CRASH
+```{r}
+# TAF1correlation(XDP_astro,"XDP_astro","GSEA/de/all_cell_types/XDP_astro_df_taf1.csv") 
+# TAF1correlation(Control_astro, "Control_astro","GSEA/de/all_cell_types/Control_astro_df_taf1.csv") 
+# TAF1correlation(XDP_neuron, "XDP_neuron","GSEA/de/all_cell_types/XDP_neuron_df_taf1.csv")   
+# TAF1correlation(Control_neuron, "Control_neuron","GSEA/de/all_cell_types/Control_neuron_df_taf1.csv") 
+# TAF1correlation(XDP_oligo, "XDP_oligo","GSEA/de/all_cell_types/XDP_oligo_df_taf1.csv") 
+# TAF1correlation(Control_oligo, "Control_oligo","GSEA/de/all_cell_types/Control_oligo_df_taf1.csv") 
+# TAF1correlation(XDP_opc,"XDP_opc" ,"GSEA/de/all_cell_types/XDP_opc_df_taf1.csv") 
+# TAF1correlation(Control_opc, "Control_opc","GSEA/de/all_cell_types/Control_opc_df_taf1.csv") 
+# TAF1correlation(XDP_mg, "XDP_mg" ,"GSEA/de/all_cell_types/XDP_mg_df_taf1.csv") 
+# TAF1correlation(Control_mg, "Control_mg","GSEA/de/all_cell_types/Control_mg_df_taf1.csv") 
+# TAF1correlation(XDP_ependymal,"XDP_ependymal","GSEA/de/all_cell_types/XDP_ependymal_df_taf1.csv") 
+# TAF1correlation(Control_ependymal, "Control_ependymal","GSEA/de/all_cell_types/Control_ependymal_df_taf1.csv") 
+# TAF1correlation(XDP_endo, "XDP_endo","GSEA/de/all_cell_types/XDP_endo_df_taf1.csv") 
+# TAF1correlation(Control_endo, "Control_endo","GSEA/de/all_cell_types/Control_endo_df_taf1.csv") 
+# TAF1correlation(XDP_immune,"XDP_immune","GSEA/de/all_cell_types/XDP_immune_df_taf1.csv") 
+# TAF1correlation(Control_immune,"Control_immune","GSEA/de/all_cell_types/Control_immune_df_taf1.csv") 
+```
+
+#where i left off: got taf1 spearman correlation coefficients for all cells classes, this time without filtering out pvalues and then i wanted to regraph the degraphs so that all the points are there:
+#idk where my de dfs went tho aghh
+
+```{r}
+XDP_astro = read.csv("GSEA/de/all_cell_types/XDP_astro_df_taf1.csv") 
+Control_astro = read.csv("GSEA/de/all_cell_types/Control_astro_df_taf1.csv") 
+XDP_neuron = read.csv("GSEA/de/all_cell_types/XDP_neuron_df_taf1.csv")   
+Control_neuron = read.csv("GSEA/de/all_cell_types/Control_neuron_df_taf1.csv") 
+XDP_oligo = read.csv("GSEA/de/all_cell_types/XDP_oligo_df_taf1.csv") 
+Control_oligo = read.csv("GSEA/de/all_cell_types/Control_oligo_df_taf1.csv") 
+XDP_opc = read.csv("GSEA/de/all_cell_types/XDP_opc_df_taf1.csv") 
+Control_opc = read.csv("GSEA/de/all_cell_types/Control_opc_df_taf1.csv") 
+XDP_mg = read.csv("GSEA/de/all_cell_types/XDP_mg_df_taf1.csv") 
+Control_mg = read.csv("GSEA/de/all_cell_types/Control_mg_df_taf1.csv") 
+XDP_ependymal = read.csv("GSEA/de/all_cell_types/XDP_ependymal_df_taf1.csv") 
+Control_ependymal = read.csv("GSEA/de/all_cell_types/Control_ependymal_df_taf1.csv") 
+XDP_endo = read.csv("GSEA/de/all_cell_types/XDP_endo_df_taf1.csv") 
+Control_endo = read.csv("GSEA/de/all_cell_types/Control_endo_df_taf1.csv") 
+XDP_immune = read.csv("GSEA/de/all_cell_types/XDP_immune_df_taf1.csv") 
+Control_immune= read.csv("GSEA/de/all_cell_types/Control_immune_df_taf1.csv") 
+
+XDP_astro$X = NULL 
+Control_astro$X = NULL 
+XDP_neuron$X = NULL  
+Control_neuron$X = NULL 
+XDP_oligo$X = NULL 
+Control_oligo$X = NULL 
+XDP_opc$X = NULL  
+Control_opc$X = NULL 
+XDP_mg$X = NULL  
+Control_mg$X = NULL 
+XDP_ependymal$X = NULL 
+Control_ependymal$X = NULL 
+XDP_endo$X = NULL 
+Control_endo$X = NULL 
+XDP_immune$X = NULL 
+Control_immune$X = NULL 
+
+XDP_astro 
+Control_astro
+XDP_neuron 
+Control_neuron
+XDP_oligo
+Control_oligo
+XDP_opc 
+Control_opc
+XDP_mg 
+Control_mg
+XDP_ependymal
+Control_ependymal
+XDP_endo
+Control_endo
+XDP_immune
+Control_immune
+```
+
+
+
+```{r}
+DE_CaH_astro = read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__astro__20240529.csv")
+DE_CaH_neuron= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__neuron__20240529.csv")
+DE_CaH_oligo= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__oligo__20240529.csv")
+DE_CaH_opc= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__opc__20240529.csv")
+DE_CaH_mg= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__mg__20240529.csv")
+DE_CaH_ependymal= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__ependymal__20240529.csv")
+DE_CaH_endo= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__endo__20240529.csv")
+DE_CaH_immune= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__immune__20240529.csv")
+```
+
+
+```{r}
+merged_CaH_XDP_astro = merge(DE_CaH_astro, XDP_astro, by = "gene")
+merged_CaH_Control_astro =merge(DE_CaH_astro, Control_astro, by = "gene")
+merged_CaH_XDP_neuron  =merge(DE_CaH_neuron, XDP_neuron, by = "gene")
+merged_CaH_Control_neuron =merge(DE_CaH_neuron, Control_neuron, by = "gene")
+merged_CaH_XDP_oligo =merge(DE_CaH_oligo, XDP_oligo, by = "gene")
+merged_CaH_Control_oligo=merge(DE_CaH_oligo, Control_oligo, by = "gene")
+merged_CaH_XDP_opc =merge(DE_CaH_opc, XDP_opc, by = "gene")
+merged_CaH_Control_opc =merge(DE_CaH_opc, Control_opc, by = "gene")
+merged_CaH_XDP_mg  =merge(DE_CaH_mg, XDP_mg, by = "gene")
+merged_CaH_Control_mg =merge(DE_CaH_mg, Control_mg, by = "gene")
+merged_CaH_XDP_ependymal =merge(DE_CaH_ependymal, XDP_ependymal, by = "gene")
+merged_CaH_Control_ependymal=merge(DE_CaH_ependymal, Control_ependymal, by = "gene")
+merged_CaH_XDP_endo=merge(DE_CaH_endo, XDP_endo, by = "gene")
+merged_CaH_Control_endo=merge(DE_CaH_endo, Control_endo, by = "gene")
+merged_CaH_XDP_immune=merge(DE_CaH_immune, XDP_immune, by = "gene")
+merged_CaH_Control_immune=merge(DE_CaH_immune, Control_immune, by = "gene")
+
+
+merged_CaH_XDP_astro 
+merged_CaH_Control_astro
+merged_CaH_XDP_neuron 
+merged_CaH_Control_neuron
+merged_CaH_XDP_oligo
+merged_CaH_Control_oligo
+merged_CaH_XDP_opc 
+merged_CaH_Control_opc
+merged_CaH_XDP_mg 
+merged_CaH_Control_mg
+merged_CaH_XDP_ependymal
+merged_CaH_Control_ependymal
+merged_CaH_XDP_endo
+merged_CaH_Control_endo
+merged_CaH_XDP_immune
+merged_CaH_Control_immune
+```
+
+
+
+```{r}
+degraphs = function(sobj_df, title){
+ sobj_df$significant_DE = sobj_df$adj.P.Val < 0.05
+ 
+ significant_genes = sobj_df[sobj_df$significant_DE, ]
+ 
+ # Order the filtered dataframe by spearman correlation in decreasing order
+ top_5 <- significant_genes[order(significant_genes$spearman_correlation, decreasing = TRUE), ][1:5, ]
+ print(top_5)
+ 
+ ggplot(sobj_df, aes(x = spearman_correlation, y = logFC)) +
+   geom_point(aes(x = spearman_correlation, y = logFC, color = significant_DE), alpha = 0.3) + scale_color_manual(values = c("black", "red"))+
+   labs(
+     x = "Taf1 correlation",
+     y = "DE logFC", title= title) +
+   geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") 
+ }
+```
+
+
+#use this if you filtered
+```{r}
+# degraphs = function(sobj_df, title){
+# 
+#  # Order the filtered dataframe by spearman correlation in decreasing order
+#  top_5 <- sobj_df[order(sobj_df$spearman_correlation, decreasing = TRUE), ][1:5, ]
+#  print(top_5)
+#  
+#  ggplot(sobj_df, aes(x = spearman_correlation, y = logFC)) +
+#    geom_point(aes(x = spearman_correlation, y = logFC), alpha = 0.3) +
+#    labs(
+#      x = "Taf1 correlation",
+#      y = "DE logFC", title= title) +
+#    geom_text(data = top_5, aes(label = gene), vjust = -1, color = "black") 
+#  }
+```
+
+
+```{r}
+degraphs(merged_CaH_XDP_astro, "XDP astrocytes") 
+degraphs(merged_CaH_Control_astro, "Control astrocytes") 
+degraphs(merged_CaH_XDP_neuron, "XDP neurons")  
+degraphs(merged_CaH_Control_neuron, "Control neurons") 
+degraphs(merged_CaH_XDP_oligo, "XDP oligos") 
+degraphs(merged_CaH_Control_oligo, "Control oligos")
+```
+```{r}
+degraphs(merged_CaH_XDP_opc, "XDP OPC") 
+degraphs(merged_CaH_Control_opc, "Control OPC") 
+degraphs(merged_CaH_XDP_mg, "XDP Microglia")  
+degraphs(merged_CaH_Control_mg, "Control Microglia") 
+degraphs(merged_CaH_XDP_ependymal, "XDP Ependymal") 
+degraphs(merged_CaH_Control_ependymal, "Control Ependymal")
+```
+
+```{r}
+degraphs(merged_CaH_XDP_endo, "XDP Endo") 
+degraphs(merged_CaH_Control_endo, "Control Endo") 
+degraphs(merged_CaH_XDP_immune, "XDP Immune")  
+degraphs(merged_CaH_Control_immune, "Control Immune") 
+```
+
+
+
+#Now do DE vs TAF1 correlation on SPNS
+```{r}
+
+```
+

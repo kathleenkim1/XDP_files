@@ -1,0 +1,166 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+merged_caudate = qread("Cellbender_seurat/redo2_merged_caudate.qs")
+merged_putamen = qread("Cellbender_seurat/redo2_merged_putamen.qs")
+
+merged_caudate
+merged_putamen
+```
+
+```{r}
+filtered_merged_caudate <- subset(merged_caudate, subset = pct_mito < 10 & pct_intronic >= 0.25)
+filtered_merged_putamen <- subset(merged_putamen, subset = pct_mito < 10 & pct_intronic >= 0.25)
+```
+
+```{r}
+total_donors_cells_caudate = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_caudate$Var1 <- factor(total_donors_cells_caudate$Var1, levels = total_donors_cells_caudate$Var1[order(total_donors_cells_caudate$Freq, decreasing = TRUE)])
+```
+
+```{r}
+total_donors_cells_putamen = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_putamen$Var1 <- factor(total_donors_cells_putamen$Var1, levels = total_donors_cells_putamen$Var1[order(total_donors_cells_putamen$Freq, decreasing = TRUE)])
+```
+
+```{r}
+#prefilter
+prefilter_total_donors_cells_caudate = as.data.frame(table(merged_caudate@meta.data$donor_id)) #merged_caudate@meta.data$library))
+prefilter_total_donors_cells_caudate
+
+prefilter_total_donors_cells_putamen = as.data.frame(table(merged_putamen@meta.data$donor_id)) #merged_putamen@meta.data$library))
+prefilter_total_donors_cells_putamen
+```
+
+```{r}
+total_donors_cells_caudate$filtered_cells =  prefilter_total_donors_cells_caudate$Freq - total_donors_cells_caudate$Freq
+total_donors_cells_caudate
+
+total_donors_cells_putamen$filtered_cells =  prefilter_total_donors_cells_putamen$Freq - total_donors_cells_putamen$Freq
+total_donors_cells_putamen
+```
+
+```{r}
+ggplot(total_donors_cells_caudate, aes(x=total_donors_cells_caudate$Var1, y = total_donors_cells_caudate$filtered_cells)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_caudate$filtered_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Filterd Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,90)
+
+ggplot(total_donors_cells_putamen, aes(x=total_donors_cells_putamen$Var1, y = total_donors_cells_putamen$filtered_cells)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_putamen$filtered_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Putamen Village") + ylab("Number of Filtered Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,90)
+```
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+summary_data
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_caudate_by_rxn <- total_donors_cells_caudate_by_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_caudate_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+
+# Reorder Var1 based on total_filtered_cells
+#total_donors_cells_putamen_by_rxn <- total_donors_cells_putamen_by_rxn %>%
+ # mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+#summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+#summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+```{r}
+Idents(filtered_merged_caudate) = filtered_merged_caudate$RNA_snn_res.0.5
+markers = FindAllMarkers(filtered_merged_caudate, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+
+num_clusters = length(unique(Idents(filtered_merged_caudate))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+```{r}
+
+num_clusters = length(unique(Idents(filtered_merged_caudate))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+
+```{r}
+
+filtered_merged_putamen = qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+
+filtered_merged_putamen
+```
+
+
+
+
+```{r}
+Idents(filtered_merged_putamen) = filtered_merged_putamen$RNA_snn_res.0.5
+markers = FindAllMarkers(filtered_merged_putamen, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 0.5)
+
+num_clusters = length(unique(Idents(filtered_merged_putamen))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+
+
+
+

@@ -1,0 +1,1546 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(UCell)
+library(ggplot2)
+library(qs)
+library(ggExtra)
+```
+
+```{r}
+xdp_recon_full = qread("/broad/macosko/kimkathl/temp_disco/more_temp_1205/clean_recon_sobj_with_neuron_subclusters_sct_new.qs")
+                       #xdp_recon_temp_sct_new.qs"
+
+xdp_recon_full
+xdp_recon_full@meta.data
+```
+
+```{r}
+table(xdp_recon_full$final_cell_class)
+table(xdp_recon_full$reclustered_patch_matrix_exotic)
+table(xdp_recon_full$new_cell_class)
+```
+
+```{r}
+xdp_recon_full@meta.data$new_reclustered_patch_matrix_exotic = xdp_recon_full$new_cell_class
+
+xdp_recon_full$new_reclustered_patch_matrix_exotic[xdp_recon_full$reclustered_patch_matrix_exotic == "D1_D2"] = "D1_D2"
+xdp_recon_full$new_reclustered_patch_matrix_exotic[xdp_recon_full$reclustered_patch_matrix_exotic == "eSPN"] = "eSPN"
+xdp_recon_full$new_reclustered_patch_matrix_exotic[xdp_recon_full$reclustered_patch_matrix_exotic == "non_SPN"] = "non_SPN"
+xdp_recon_full$new_reclustered_patch_matrix_exotic[xdp_recon_full$reclustered_patch_matrix_exotic == "SPN_exotic"] = "SPN_exotic"
+xdp_recon_full$new_reclustered_patch_matrix_exotic[xdp_recon_full$reclustered_patch_matrix_exotic == "SPN_matrix"] = "SPN_matrix"
+xdp_recon_full$new_reclustered_patch_matrix_exotic[xdp_recon_full$reclustered_patch_matrix_exotic == "SPN_patch"] = "SPN_patch"
+table(xdp_recon_full$new_reclustered_patch_matrix_exotic)
+```
+```{r}
+xdp_recon_full@meta.data$new_subclass = xdp_recon_full$new_reclustered_patch_matrix_exotic
+xdp_recon_full$new_subclass[xdp_recon_full$new_reclustered_patch_matrix_exotic == "D1_D2"] = "SPN"
+xdp_recon_full$new_subclass[xdp_recon_full$new_reclustered_patch_matrix_exotic == "SPN_exotic"] = "SPN"
+xdp_recon_full$new_subclass[xdp_recon_full$new_reclustered_patch_matrix_exotic == "SPN_matrix"] = "SPN"
+xdp_recon_full$new_subclass[xdp_recon_full$new_reclustered_patch_matrix_exotic == "SPN_patch"] = "SPN"
+
+xdp_recon_full$new_subclass[xdp_recon_full$new_reclustered_patch_matrix_exotic == "eSPN"] = "non_SPN"
+table(xdp_recon_full$new_subclass)
+```
+
+
+
+```{r}
+Idents(xdp_recon_full) = "new_subclass"
+DimPlot(xdp_recon_full, raster = F, label = T)
+```
+```{r}
+xdp_recon_full_metadata = xdp_recon_full@meta.data
+xdp_recon_full_metadata
+```
+
+
+```{r}
+ggplot(xdp_recon_full_metadata,  aes(x = x_um, y = y_um, color = new_subclass)) + geom_point(alpha = 0.5,  size = 0.2) + facet_wrap(~ new_subclass)
+```
+
+```{r}
+DimPlot(xdp_recon_full, group.by = "RNA_snn_res.0.2", raster = F, label = T)
+DimPlot(xdp_recon_full, group.by = "RNA_snn_res.0.3", raster = F, label = T)
+DimPlot(xdp_recon_full, group.by = "RNA_snn_res.0.4", raster = F, label = T)
+DimPlot(xdp_recon_full, group.by = "RNA_snn_res.0.5", raster = F, label = T)
+DimPlot(xdp_recon_full, group.by = "RNA_snn_res.0.6", raster = F, label = T)
+DimPlot(xdp_recon_full, group.by = "RNA_snn_res.0.7", raster = F, label = T)
+DimPlot(xdp_recon_full, group.by = "RNA_snn_res.0.8", raster = F, label = T)
+```
+
+```{r}
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = new_subclass)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ new_subclass) +theme_void()
+
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.2)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.2) +theme_void()
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.3)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.3) +theme_void()
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.4)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.4) +theme_void()
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.5)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.5) +theme_void()
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.6)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.6) +theme_void()
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.7)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.7) +theme_void()
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.8)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.8) +theme_void()
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.9)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.0.9) +theme_void()
+ggplot(xdp_recon_full@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.1)) + geom_point(alpha = 0.2, size = 0.2) + facet_wrap(~ RNA_snn_res.1) +theme_void()
+```
+
+
+
+
+#Subclasses 
+```{r}
+table(xdp_recon_full$new_subclass)
+table(xdp_recon_full$new_reclustered_patch_matrix_exotic)
+```
+
+```{r}
+DefaultAssay(xdp_recon_full) = "RNA"
+xdp_recon_full
+```
+
+```{r}
+xdp_recon_temp = subset(xdp_recon_full, subset = new_reclustered_patch_matrix_exotic == "eSPN" | new_reclustered_patch_matrix_exotic == "SPN_exotic"| new_reclustered_patch_matrix_exotic == "SPN_matrix"| new_reclustered_patch_matrix_exotic == "SPN_patch"| new_reclustered_patch_matrix_exotic == "D1_D2")
+
+table(xdp_recon_temp$new_reclustered_patch_matrix_exotic)
+```
+
+```{r}
+xdp_recon_temp
+DefaultAssay(xdp_recon_temp) = "RNA"
+xdp_recon_temp
+
+```
+
+
+```{r}
+n_dims_use=20
+
+xdp_recon_temp = (xdp_recon_temp
+%>% NormalizeData()
+%>% ScaleData()
+%>% FindVariableFeatures(nfeatures = 2500)
+%>% RunPCA()
+   %>% FindNeighbors(dims = 1:n_dims_use) 
+   # %>% FindClusters(resolution = 0.05) 
+   # %>% FindClusters(resolution = 0.1) 
+   # %>% FindClusters(resolution = 0.2) 
+   # %>% FindClusters(resolution = 0.3) 
+   # %>% FindClusters(resolution = 0.4) 
+   # %>% FindClusters(resolution = 0.5)
+   # %>% FindClusters(resolution = 0.6)
+   # %>% FindClusters(resolution = 0.7)
+   # %>% FindClusters(resolution = 0.8)
+   # %>% FindClusters(resolution = 0.9)
+   # %>% FindClusters(resolution = 1)
+   %>% FindClusters(resolution = 1.25)
+   %>% FindClusters(resolution = 1.5)
+   %>% FindClusters(resolution = 1.75)
+   %>% FindClusters(resolution = 2)
+   %>% FindClusters(resolution = 2.5)
+   %>% FindClusters(resolution = 3)
+   %>% RunUMAP(dims = 1:n_dims_use) 
+)
+xdp_recon_temp
+
+xdp_recon_temp@meta.data
+```
+
+```{r}
+DimPlot(xdp_recon_temp, group.by = "new_subclass", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "new_reclustered_patch_matrix_exotic", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "new_cell_class", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.05", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.1", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.2", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.3", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.4", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.5", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.6", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.7", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.8", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.0.9", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.1", raster = F, label = T)
+```
+
+
+```{r}
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.1.25", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.1.5", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.1.75", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.2", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.2.5", raster = F, label = T)
+DimPlot(xdp_recon_temp, group.by = "RNA_snn_res.3", raster = F, label = T)
+
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.1.25)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.1.25) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.1.5)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.1.5) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.1.75)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.1.75) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.2)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.2) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.2.5)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.2.5) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.3)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.3) +theme_void()
+```
+
+```{r}
+DimPlot(xdp_recon_temp, group.by = "subclass", raster = F, label = T)
+```
+
+```{r}
+# FeaturePlot(xdp_recon_temp, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6"), raster = F)
+# FeaturePlot(xdp_recon_temp, features = c("AQP4", "GINS3", "GFAP"), raster = F)
+# FeaturePlot(xdp_recon_temp, features = c("C1QA", "C1QB", "CX3CR1", "P2RY12"), raster = F)
+# FeaturePlot(xdp_recon_temp, features = c("FLT1", "DCN", "RGS5"), raster = F)
+# FeaturePlot(xdp_recon_temp, features = c("OLIG1", "MOG", "MOBP"), raster = F)
+# FeaturePlot(xdp_recon_temp, features = c("OLIG2", "VCAN", "GAPDH"), raster = F)
+# FeaturePlot(xdp_recon_temp, features = c("ZBBX", "CFAP157", "CFAP299", "BSG"), raster = F)
+# FeaturePlot(xdp_recon_temp, features = c("CD96", "NKG7", "SKAP1"), raster = F)
+# FeaturePlot(xdp_recon_temp, features = c("UBB", "GAPDH", "TUBB2A"),raster=FALSE) 
+# FeaturePlot(xdp_recon_temp, features = c("logumi", "percent.mt"),raster=FALSE)
+```
+
+```{r}
+table(xdp_recon_temp$new_subclass)
+table(xdp_recon_temp$RNA_snn_res.0.2)
+xdp_recon_temp@meta.data
+```
+
+```{r}
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = new_subclass)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ new_subclass) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.05)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.05) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.1)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.1) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.2)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.2) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.3)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.3) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.4)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.4) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.5)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.5) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.6)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.6) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.7)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.7) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.8)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.8) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.9)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.9) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.1)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.1) +theme_void()
+```
+
+
+```{r}
+xdp_recon_opc = xdp_recon_temp
+```
+
+
+```{r}
+# qsave(xdp_recon_astrocytes, "xdp_recon_astrocytes_clustered.qs")
+# qsave(xdp_recon_neurons, "xdp_recon_neurons_clustered.qs")
+# qsave(xdp_recon_SPN_espns, "xdp_recon_SPN_espns_clustered.qs")
+# qsave(xdp_recon_opc, "xdp_recon_opc_clustered.qs")
+```
+
+```{r}
+xdp_recon_astrocytes = qread("xdp_recon_astrocytes_clustered.qs")
+xdp_recon_astrocytes
+xdp_recon_neurons = qread("xdp_recon_neurons_clustered.qs")
+xdp_recon_neurons
+xdp_recon_SPN_espns = qread("xdp_recon_SPN_espns_clustered.qs")
+xdp_recon_SPN_espns
+xdp_recon_opc = qread("xdp_recon_opc_clustered.qs")
+xdp_recon_opc
+```
+```{r}
+xdp_recon_temp = xdp_recon_SPN_espns
+DimPlot(xdp_recon_temp, label = T, group.by = "RNA_snn_res.1")
+DimPlot(xdp_recon_temp, label = T, group.by = "subclass")
+```
+
+
+```{r}
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = new_subclass)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ new_subclass) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.05)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.05) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.1)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.1) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.2)) + geom_point(alpha = 0.5, size = 1) + facet_wrap(~ RNA_snn_res.0.2) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.3)) + geom_point(alpha = 0.5, size = 1) + facet_wrap(~ RNA_snn_res.0.3) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.4)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.4) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.5)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.5) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.6)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.6) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.7)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.7) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.8)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.8) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.0.9)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.0.9) +theme_void()
+ggplot(xdp_recon_temp@meta.data, aes(x= x_um, y = y_um, color = RNA_snn_res.1)) + geom_point(alpha = 0.5, size = 0.5) + facet_wrap(~ RNA_snn_res.1) +theme_void()
+```
+
+
+
+
+
+#Here I identified the inflammatory cluster in astrocytes and potentially opc, but not in neurons
+#Making scores for astrocytes
+
+```{r}
+Idents(xdp_recon_astrocytes) = "RNA_snn_res.0.3"
+astrocyte_inflam_cluster <- FindMarkers(xdp_recon_astrocytes, 
+                                  ident.1 = 7) 
+astrocyte_inflam_cluster
+```
+
+
+```{r}
+Idents(xdp_recon_opc) = "RNA_snn_res.0.3"
+opc_inflam_cluster <- FindMarkers(xdp_recon_opc, 
+                                  ident.1 = 5) 
+opc_inflam_cluster
+```
+
+```{r}
+# qsave(astrocyte_inflam_cluster, "astrocyte_inflam_cluster.qs")
+# qsave(opc_inflam_cluster, "opc_inflam_cluster.qs")
+```
+
+
+```{r}
+astrocyte_inflam_cluster = qread("astrocyte_inflam_cluster.qs")
+astrocyte_inflam_cluster
+opc_inflam_cluster =qread("opc_inflam_cluster.qs")
+opc_inflam_cluster
+```
+
+
+
+```{r}
+astrocyte_inflam_cluster_sig = subset(astrocyte_inflam_cluster, subset = p_val_adj < 0.05)
+opc_inflam_cluster_sig = subset(opc_inflam_cluster, subset = p_val_adj < 0.05)
+
+
+opc_inflam_cluster_sig
+```
+```{r}
+xdp_recon_full
+xdp_recon_full@meta.data
+```
+
+```{r}
+xdp_cah_put_sct = qread("temp_disco/more_temp_1205/xdp_cah_put_sct_new.qs")
+xdp_cah_put_sct
+xdp_cah_put_sct@meta.data
+```
+```{r}
+xdp_recon_full
+```
+
+
+
+```{r}
+table(xdp_cah_put_sct$neuron_classes)
+```
+
+
+```{r}
+astrocyte_inflam_genes = rownames(astrocyte_inflam_cluster_sig)
+length(astrocyte_inflam_genes)
+astrocyte_inflam_genes = intersect(rownames(xdp_recon_full),astrocyte_inflam_genes)
+astrocyte_inflam_genes = intersect(rownames(xdp_cah_put_sct),astrocyte_inflam_genes)
+length(astrocyte_inflam_genes)
+```
+
+```{r}
+opc_inflam_genes = rownames(opc_inflam_cluster_sig)
+length(opc_inflam_genes)
+opc_inflam_genes = intersect(rownames(xdp_recon_full),opc_inflam_genes)
+opc_inflam_genes = intersect(rownames(xdp_cah_put_sct),opc_inflam_genes)
+length(opc_inflam_genes)
+```
+
+```{r}
+DefaultAssay(xdp_recon_full) = "SCT"
+xdp_recon_full
+```
+
+```{r}
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(astro_inflammatory = astrocyte_inflam_genes),
+                                                                 name = '_feb0225'
+)
+
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(opc_inflammatory = opc_inflam_genes),
+                                                                 name = '_feb0225'
+)
+
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(astro_inflammatory = astrocyte_inflam_genes),
+                                                                 name = '_feb0225'
+)
+
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(opc_inflammatory = opc_inflam_genes),
+                                                                 name = '_feb0225'
+)
+```
+
+```{r}
+xdp_recon_full@meta.data
+xdp_cah_put_sct@meta.data
+```
+
+
+
+```{r}
+spatial_scores(xdp_recon_full@meta.data, "astro_inflammatory_feb0225", "Astrocyte Inflammatory")
+```
+
+```{r}
+spatial_scores(xdp_recon_full@meta.data, "opc_inflammatory_feb0225", "OPC Inflammatory")
+```
+
+
+```{r}
+histograms_by_all_celltype(xdp_cah_put_sct@meta.data, "astro_inflammatory_feb0225", "Astrocyte Inflammatory", 20, 10)
+histograms_by_all_celltype(xdp_cah_put_sct@meta.data, "opc_inflammatory_feb0225", "OPC Inflammatory", 20, 10)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "astro_inflammatory_feb0225", "astrocyte" ,"Astrocyte Inflammatory score", 25, 15)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "opc_inflammatory_feb0225", "opc" ,"OPC Inflammatory score", 25, 15)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "opc_inflammatory_feb0225", "SPN_matrix" ,"OPC Inflammatory score", 25, 15)
+```
+
+```{r}
+xdp_cah_put_sct@meta.data
+```
+
+```{r}
+spatial_scores(xdp_recon_full@meta.data, "HLA_combined", "HLA_combined")
+```
+
+
+
+```{r}
+histograms_by_all_celltype = function(final_df, score_col, xlab, width_size, height_size){
+
+celltypes = c("astrocyte", "microglia", "oligo", "opc", "endothelial","immune", "ependymal", "non_SPN", "eSPN", "SPN_matrix", "SPN_patch", "SPN_exotic")
+
+# celltypes = unique(xdp_meta[["neuron_classes"]])  
+plots <- list()
+
+for (celltype in celltypes) {
+  df_sub = final_df[final_df$neuron_classes == celltype, ]
+   
+  if (nrow(df_sub) == 0) {
+    message(paste("No data for cell type:", celltype, "- skipping."))
+    next
+  }
+  
+min = 0.01
+max = max(df_sub[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+  
+  a = plot_overlapping_density_histogram(df = df_sub, 
+                                          hist_col = df_sub[[score_col]],
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = paste0("XDP vs Control: ", celltype),
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+    plots[[celltype]] = a
+  
+}
+
+final_plot <- plot_grid(plotlist = plots, ncol = 4)
+
+# Display or save the final plot
+print(final_plot)  # Display
+ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+
+histograms_by_all_celltype(xdp_cah_put_sct@meta.data, "HLA_combined", "HLA_combined", 20, 10)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "HLA_combined", "SPN_matrix" ,"HLA_combined score", 25, 15)
+```
+
+```{r}
+xdp_cah_put_sct@meta.data
+```
+
+
+
+```{r}
+xdp_cah_put_sct_meta = xdp_cah_put_sct@meta.data
+```
+
+
+```{r}
+ donor_order <- c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", 
+                   "SCF-19-009", "SCF-19-014", "SCF-19-018", "SCF-20-023", "SCF_20-024", 
+                   "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF-22-054CM", "SCF-22-058CF", 
+                   "SCF_21-037CM2", "SCF-23-068CM")
+
+xdp_cah_put_sct_meta$donor_id <- factor(xdp_cah_put_sct_meta$donor_id, levels = donor_order)
+
+ggplot(xdp_cah_put_sct_meta, aes(x = neuron_classes, y = donor_id, size = HLA_combineds, color = Condition)) +
+  geom_point() +
+  scale_size_continuous(name = "HLA Combined Score") +
+  scale_color_manual(values = c("Control" = "blue", "XDP" = "red")) +
+  labs(x = "Cell Type", y = "Donor", title = "HLA Combined") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
+```
+
+
+
+```{r}
+xdp_recon_full_metadata
+```
+
+
+```{r}
+ggplot(xdp_recon_full_metadata, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 40, aes(fill = ..count..)) +
+    scale_fill_viridis_c()+
+    theme_minimal()+xlab("Spatial_1") +ylab("Spatial_2")
+
+#ggsave(a, filename = "a.png", width = 8, height = 7)
+```
+
+```{r}
+all_xdp <- ggplot(xdp_recon_full_metadata, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 40, aes(fill = ..count..)) +
+    scale_fill_viridis_c() +
+    theme_minimal() + xlab("Spatial_1") + ylab("Spatial_2")
+
+# Extract bin counts
+xdp_hex_data <- ggplot_build(all_xdp)$data[[1]]
+xdp_hex_data
+
+
+xdp_recon_full_metadata_opcs = subset(xdp_recon_full_metadata, subset = reclustered_patch_matrix_exotic == "opc")
+xdp_recon_full_metadata_opcs
+opc_xdp <- ggplot(xdp_recon_full_metadata_opcs, aes(x = x_um, y = y_um)) +
+    geom_hex(bins = 40, aes(fill = ..count..)) +
+    scale_fill_viridis_c() +
+    theme_minimal() + xlab("Spatial_1") + ylab("Spatial_2")
+
+# Extract bin counts
+xdp_opc_hex_data <- ggplot_build(opc_xdp)$data[[1]]
+xdp_opc_hex_data
+
+```
+
+```{r}
+xdp_hex_data$XDP_total_cells = xdp_hex_data$count
+xdp_hex_data$total_density = xdp_hex_data$density
+
+xdp_opc_hex_data$XDP_opc_cells = xdp_opc_hex_data$count
+xdp_opc_hex_data$opc_density = xdp_opc_hex_data$density
+
+xdp_hex_data
+xdp_opc_hex_data
+```
+
+```{r}
+xdp_merged = merge(xdp_hex_data, xdp_opc_hex_data, by = "x")
+xdp_merged
+```
+
+
+```{r}
+xdp_cah_put_sct@meta.data
+```
+
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "ScoreNFKB", "astrocyte" ,"TNF Alpha score", 25, 15)
+```
+
+```{r}
+spatial_scores(xdp_recon_full@meta.data, "Scoreinterferon_alpha", "Interferon Alpha")
+```
+
+```{r}
+celltypes = unique(xdp_recon_full$final_cell_class)
+xdp_recon_full@meta.data$interferon_alpha_patch = "Other"
+for (cell in celltypes) {
+df = subset(xdp_recon_full@meta.data, subset = final_cell_class == cell)
+threshold <- quantile(df$Scoreinterferon_alpha, 0.99)
+cell_ids <- rownames(df[df$Scoreinterferon_alpha > threshold, ])
+
+df$interferon_alpha_patch[df$Scoreinterferon_alpha > threshold] = "Interferon_Positive"
+xdp_recon_full@meta.data[cell_ids, "interferon_alpha_patch"] <- "Interferon_Positive"
+a = ggplot(data =df, aes(x = Scoreinterferon_alpha)) + geom_histogram(binwidth = 0.005) + ggtitle(paste0(cell)) + xlab("Interferon Alpha Score") +  geom_vline(xintercept = threshold, color = "red", linetype = "dashed")
+print(a)
+print(threshold)
+
+
+b=ggplot(data = df, aes(x = x_um, y = y_um, color =interferon_alpha_patch)) + geom_point(size = 0.5) + scale_color_manual(values = c("Other" = "lightgrey", "Interferon_Positive"= "blue")) + ggtitle(paste0(cell, ", threshold: ", sprintf("%.2f", threshold))) + geom_rect(aes(xmin = 12000, xmax = 15000, ymin = 15500, ymax = 19000), color = "red", fill = NA, size = 0.5)
+print(b)
+                                                                                                              
+}
+
+xdp_recon_full@meta.data
+```
+
+
+
+```{r}
+xdp_recon_full@meta.data
+```
+
+```{r}
+ggplot(xdp_recon_full@meta.data,  aes(x = x_um, y = y_um, color = interferon_patch)) + geom_point(alpha = 0.5,  size = 0.2) + facet_wrap(~ reclustered_patch_matrix_exotic)
+```
+
+
+
+```{r}
+astrocyte_roi_markers_sig_new = read.csv("temp_disco/more_temp_1205/interferon_classes_markers_new/astrocyte_roi_markers_sig_new.csv")
+endo_roi_markers_sig_new = read.csv("temp_disco/more_temp_1205/interferon_classes_markers_new/endo_roi_markers_sig_new.csv")
+oligo_roi_markers_sig_new = read.csv("temp_disco/more_temp_1205/interferon_classes_markers_new/oligo_roi_markers_sig_new.csv")
+opc_roi_markers_sig_new = read.csv("temp_disco/more_temp_1205/interferon_classes_markers_new/opc_roi_markers_sig_new.csv")
+neuron_roi_markers_sig_new = read.csv("temp_disco/more_temp_1205/interferon_classes_markers_new/neuron_roi_markers_sig_new.csv")
+micro_roi_markers_sig_new = read.csv("temp_disco/more_temp_1205/interferon_classes_markers_new/micro_roi_markers_sig_new.csv")
+
+astrocyte_roi_markers_sig_new 
+endo_roi_markers_sig_new 
+oligo_roi_markers_sig_new 
+opc_roi_markers_sig_new 
+neuron_roi_markers_sig_new 
+micro_roi_markers_sig_new 
+```
+
+#maybe 100 genes with highest logFC where pct.1 > pct.2?
+```{r}
+astrocyte_roi_markers_sig_top100 <- astrocyte_roi_markers_sig_new %>%
+  filter(pct.1 > pct.2) %>%  # Keep only rows where pct.1 > pct.2
+  arrange(desc(avg_log2FC)) %>%  # Sort by logFC in descending order
+  slice_head(n = 100) 
+astrocyte_roi_markers_sig_top100
+
+endo_roi_markers_sig_new_top100 <- endo_roi_markers_sig_new %>%
+  filter(pct.1 > pct.2) %>%  
+  arrange(desc(avg_log2FC)) %>%  
+  slice_head(n = 100) 
+endo_roi_markers_sig_new_top100
+
+oligo_roi_markers_sig_new_top100 <- oligo_roi_markers_sig_new %>%
+  filter(pct.1 > pct.2) %>%  
+  arrange(desc(avg_log2FC)) %>%  
+  slice_head(n = 100) 
+oligo_roi_markers_sig_new_top100
+
+opc_roi_markers_sig_new_top100 <- opc_roi_markers_sig_new %>%
+  filter(pct.1 > pct.2) %>%  
+  arrange(desc(avg_log2FC)) %>%  
+  slice_head(n = 100) 
+opc_roi_markers_sig_new_top100
+
+neuron_roi_markers_sig_new_top100 <- neuron_roi_markers_sig_new %>%
+  filter(pct.1 > pct.2) %>%  
+  arrange(desc(avg_log2FC)) %>%  
+  slice_head(n = 100) 
+neuron_roi_markers_sig_new_top100
+
+micro_roi_markers_sig_new_top100 <- micro_roi_markers_sig_new %>%
+  filter(pct.1 > pct.2) %>%  
+  arrange(desc(avg_log2FC)) %>%  
+  slice_head(n = 100) 
+micro_roi_markers_sig_new_top100
+```
+```{r}
+qsave(astrocyte_roi_markers_sig_top100, "Feb72025_interferon_roi_markers/astrocyte_roi_markers_sig_top100.qs")
+qsave(endo_roi_markers_sig_new_top100, "Feb72025_interferon_roi_markers/endo_roi_markers_sig_new_top100.qs")
+qsave(oligo_roi_markers_sig_new_top100, "Feb72025_interferon_roi_markers/oligo_roi_markers_sig_new_top100.qs")
+qsave(opc_roi_markers_sig_new_top100, "Feb72025_interferon_roi_markers/opc_roi_markers_sig_new_top100.qs")
+qsave(neuron_roi_markers_sig_new_top100, "Feb72025_interferon_roi_markers/neuron_roi_markers_sig_new_top100.qs")
+qsave(micro_roi_markers_sig_new_top100, "Feb72025_interferon_roi_markers/micro_roi_markers_sig_new_top100.qs")
+```
+
+
+
+```{r}
+astrocyte_inflam_genes_top100 = astrocyte_roi_markers_sig_top100$X
+length(astrocyte_inflam_genes_top100)
+astrocyte_inflam_genes_top100 = intersect(rownames(xdp_recon_full),astrocyte_inflam_genes_top100)
+astrocyte_inflam_genes_top100 = intersect(rownames(xdp_cah_put_sct),astrocyte_inflam_genes_top100)
+length(astrocyte_inflam_genes_top100)
+
+oligo_inflam_genes_top100 = oligo_roi_markers_sig_new_top100$X
+length(oligo_inflam_genes_top100)
+oligo_inflam_genes_top100 = intersect(rownames(xdp_recon_full),oligo_inflam_genes_top100)
+oligo_inflam_genes_top100 = intersect(rownames(xdp_cah_put_sct),oligo_inflam_genes_top100)
+length(oligo_inflam_genes_top100)
+
+opc_inflam_genes_top100 = opc_roi_markers_sig_new_top100$X
+length(opc_inflam_genes_top100)
+opc_inflam_genes_top100 = intersect(rownames(xdp_recon_full),opc_inflam_genes_top100)
+opc_inflam_genes_top100 = intersect(rownames(xdp_cah_put_sct),opc_inflam_genes_top100)
+length(opc_inflam_genes_top100)
+
+neuron_inflam_genes_top100 = neuron_roi_markers_sig_new_top100$X
+length(neuron_inflam_genes_top100)
+neuron_inflam_genes_top100 = intersect(rownames(xdp_recon_full),neuron_inflam_genes_top100)
+neuron_inflam_genes_top100 = intersect(rownames(xdp_cah_put_sct),neuron_inflam_genes_top100)
+length(neuron_inflam_genes_top100)
+
+micro_inflam_genes_top100 = micro_roi_markers_sig_new_top100$X
+length(micro_inflam_genes_top100)
+micro_inflam_genes_top100 = intersect(rownames(xdp_recon_full),micro_inflam_genes_top100)
+micro_inflam_genes_top100 = intersect(rownames(xdp_cah_put_sct),micro_inflam_genes_top100)
+length(micro_inflam_genes_top100)
+```
+
+
+```{r}
+qsave(astrocyte_inflam_genes_top100, "Feb72025_interferon_roi_markers/astrocyte_inflam_genes_top100.qs")
+qsave(oligo_inflam_genes_top100, "Feb72025_interferon_roi_markers/oligo_inflam_genes_top100.qs")
+qsave(opc_inflam_genes_top100, "Feb72025_interferon_roi_markers/opc_inflam_genes_top100.qs")
+qsave(neuron_inflam_genes_top100, "Feb72025_interferon_roi_markers/neuron_inflam_genes_top100.qs")
+qsave(micro_inflam_genes_top100, "Feb72025_interferon_roi_markers/micro_inflam_genes_top100.qs")
+```
+
+#also do for spn_matrix and patch
+
+
+
+
+
+
+```{r}
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(astro_inflammatory = astrocyte_inflam_genes_top100), name = '_top100')
+```
+
+
+```{r}
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(oligo_inflammatory = oligo_inflam_genes_top100), name = '_top100')
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(opc_inflammatory = opc_inflam_genes_top100), name = '_top100')
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(neuron_inflammatory = neuron_inflam_genes_top100), name = '_top100')
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(micro_inflammatory = micro_inflam_genes_top100), name = '_top100')
+
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(astro_inflammatory = astrocyte_inflam_genes_top100), name = '_top100')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(oligo_inflammatory = oligo_inflam_genes_top100), name = '_top100')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(opc_inflammatory = opc_inflam_genes_top100), name = '_top100')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(neuron_inflammatory = neuron_inflam_genes_top100), name = '_top100')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(micro_inflammatory = micro_inflam_genes_top100), name = '_top100')
+
+```
+
+
+```{r}
+xdp_recon_full@meta.data
+xdp_cah_put_sct@meta.data
+```
+
+#temp comparision
+```{r}
+xdp_recon_full = qread("xdp_recon_full_feb2025.qs")
+DefaultAssay(xdp_recon_full) = "RNA"
+
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(astro_inflammatory = astrocyte_inflam_genes_top100), name = '_top100_RNA')
+
+xdp_recon_full@meta.data
+```
+
+```{r}
+ggplot(xdp_recon_full@meta.data, aes(x = astro_inflammatory_top100, y = astro_inflammatory_top100_RNA)) +geom_point(color = "red", alpha = 0.5)
+```
+
+
+
+
+
+```{r}
+qsave(xdp_recon_full, "xdp_recon_full_feb2025.qs")
+qsave(xdp_cah_put_sct, "xdp_cah_put_sct_feb2025.qs")
+```
+
+```{r}
+xdp_recon_full_meta = xdp_recon_full@meta.data 
+xdp_cah_put_sct_meta = xdp_cah_put_sct@meta.data
+xdp_recon_full_meta
+xdp_cah_put_sct_meta
+```
+
+```{r}
+spatial_scores(xdp_recon_full@meta.data, "astro_inflammatory_top100", "Astro Inflammatory Top 100")
+```
+
+```{r}
+histograms_by_all_celltype(xdp_cah_put_sct@meta.data, "astro_inflammatory_top100", "Astrocyte Inflammatory Top 100", 20, 10)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "astro_inflammatory_top100", "astrocyte" ,"Astrocyte Inflammatory Top 100 score", 25, 15)
+```
+
+```{r}
+xdp_cah_put_sct@meta.data$cause_of_death = "Other"
+xdp_cah_put_sct$cause_of_death[xdp_cah_put_sct$donor_id == "SCF-18-003" | 
+                             xdp_cah_put_sct$donor_id == "SCF-18-004" | 
+                             xdp_cah_put_sct$donor_id == "SCF-19-009"| 
+                             xdp_cah_put_sct$donor_id == "SCF-19-014" | 
+                             xdp_cah_put_sct$donor_id == "SCF-20-025" | 
+                             xdp_cah_put_sct$donor_id == "SCF_21-037CM2"] = "Infection-related Death"
+                           
+```
+
+```{r}
+xdp_cah_put_sct$cause_of_death_case_control = paste(xdp_cah_put_sct$Condition, xdp_cah_put_sct$cause_of_death) 
+
+xdp_cah_put_sct@meta.data
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+data <- xdp_cah_put_sct@meta.data
+df = subset(data, subset = neuron_classes == "astrocyte")
+df
+df_avg <- df %>%
+  group_by(donor_id, cause_of_death_case_control, Condition, cause_of_death) %>%
+  summarise(avg_score = mean(astro_inflammatory_top100), .groups = 'drop')
+df_avg
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition, y = avg_score, color = Condition, shape = cause_of_death)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Condition", y = "Mean Astrocyte Inflammatory Top 100 Score", color = "Condition", shape = "Cause of Death", title = "Astrocytes")+ scale_shape_manual(values = rev(c(16, 17))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+```
+
+
+```{r}
+xdp_cah_put_sct_meta
+```
+
+```{r}
+xdp_recon_full@meta.data
+```
+
+
+```{r}
+spatial_scores(xdp_recon_full@meta.data, "HLA_combined", "HLA Combined")
+```
+
+```{r}
+histograms_by_all_celltype(xdp_cah_put_sct@meta.data, "HLA_combined", "HLA Combined", 20, 10)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "neuron_inflammatory_top100", "SPN_patch" ,"Neuron Inflammatory Top 100 score", 25, 15)
+```
+
+```{r}
+xdp_cah_put_sct@meta.data
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+data <- xdp_cah_put_sct@meta.data
+df = subset(data, subset = final_cell_class == "neuron")
+df
+df_avg <- df %>%
+  group_by(donor_id, cause_of_death_case_control, Condition, cause_of_death) %>%
+  summarise(avg_score = mean(HLA_combined), .groups = 'drop')
+df_avg
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition, y = avg_score, color = Condition, shape = cause_of_death)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Condition", y = "Mean HLA Combined Score", color = "Condition", shape = "Cause of Death", title = "Neurons")+ scale_shape_manual(values = rev(c(16, 17))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+bican_recon = qread("/broad/macosko/bican/A22J235LT4_3cm_seurat.qs")
+bican_recon@meta.data
+
+unique(bican_recon$cell_class_annot)
+
+bican_recon = subset(bican_recon, cell_class_annot != "doublet")
+bican_recon@meta.data$reclustered_patch_matrix_exotic = bican_recon$cell_type_group_annot
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "oligo"] = "oligo"
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "astro"] = "astrocyte"
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "mg"] = "microglia"
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "endo"] = "endothelial"
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "opc"] = "opc"
+bican_recon@meta.data
+
+theta <- 142
+radians <- theta * pi / 180  # Convert degrees to radians
+cos_theta <- cos(radians)
+sin_theta <- sin(radians)
+
+bican_recon@meta.data$x_um_rotated = bican_recon$x_um * cos_theta + bican_recon$y_um * sin_theta
+bican_recon@meta.data$y_um_rotated = -bican_recon$x_um * sin_theta + bican_recon$y_um * cos_theta
+bican_recon@meta.data
+qsave(bican_recon, "bican_recon_feb2025.qs")
+```
+
+
+
+```{r}
+bican_recon = qread("bican_recon_feb2025.qs")
+
+bican_recon
+bican_recon@meta.data
+```
+
+
+```{r}
+options(future.globals.maxSize = 400 * 1024^3)  
+library(sctransform)
+bican_recon = SCTransform(bican_recon, vars.to.regress = "pct_mito", verbose = FALSE)
+bican_recon
+qsave(bican_recon, "bican_recon_feb2025.qs")
+```
+
+
+#nfkb, hla combined, interferonalpha by region
+```{r}
+C_minus = qread("temp_disco/more_temp_1205/final_c_minus_genes.qs")
+C_plus = qread("temp_disco/more_temp_1205/final_c_plus_genes.qs")
+astrocyte_inflam_cluster = qread("astrocyte_inflam_cluster.qs")
+
+opc_inflam_cluster =qread("opc_inflam_cluster.qs")
+
+
+astrocyte_inflam_genes_top100 =qread("Feb72025_interferon_roi_markers/astrocyte_inflam_genes_top100.qs")
+
+oligo_inflam_genes_top100 = qread("Feb72025_interferon_roi_markers/oligo_inflam_genes_top100.qs")
+
+opc_inflam_genes_top100 = qread("Feb72025_interferon_roi_markers/opc_inflam_genes_top100.qs")
+
+neuron_inflam_genes_top100 = qread("Feb72025_interferon_roi_markers/neuron_inflam_genes_top100.qs")
+
+micro_inflam_genes_top100 = qread("Feb72025_interferon_roi_markers/micro_inflam_genes_top100.qs")
+
+
+NFKB_genes =  c("MARCKS", "IL23A", "NINJ1", "TNFSF9", "SIK1", "ATF3", "SERPINE1", "MYC", "HES1", "CCNL1", "CCN1", "EGR1", "EGR2", "JAG1", "EGR3", "ABCA1", "GADD45B", "GADD45A", "PLK2", "KLF10", 
+           "EIF1", "EHD1", "FOSL2", "FOSL1", "GPR183", "PLPP3", "IFIT2", "ICAM1", "ZC3H12A", "IER2", 
+           "IL12B", "JUNB", "IER5", "IER3", "STAT5A", "DUSP5", "EDN1", "JUN", "DUSP4", "DUSP1", 
+           "DUSP2", "TSC22D1", "CCL20", "SPHK1", "LIF", "IL18", "TUBB2A", "RHOB", "VEGFA", "PTPRE", 
+           "IL1A", "TLR2", "IL1B", "BHLHE40", "ID2", "CLCF1", "REL", "FJX1", "SGK1", "BTG3", "BTG2", 
+           "BTG1", "SDC4", "LITAF", "AREG", "SOCS3", "PANX1", "RIPK2", "NFIL3", "SERPINB2", "GCH1", 
+           "IFNGR2", "G0S2", "FOS", "SERPINB8", "F3", "SPSB1", "FOSB", "PER1", "F2RL1", "HBEGF", 
+           "CD44", "TRIP10", "CDKN1A", "PTGER4", "PTGS2", "IFIH1", "NAMPT", "OLR1", "ICOSLG", 
+           "PHLDA1", "ZBTB10", "TAP1", "PNRC1", "CXCL10", "CXCL11", "IL6ST", "CD69", "SQSTM1", 
+           "RELA", "CSF2", "CD83", "CSF1", "PPP1R15A", "CD80", "TNC", "TNF", "TANK", "RELB", "ZFP36", 
+           "CCND1", "RNF19B", "CCRL2", "DENND5A", "PHLDA2", "MAP3K8", "LDLR", "SLC16A6", "SMAD3", 
+           "TGIF1", "MAP2K3", "DDX58", "TRAF1", "INHBA", "NFKB1", "NFKB2", "GEM", "NR4A3", "MAFF", 
+           "RCAN1", "NR4A2", "EFNA1", "MXD1", "BIRC2", "YRDC", "BIRC3", "IL7R", "PFKFB3", "IRS2", 
+           "SLC2A3", "PLAU", "SLC2A6", "SAT1", "ETS2", "NR4A1", "SNN", "PMEPA1", "TNFRSF9", "MSC", 
+           "TIPARP", "LAMB3", "GFPT2", "CFLAR", "TNIP1", "IRF1", "NFKBIA", "BMP2", "IL6", "TNIP2", 
+           "BCL6", "BCL3", "NFKBIE", "NFE2L2", "B4GALT1", "NFAT5", "TNFAIP8", "BCL2A1", "TNFAIP6", 
+           "TNFAIP3", "CXCL2", "CXCL1", "TNFAIP2", "CXCL3", "CXCL6", "FUT4", "DRAM1", "DNAJB4", 
+           "PDE4B", "PDLIM5", "MCL1", "KDM6B", "IL15RA", "PLAUR", "ATP2B1", "KLF4", "KLF2", "SOD2", 
+           "KLF9", "KLF6", "ACKR3", "PTX3", "B4GALT5", "TRIB1", "CEBPB", "CEBPD", "PLEK", "KYNU", 
+           "CCL5", "CCL4", "CCL2")
+
+interferon_alpha = c("IL4R", "CD74", "SP110", "MX1", "RSAD2", "TAP1", "PSMB9", "CXCL10", "CXCL11", "IFI44L", "LAP3", "LPAR6", "IFI27", "TRAFD1", "TRIM14", "LY6E", "IFITM2", "IFITM3", "SAMD9", "CSF1", 
+           "IFITM1", "UBE2L6", "SAMD9L", "RNF31", "HERC6", "LAMP3", "CCRL2", "MVB12A", "B2M", "CMTR1", 
+           "GBP2", "GBP4", "EPSTI1", "BATF2", "HLA-C", "TENT5A", "TDRD7", "ISG15", "IFI44", "PARP14", 
+           "MOV10", "ISG20", "PARP12", "PLSCR1", "PROCR", "SELL", "PSME2", "PSME1", "CNP", "LGALS3BP", 
+           "IFI35", "IFIT2", "IFI30", "DDX60", "IFIT3", "NUB1", "HELZ2", "PNPT1", "IL15", "NCOA7", 
+           "EIF2AK2", "NMI", "OAS1", "BST2", "IRF1", "ELF1", "IL7", "IRF2", "IRF9", "IRF7", "UBA7", 
+           "GMPR", "ADAR", "CASP8", "TRIM5", "RIPK2", "CASP1", "STAT2", "WARS1", "PARP9", "PSMA3", 
+           "TXNIP", "CMPK2", "CD47", "RTP4", "C1S", "OGFR", "TMEM140", "USP18", "OASL", "SLC25A28", 
+           "IFIH1", "PSMB8", "DHX58", "TRIM25", "TRIM26", "TRIM21")
+
+
+
+bican_recon <- AddModuleScore_UCell(bican_recon,
+  features = list(Score = NFKB_genes ),
+  name = 'NFKB'
+)
+
+bican_recon <- AddModuleScore_UCell(bican_recon,
+  features = list(Score = interferon_alpha),
+  name = 'interferon_alpha'
+)
+
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(oligo_inflammatory = oligo_inflam_genes_top100), name = '_top100')
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(opc_inflammatory = opc_inflam_genes_top100), name = '_top100')
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(neuron_inflammatory = neuron_inflam_genes_top100), name = '_top100')
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(micro_inflammatory = micro_inflam_genes_top100), name = '_top100')
+
+bican_recon <- AddModuleScore_UCell(bican_recon,
+  features = list(HLA = c("HLA-A", "HLA-B", "HLA-C", "HLA-F","B2M")),
+  name = '_combined'
+)
+
+qsave(bican_recon, "bican_recon_feb2025_sct.qs")
+```
+
+```{r}
+bican_recon@meta.data
+```
+
+```{r}
+bican_recon@meta.data$final_cell_class = bican_recon$cell_class_annot
+```
+
+```{r}
+```
+
+
+```{r}
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(astro_inflammatory = astrocyte_inflam_genes_top100), name = '_top100')
+```
+
+
+```{r}
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(oligo_inflammatory = oligo_inflam_genes_top100), name = '_top100')
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(opc_inflammatory = opc_inflam_genes_top100), name = '_top100')
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(neuron_inflammatory = neuron_inflam_genes_top100), name = '_top100')
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(micro_inflammatory = micro_inflam_genes_top100), name = '_top100')
+
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(astro_inflammatory = astrocyte_inflam_genes_top100), name = '_top100')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(oligo_inflammatory = oligo_inflam_genes_top100), name = '_top100')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(opc_inflammatory = opc_inflam_genes_top100), name = '_top100')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(neuron_inflammatory = neuron_inflam_genes_top100), name = '_top100')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(micro_inflammatory = micro_inflam_genes_top100), name = '_top100')
+
+```
+
+
+
+#C plus, C minus
+```{r}
+C_minus = qread("temp_disco/more_temp_1205/final_c_minus_genes.qs")
+C_plus = qread("temp_disco/more_temp_1205/final_c_plus_genes.qs")
+```
+
+```{r}
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(C_minus = C_minus), name = '_scores')
+xdp_recon_full <- AddModuleScore_UCell(xdp_recon_full,features = list(C_plus = C_plus), name = '_scores')
+
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(C_minus = C_minus), name = '_scores')
+xdp_cah_put_sct <- AddModuleScore_UCell(xdp_cah_put_sct,features = list(C_plus = C_plus), name = '_scores')
+```
+
+```{r}
+bican_recon = qread("bican_recon_feb2025.qs")
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(C_minus = C_minus), name = '_scores')
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(C_plus = C_plus), name = '_scores')
+bican_recon
+bican_recon@meta.data
+```
+
+
+
+```{r}
+xdp_recon_full@meta.data
+xdp_cah_put_sct
+bican_recon@meta.data
+```
+```{r}
+table(bican_recon$reclustered_patch_matrix_exotic)
+```
+
+
+```{r}
+custom_labels <- c(non_SPN = "non-SPN", SPN_exotic = "SPN Patch 2", SPN_matrix = "SPN Matrix", SPN_patch = "SPN Patch 1", eSPN = "eSPN")
+
+# Plot with light gray points for all data in the background
+matrix_recon = subset(bican_recon@meta.data, subset = reclustered_patch_matrix_exotic == "matrix_SPN")
+
+a = ggplot(matrix_recon, aes(x= x_um_rotated, y = y_um_rotated, color = C_minus_scores)) + geom_point() + ggtitle(" SPN Matrix: C Minus Scores \n") + scale_color_gradientn(colors = c("#0000FF", "#4682B4", "#87CEEB", "#FFD700", "#FF7F50", "#FF4500", "#FF0000")
+) +   labs(color = "C Minus Scores") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL)
+
+b = ggplot(matrix_recon, aes(x= x_um_rotated, y = y_um_rotated, color = C_plus_scores)) + geom_point() + ggtitle(" SPN Matrix: C Plus Scores \n") + scale_color_gradientn(colors = c("#0000FF", "#4682B4", "#87CEEB", "#FFD700", "#FF7F50", "#FF4500", "#FF0000")
+) +  labs(color = "C Plus Scores") +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL)
+
+pic = a+b
+ggsave(pic, filename = "pic.png", width = 20, height = 10)
+```
+
+
+
+```{r}
+xdp_recon_full@meta.data
+xdp_cah_put_sct@meta.data
+```
+
+```{r}
+qsave(xdp_recon_full, "xdp_recon_full_feb2025.qs")
+qsave(xdp_cah_put_sct, "xdp_cah_put_sct_feb2025.qs")
+```
+
+```{r}
+xdp_recon_full_meta = xdp_recon_full@meta.data 
+xdp_cah_put_sct_meta = xdp_cah_put_sct@meta.data
+xdp_recon_full_meta
+xdp_cah_put_sct_meta
+```
+
+```{r}
+spatial_scores(xdp_recon_full@meta.data, "astro_inflammatory_top100", "Astro Inflammatory Top 100")
+```
+
+```{r}
+histograms_by_all_celltype(xdp_cah_put_sct@meta.data, "astro_inflammatory_top100", "Astrocyte Inflammatory Top 100", 20, 10)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "astro_inflammatory_top100", "astrocyte" ,"Astrocyte Inflammatory Top 100 score", 25, 15)
+```
+
+```{r}
+xdp_cah_put_sct@meta.data$cause_of_death = "Other"
+xdp_cah_put_sct$cause_of_death[xdp_cah_put_sct$donor_id == "SCF-18-003" | 
+                             xdp_cah_put_sct$donor_id == "SCF-18-004" | 
+                             xdp_cah_put_sct$donor_id == "SCF-19-009"| 
+                             xdp_cah_put_sct$donor_id == "SCF-19-014" | 
+                             xdp_cah_put_sct$donor_id == "SCF-20-025" | 
+                             xdp_cah_put_sct$donor_id == "SCF_21-037CM2"] = "Infection-related Death"
+                           
+```
+
+```{r}
+xdp_cah_put_sct$cause_of_death_case_control = paste(xdp_cah_put_sct$Condition, xdp_cah_put_sct$cause_of_death) 
+
+xdp_cah_put_sct@meta.data
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+data <- xdp_cah_put_sct@meta.data
+df = subset(data, subset = neuron_classes == "astrocyte")
+df
+df_avg <- df %>%
+  group_by(donor_id, cause_of_death_case_control, Condition, cause_of_death) %>%
+  summarise(avg_score = mean(astro_inflammatory_top100), .groups = 'drop')
+df_avg
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition, y = avg_score, color = Condition, shape = cause_of_death)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Condition", y = "Mean Astrocyte Inflammatory Top 100 Score", color = "Condition", shape = "Cause of Death", title = "Astrocytes")+ scale_shape_manual(values = rev(c(16, 17))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+```
+
+
+```{r}
+xdp_cah_put_sct_meta
+```
+
+```{r}
+spatial_scores(xdp_recon_full@meta.data, "HLA_combined", "HLA Combined")
+```
+
+```{r}
+histograms_by_all_celltype(xdp_cah_put_sct@meta.data, "HLA_combined", "HLA Combined", 20, 10)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "neuron_inflammatory_top100", "SPN_patch" ,"Neuron Inflammatory Top 100 score", 25, 15)
+```
+
+```{r}
+xdp_cah_put_sct_meta$cause_of_death = "Other"
+xdp_cah_put_sct_meta$cause_of_death[xdp_cah_put_sct_meta$donor_id == "SCF-18-003" | 
+                             xdp_cah_put_sct_meta$donor_id == "SCF-18-004" | 
+                             xdp_cah_put_sct_meta$donor_id == "SCF-19-009"| 
+                             xdp_cah_put_sct_meta$donor_id == "SCF-19-014" | 
+                             xdp_cah_put_sct_meta$donor_id == "SCF-20-025" | 
+                             xdp_cah_put_sct_meta$donor_id == "SCF_21-037CM2"] = "Infection-related Death"
+                           
+xdp_cah_put_sct_meta$cause_of_death_case_control = paste(xdp_cah_put_sct_meta$Condition, xdp_cah_put_sct_meta$cause_of_death) 
+xdp_cah_put_sct_meta
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+data <- xdp_cah_put_sct_meta
+df = subset(data, subset = neuron_classes == "astrocyte")
+df
+df_avg <- df %>%
+  group_by(donor_id, cause_of_death_case_control, Condition, cause_of_death) %>%
+  summarise(avg_score = mean(ScoreNFKB), .groups = 'drop')
+df_avg
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition, y = avg_score, color = Condition, shape = cause_of_death)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Condition", y = "Mean NFKB Score", color = "Condition", shape = "Cause of Death", title = "Astrocytes")+ scale_shape_manual(values = rev(c(16, 17))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+```
+
+```{r}
+xdp_cah_put_sct_meta
+```
+
+
+#wilcox test
+```{r}
+xdp_meta = xdp_cah_put_sct_meta
+xdp_meta = subset(xdp_meta, final_cell_class == "astrocyte")
+xdp_meta
+
+xdp_meta_cases = subset(xdp_meta, Condition == "XDP")
+xdp_meta_controls = subset(xdp_meta, Condition == "Control")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$astro_inflammatory_top100  
+XDP_Control_scores <- xdp_meta_controls$astro_inflammatory_top100 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+bican_recon = qread("/broad/macosko/bican/A22J235LT4_3cm_seurat.qs")
+bican_recon@meta.data
+
+unique(bican_recon$cell_class_annot)
+
+bican_recon = subset(bican_recon, cell_class_annot != "doublet")
+bican_recon@meta.data$reclustered_patch_matrix_exotic = bican_recon$cell_type_group_annot
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "oligo"] = "oligo"
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "astro"] = "astrocyte"
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "mg"] = "microglia"
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "endo"] = "endothelial"
+bican_recon$reclustered_patch_matrix_exotic[bican_recon$cell_class_annot == "opc"] = "opc"
+bican_recon@meta.data
+
+theta <- 142
+radians <- theta * pi / 180  # Convert degrees to radians
+cos_theta <- cos(radians)
+sin_theta <- sin(radians)
+
+bican_recon@meta.data$x_um_rotated = bican_recon$x_um * cos_theta + bican_recon$y_um * sin_theta
+bican_recon@meta.data$y_um_rotated = -bican_recon$x_um * sin_theta + bican_recon$y_um * cos_theta
+bican_recon@meta.data
+qsave(bican_recon, "bican_recon_feb2025.qs")
+```
+
+```{r}
+options(future.globals.maxSize = 400 * 1024^3)  
+library(sctransform)
+bican_recon = SCTransform(bican_recon, vars.to.regress = "pct_mito", verbose = FALSE)
+bican_recon
+
+qsave(bican_recon, "bican_recon_feb2025.qs")
+```
+
+
+#nfkb, hla combined, interferonalpha by region
+```{r}
+NFKB_genes =  c("MARCKS", "IL23A", "NINJ1", "TNFSF9", "SIK1", "ATF3", "SERPINE1", "MYC", "HES1", "CCNL1", "CCN1", "EGR1", "EGR2", "JAG1", "EGR3", "ABCA1", "GADD45B", "GADD45A", "PLK2", "KLF10", 
+           "EIF1", "EHD1", "FOSL2", "FOSL1", "GPR183", "PLPP3", "IFIT2", "ICAM1", "ZC3H12A", "IER2", 
+           "IL12B", "JUNB", "IER5", "IER3", "STAT5A", "DUSP5", "EDN1", "JUN", "DUSP4", "DUSP1", 
+           "DUSP2", "TSC22D1", "CCL20", "SPHK1", "LIF", "IL18", "TUBB2A", "RHOB", "VEGFA", "PTPRE", 
+           "IL1A", "TLR2", "IL1B", "BHLHE40", "ID2", "CLCF1", "REL", "FJX1", "SGK1", "BTG3", "BTG2", 
+           "BTG1", "SDC4", "LITAF", "AREG", "SOCS3", "PANX1", "RIPK2", "NFIL3", "SERPINB2", "GCH1", 
+           "IFNGR2", "G0S2", "FOS", "SERPINB8", "F3", "SPSB1", "FOSB", "PER1", "F2RL1", "HBEGF", 
+           "CD44", "TRIP10", "CDKN1A", "PTGER4", "PTGS2", "IFIH1", "NAMPT", "OLR1", "ICOSLG", 
+           "PHLDA1", "ZBTB10", "TAP1", "PNRC1", "CXCL10", "CXCL11", "IL6ST", "CD69", "SQSTM1", 
+           "RELA", "CSF2", "CD83", "CSF1", "PPP1R15A", "CD80", "TNC", "TNF", "TANK", "RELB", "ZFP36", 
+           "CCND1", "RNF19B", "CCRL2", "DENND5A", "PHLDA2", "MAP3K8", "LDLR", "SLC16A6", "SMAD3", 
+           "TGIF1", "MAP2K3", "DDX58", "TRAF1", "INHBA", "NFKB1", "NFKB2", "GEM", "NR4A3", "MAFF", 
+           "RCAN1", "NR4A2", "EFNA1", "MXD1", "BIRC2", "YRDC", "BIRC3", "IL7R", "PFKFB3", "IRS2", 
+           "SLC2A3", "PLAU", "SLC2A6", "SAT1", "ETS2", "NR4A1", "SNN", "PMEPA1", "TNFRSF9", "MSC", 
+           "TIPARP", "LAMB3", "GFPT2", "CFLAR", "TNIP1", "IRF1", "NFKBIA", "BMP2", "IL6", "TNIP2", 
+           "BCL6", "BCL3", "NFKBIE", "NFE2L2", "B4GALT1", "NFAT5", "TNFAIP8", "BCL2A1", "TNFAIP6", 
+           "TNFAIP3", "CXCL2", "CXCL1", "TNFAIP2", "CXCL3", "CXCL6", "FUT4", "DRAM1", "DNAJB4", 
+           "PDE4B", "PDLIM5", "MCL1", "KDM6B", "IL15RA", "PLAUR", "ATP2B1", "KLF4", "KLF2", "SOD2", 
+           "KLF9", "KLF6", "ACKR3", "PTX3", "B4GALT5", "TRIB1", "CEBPB", "CEBPD", "PLEK", "KYNU", 
+           "CCL5", "CCL4", "CCL2")
+
+interferon_alpha = c("IL4R", "CD74", "SP110", "MX1", "RSAD2", "TAP1", "PSMB9", "CXCL10", "CXCL11", "IFI44L", "LAP3", "LPAR6", "IFI27", "TRAFD1", "TRIM14", "LY6E", "IFITM2", "IFITM3", "SAMD9", "CSF1", 
+           "IFITM1", "UBE2L6", "SAMD9L", "RNF31", "HERC6", "LAMP3", "CCRL2", "MVB12A", "B2M", "CMTR1", 
+           "GBP2", "GBP4", "EPSTI1", "BATF2", "HLA-C", "TENT5A", "TDRD7", "ISG15", "IFI44", "PARP14", 
+           "MOV10", "ISG20", "PARP12", "PLSCR1", "PROCR", "SELL", "PSME2", "PSME1", "CNP", "LGALS3BP", 
+           "IFI35", "IFIT2", "IFI30", "DDX60", "IFIT3", "NUB1", "HELZ2", "PNPT1", "IL15", "NCOA7", 
+           "EIF2AK2", "NMI", "OAS1", "BST2", "IRF1", "ELF1", "IL7", "IRF2", "IRF9", "IRF7", "UBA7", 
+           "GMPR", "ADAR", "CASP8", "TRIM5", "RIPK2", "CASP1", "STAT2", "WARS1", "PARP9", "PSMA3", 
+           "TXNIP", "CMPK2", "CD47", "RTP4", "C1S", "OGFR", "TMEM140", "USP18", "OASL", "SLC25A28", 
+           "IFIH1", "PSMB8", "DHX58", "TRIM25", "TRIM26", "TRIM21")
+
+
+
+bican_recon <- AddModuleScore_UCell(bican_recon,
+  features = list(Score = NFKB_genes ),
+  name = 'NFKB'
+)
+
+bican_recon <- AddModuleScore_UCell(bican_recon,
+  features = list(Score = interferon_alpha),
+  name = 'interferon_alpha'
+)
+
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(oligo_inflammatory = oligo_inflam_genes_top100), name = '_top100')
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(opc_inflammatory = opc_inflam_genes_top100), name = '_top100')
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(neuron_inflammatory = neuron_inflam_genes_top100), name = '_top100')
+bican_recon <- AddModuleScore_UCell(bican_recon,features = list(micro_inflammatory = micro_inflam_genes_top100), name = '_top100')
+
+bican_recon <- AddModuleScore_UCell(bican_recon,
+  features = list(HLA = c("HLA-A", "HLA-B", "HLA-C", "HLA-F","B2M")),
+  name = '_combined'
+)
+
+qsave(bican_recon, "bican_recon_feb2025.qs")
+```
+
+```{r}
+bican_recon@meta.data$final_cell_class = bican_recon$cell_class_annot
+bican_recon@meta.data
+```
+
+
+```{r}
+metadata = bican_recon@meta.data
+column = "ScoreNFKB"
+title = "NFKB Scores"
+updown = -1
+
+a = ggplot(metadata, aes(x= x_um_rotated, y = y_um_rotated, color = !!sym(column))) + geom_point(size =0.6, alpha = 0.6) + ggtitle(paste0(" ", title, " Scores")) + scale_color_viridis_c(option = "magma", name = "Expression", direction = updown) +   labs(color = paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) + facet_wrap(~ reclustered_patch_matrix_exotic)
+
+metadata_neurons = subset(metadata, subset = reclustered_patch_matrix_exotic == "neuron")
+b = ggplot(metadata_neurons, aes(x= x_um_rotated, y = y_um_rotated, color = !!sym(column))) + geom_point(size = 0.6) + ggtitle(paste0(" ", title, " Scores"))+ scale_color_viridis_c(option = "magma", name = "Expression", direction = updown)+   labs(paste0(title," Scores")) +
+  theme_void() +
+  theme(
+    plot.title = element_text(size = 30),
+    plot.subtitle = element_text(size = 30),
+    strip.text = element_text(size = 30),
+    plot.background = element_rect(fill = "white", color = NA),
+     legend.text = element_text(size = 24),  # Increase legend text size
+    legend.title = element_text(size = 26)
+  ) +
+  ylab(NULL) #+ facet_wrap(~ reclustered_patch_matrix_exotic)
+
+ggsave(a, filename = "pic1.png", width = 12, height = 10)
+ggsave(b, filename = "pic2.png", width = 9, height = 10)
+
+```
+
+```{r}
+histograms_by_all_celltype(xdp_cah_put_sct@meta.data, "HLA_combined", "HLA Combined", 20, 10)
+```
+
+```{r}
+histograms_by_donor(xdp_cah_put_sct@meta.data, "neuron_inflammatory_top100", "SPN_patch" ,"Neuron Inflammatory Top 100 score", 25, 15)
+```
+
+```{r}
+library(dplyr)
+library(ggplot2)
+
+data <- xdp_cah_put_sct@meta.data
+df = subset(data, subset = final_cell_class == "neuron")
+df
+df_avg <- df %>%
+  group_by(donor_id, cause_of_death_case_control, Condition, cause_of_death) %>%
+  summarise(avg_score = mean(HLA_combined), .groups = 'drop')
+df_avg
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Condition, y = avg_score, color = Condition, shape = cause_of_death)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Condition", y = "Mean HLA Combined Score", color = "Condition", shape = "Cause of Death", title = "Neurons")+ scale_shape_manual(values = rev(c(16, 17))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+
+```
+
+
+
+
+```{r}
+"RIGI" %in% astrocyte_inflam_genes_top100  
+"CD7" %in% astrocyte_inflam_genes_top100  
+"IFI44" %in% astrocyte_inflam_genes_top100  
+"IFI44L" %in% astrocyte_inflam_genes_top100  
+```
+```{r}
+"RIGI" %in% neuron_inflam_genes_top100  
+"CD7" %in% neuron_inflam_genes_top100  
+"IFI44" %in% neuron_inflam_genes_top100  
+"IFI44L" %in% neuron_inflam_genes_top100  
+```
+```{r}
+"RIGI" %in% opc_inflam_genes_top100  
+"CD7" %in% opc_inflam_genes_top100  
+"IFI44" %in% opc_inflam_genes_top100  
+"IFI44L" %in% opc_inflam_genes_top100  
+```
+
+
+```{r}
+"RIGI" %in% (astrocyte_roi_markers_sig_new$X)
+"CD7" %in% (astrocyte_roi_markers_sig_new$X)  
+"IFI44" %in% (astrocyte_roi_markers_sig_new$X)  
+```
+
+
+```{r}
+RIGI, CD7, IFI44
+```
+

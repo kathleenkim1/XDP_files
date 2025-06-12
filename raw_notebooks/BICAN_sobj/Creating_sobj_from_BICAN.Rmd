@@ -1,0 +1,174 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+#only works on VPN + local Rstudio
+```{r}
+# specify input paths -------------------------------------------------------------------------
+
+
+library.names <- c()
+#Example: c("2024-03-20_v8-1_10X-GEX-5P_CaH_rxn1", 
+# "2024-03-20_v8-1_10X-GEX-5P_CaH_rxn2", 
+# "2024-03-20_v8-1_10X-GEX-5P_CaH_rxn3",
+# "2024-03-20_v8-1_10X-GEX-5P_CaH_rxn4")
+
+library.names.sans.date <- substr(library.names, 12, nchar(library.names))
+
+# Update the base directory to the new library path
+base.dir <- "/Volumes/bican_um1_mccarroll/RNAseq/data/libraries"
+reference.use <- "GRCh38-2020-A.isa.exonic+intronic"
+std.analysis.use <- "umi_500-Inf_intronic_0.550-1.000_10X"
+
+# specify high-level parameters ---------------------------------------------------------------
+
+n.features <- "all"  # specify "all" to use all genes
+n.pcs <- 100
+
+# load data -----------------------------------------------------------------------------------
+
+cell.features.paths <- paste0(base.dir, "/", library.names , "/", reference.use, "/", "cell_selection/", std.analysis.use, "/", library.names.sans.date, ".", std.analysis.use, ".cell_features.RDS")
+dge.paths <- paste0(base.dir, "/",library.names , "/" , reference.use, "/", "std_analysis/", std.analysis.use, "/", library.names.sans.date, ".", std.analysis.use, ".donors.digital_expression.txt.gz")
+summary.paths <- paste0(base.dir, "/",library.names , "/", reference.use, "/", "std_analysis/", std.analysis.use, "/scPred/summary.txt")
+
+## load dges ----
+dge.list <- lapply(dge.paths, load.expression.matrix)
+names(dge.list) <- library.names
+for (i in 1:length(dge.list)) {
+  colnames(dge.list[[i]]) <- paste0(library.names[i], "_", colnames(dge.list[[i]]))
+}
+```
+
+
+```{r}
+## load cell features ----
+cell.features.list <- lapply(cell.features.paths, readRDS)
+for (i in 1:length(cell.features.list)) {
+  cell.features.list[[i]] <- as.data.table(cell.features.list[[i]])
+  cell.features.list[[i]][, cell := paste0(library.names[i], "_", cell_barcode)]
+}
+cell.features <- rbindlist(cell.features.list)
+
+## load summary files ----
+summary.list <- lapply(summary.paths, fread)
+for (i in 1:length(summary.list)) {
+  summary.list[[i]][, cell := paste0(library.names[i], "_", CELL_BARCODE)]
+}
+summary <- rbindlist(summary.list)
+
+summary = as.data.frame(summary)
+rownames(summary) = summary$cell
+summary
+```
+```{r}
+dge.list
+```
+
+
+```{r}
+#qsave(summary, "Desktop/BICAN/5P_summary.qs")
+#qsave(dge.list, "Desktop/BICAN/5P_dge_list1.qs")
+
+print(names(dge.list))
+```
+
+```{r}
+# prepare dge ---------------------------------------------------------------------------------
+library(qs)
+Caudate_5P_list = list()
+
+dges = names(dge.list)
+for (names in dges){
+# here I've manually selected a single library to use
+
+
+# if using a caudate data set
+scpred.class.levels <- c("SPN", "interneuron", "astrocyte", "oligodendrocyte", "polydendrocyte", "microglia", "endothelia")
+# if using a cortex data set
+# scpred.class.levels <- c("gabaergic", "glutamatergic", "astrocyte", "oligodendrocyte", "polydendrocyte", "microglia", "endothelia")
+
+dge <- dge.list[[names]]
+
+# create seurat object ------------------------------------------------------------------------
+
+sobj <- CreateSeuratObject(counts = dge, meta.data = summary)
+
+Caudate_5P_list[[names]] = sobj
+qsfilepath <- paste0("Desktop/BICAN/", names, ".qs") #output folder
+qsave(sobj, file = qsfilepath) 
+}
+
+qsave(Caudate_3P_list, "Desktop/BICAN/5P_Caudate_list.qs")
+
+```
+
+
+```{r}
+caudate_3P_object_list <- qread("Desktop/BICAN/3P_Caudate_list.qs")
+caudate_3P_object_list
+```
+
+
+```{r}
+mergeSeuratListWithMetadata = function(seurat_obj_list, cell_ids=NULL, project=NULL){
+
+    # Harmonize metadata columns
+    all_colnames = unique(unlist(lapply(seurat_obj_list, function(x) colnames(x@meta.data))))
+    seurat_obj_list = lapply(seurat_obj_list, function(x) {
+        missing_cols = setdiff(all_colnames, colnames(x@meta.data))
+        if(length(missing_cols) > 0){
+            x@meta.data[missing_cols] = NA
+        }
+        return(x)
+    })
+
+    if (is.null(project)){
+        project = "merged"
+    }
+    
+    if (is.null(cell_ids)){
+        seurat_merged = Reduce(function(x, y) merge(x, y, project=project), 
+            seurat_obj_list)
+    } else {
+        seurat_merged = Reduce(function(x, y) merge(x, y, project=project, add.cell.ids=cell_ids), 
+            seurat_obj_list)
+    }
+    
+    md = lapply(seurat_obj_list, function(x){
+        x@meta.data$orig.row.names = rownames(x@meta.data)
+        x@meta.data
+    })
+    
+    md = do.call(rbind, md)
+    rownames(md) = md$orig.row.names
+    md$orig.row.names = NULL
+    seurat_merged@meta.data = md
+    return(seurat_merged)
+}
+```
+
+
+#merge caudate libraries 
+```{r}
+CaH_list = list(CaH_1 = caudate_3P_object_list[["2024-03-13_v8_10X-GEX-3P_CaH_rxn1"]], 
+                   CaH_2 = caudate_3P_object_list[["2024-03-13_v8_10X-GEX-3P_CaH_rxn2"]], 
+                   CaH_3 = caudate_3P_object_list[["2024-03-13_v8_10X-GEX-3P_CaH_rxn3"]], 
+                   CaH_4 = caudate_3P_object_list[["2024-03-13_v8_10X-GEX-3P_CaH_rxn4"]], 
+                   CaH_5 = caudate_3P_object_list[["2024-03-13_v8_10X-GEX-3P_CaH_rxn5"]], 
+                   CaH_6 = caudate_3P_object_list[["2024-03-13_v8_10X-GEX-3P_CaH_rxn6"]], 
+                   CaH_7 = caudate_3P_object_list[["2024-03-13_v8_10X-GEX-3P_CaH_rxn7"]], 
+                   CaH_8 = caudate_3P_object_list[["2024-03-13_v8_10X-GEX-3P_CaH_rxn8"]])
+
+ for(name in names(CaH_list)){
+      sobj =CaH_list[[name]]
+      sobj$library = name
+      sobj = RenameCells(sobj, new.name = paste(sobj$library, colnames(sobj), sep="__"))
+      CaH_list[[name]] = sobj
+      
+ }
+merged_caudate = mergeSeuratListWithMetadata(CaH_list)
+
+head(merged_caudate)
+```
+
+

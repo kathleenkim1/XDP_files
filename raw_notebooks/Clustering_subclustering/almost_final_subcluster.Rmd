@@ -1,0 +1,699 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/filtered_merged_caudate_clustered.qs")
+filtered_merged_putamen = qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+filtered_merged_caudate
+filtered_merged_putamen
+```
+
+```{r}
+head(filtered_merged_caudate)
+head(caudate_sobj)
+```
+
+
+```{r}
+caudate_sobj = qread("Cellbender_seurat/Bennet_caudate_clean.qs")
+putamen_sobj = qread("Cellbender_seurat/Bennet_putamen_clean.qs")
+
+caudate_sobj
+putamen_sobj
+```
+```{r}
+DimPlot(putamen_sobj, group.by = "Condition")
+```
+
+
+```{r}
+DimPlot(caudate_sobj, group.by = "RNA_snn_res.0.5")
+```
+
+
+
+
+#subset just neurons --> get 5581 neurons
+```{r}
+caudate_neurons = subset(caudate_sobj, subset = cell_class == "neuron")
+caudate_neurons
+head(caudate_neurons)
+```
+```{r}
+DimPlot(caudate_neurons, group.by = "library")
+DimPlot(caudate_neurons, group.by = "donor_id")
+DimPlot(caudate_neurons, group.by = "Condition")
+
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.3")
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.4")
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.5")
+```
+#Putamen has 12518 neurons
+```{r}
+putamen_neurons = subset(putamen_sobj, subset = cell_class == "neuron")
+putamen_neurons
+head(putamen_neurons)
+
+DimPlot(putamen_neurons, group.by = "library")
+DimPlot(putamen_neurons, group.by = "donor_id")
+DimPlot(putamen_neurons, group.by = "Condition")
+
+DimPlot(putamen_neurons, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_neurons, group.by = "RNA_snn_res.0.3")
+DimPlot(putamen_neurons, group.by = "RNA_snn_res.0.4")
+DimPlot(putamen_neurons, group.by = "RNA_snn_res.0.5")
+```
+
+
+```{r}
+library(harmony)
+putamen_neurons = normalizeScalePcaClusterUmap(putamen_neurons)
+putamen_neurons = (putamen_neurons
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+) 
+```
+
+
+```{r}
+qsave(putamen_neurons, "Cellbender_seurat/putamen_neurons.qs")
+```
+
+```{r}
+DimPlot(putamen_neurons, group.by = "library")
+DimPlot(putamen_neurons, group.by = "donor_id")
+DimPlot(putamen_neurons, group.by = "Condition")
+
+DimPlot(putamen_neurons, group.by = "RNA_snn_res.0.2")
+DimPlot(putamen_neurons, group.by = "RNA_snn_res.0.3")
+DimPlot(putamen_neurons, group.by = "RNA_snn_res.0.4")
+DimPlot(putamen_neurons, group.by = "RNA_snn_res.0.5")
+```
+
+```{r}
+Idents(putamen_neurons) = putamen_neurons$RNA_snn_res.0.2
+markers = FindAllMarkers(putamen_neurons, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 0.5)
+
+num_clusters = length(unique(Idents(putamen_neurons))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+```{r}
+classes = c("D2 SPN_1", "D1 SPN_1", "eSPN", "glutamatergic", "D1 SPN_2", "interneuron_1", "interneuron_2", "interneuron_3", "D2 SPN_2", "D1 SPN_3?", "interneuron_4", "interneuron_5", "cholinergic", "interneuron_6")
+
+#classes = c("SPN", "SPN", "SPN", "glutamatergic", "SPN", "interneuron", "interneuron", "interneuron", "SPN", "SPN", "interneuron", "interneuron", "cholinergic", "interneuron")
+
+putamen_neurons= assignCellClasses(putamen_neurons, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(putamen_neurons) <- "cell_class"
+
+DimPlot(putamen_neurons, label= TRUE)
+```
+```{r}
+FeaturePlot(putamen_neurons, features = c("DRD1", "DRD2"))
+FeaturePlot(putamen_neurons, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(putamen_neurons, features =c("CASZ1"))
+FeaturePlot(putamen_neurons, features =c("CHAT"))
+FeaturePlot(putamen_neurons, features =c("C1QA"))
+FeaturePlot(putamen_neurons, features = c("PPP1R1B", "MT-CO1"))
+```
+```{r}
+FeaturePlot(putamen_neurons, features = c("GAD1", "GAD2"))
+FeaturePlot(putamen_neurons, features = c("VIP", "CALB2"))
+FeaturePlot(putamen_neurons, features = c("SLC17A7", "SLC17A6"))
+
+```
+
+
+```{r}
+table(putamen_neurons$donor_id)
+
+```
+
+
+```{r}
+donor_list = unique(putamen_neurons$donor_id)
+neurons_per_donor = as.data.frame(table(putamen_neurons$donor_id))
+
+classes = c("D2 SPN_1", "D1 SPN_1", "eSPN", "glutamatergic", "D1 SPN_2", "interneuron_1", "interneuron_2", "interneuron_3", "D2 SPN_2", "D1 SPN_3?", "interneuron_4", "interneuron_5", "cholinergic", "interneuron_6")
+
+putamen_neurons= assignCellClasses(putamen_neurons, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+Idents(putamen_neurons) <- "cell_class"
+
+
+for (donor in donor_list) {
+  single_donor_neurons = subset(putamen_neurons, subset = donor_id == donor)
+  neuron_count = neurons_per_donor$Freq[neurons_per_donor$Var1 == donor]
+  print(DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of neurons: ", neuron_count)))
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+normalizeScalePcaClusterUmap = function(
+    sobj,
+    subset_col="donor_id",
+    n_hvgs_orig=2500,
+    n_dims_use=20,
+    resolutions=c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)){
+    # this function takes a Seurat object, normalizes the data, scales the data, runs PCA, finds neighbors, clusters, and runs UMAP
+    # it then returns the Seurat object
+    hvgs = getSeuratVarFeatureIntersectByCol(sobj, subset_col=subset_col, original_nfeatures=n_hvgs_orig)
+    sobj = (sobj
+        %>% NormalizeData() # log normalizes raw counts
+        %>% ScaleData(features=hvgs, split.by=subset_col) # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+        %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+        %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+    )
+    for(res in resolutions){
+        sobj = sobj %>% FindClusters(resolution = res) # finds clusters at a variety of resolutions
+    }
+    sobj = sobj %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+    return(sobj)
+}
+
+getSeuratVarFeatureIntersectByCol = function(
+   seurat_obj,
+   subset_col,
+   original_nfeatures,
+   n_subsets_to_cover=NULL
+){
+  
+   hvgs = list()
+
+
+   unique_ids = unique(seurat_obj@meta.data[[subset_col]])
+
+
+   if (is.null(n_subsets_to_cover)){
+       n_subsets_to_cover = floor(length(unique_ids)/2)
+   }
+
+
+   i=1
+   for (id in unique_ids) {
+       print(paste("Subset", id, "--", i, "of", length(unique_ids)))
+       i = i + 1
+      
+       seurat_subset = seurat_obj[, seurat_obj[[subset_col]] == id]
+      
+       if (ncol(seurat_subset) < 2){next}
+      
+       suppressWarnings({
+           seurat_subset = FindVariableFeatures(
+               seurat_subset, nfeatures=original_nfeatures, verbose = FALSE)
+       })
+      
+       hvgs[[id]] = getSeuratVarFeatures(seurat_subset)
+      
+   }
+
+
+   common_hvgs = getCommonStrings(hvgs, n_subsets_to_cover)
+   print(paste("Number of HVGs in common across", n_subsets_to_cover, "--", length(common_hvgs)))
+
+
+   return(common_hvgs)
+}
+
+getSeuratVarFeatures = function(sobj){
+    # the magical incantation that returns the slot of the attribute of the slot that actually holds the list of variable feature -_-
+    return(sobj@assays$RNA@var.features)
+}
+
+getCommonStrings <- function(list_of_lists, n) {
+  # Create an empty list to store string occurrences
+  string_occurrences <- list()
+
+  # Iterate over each sublist
+  for (sublist in list_of_lists) {
+    # For each string in the sublist, increment its count in string_occurrences
+    for (string in unique(sublist)) {
+      if (!is.null(string_occurrences[[string]])) {
+        string_occurrences[[string]] <- string_occurrences[[string]] + 1
+      } else {
+        string_occurrences[[string]] <- 1
+      }
+    }
+  }
+
+  # Filter the strings that occur at least n times
+  common_strings <- names(string_occurrences)[string_occurrences >= n]
+
+  return(common_strings)
+}
+```
+
+
+```{r}
+library(harmony)
+caudate_neurons = normalizeScalePcaClusterUmap(caudate_neurons)
+caudate_neurons = (caudate_neurons
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+) 
+```
+
+
+
+```{r}
+head(putamen_neurons)
+```
+
+
+```{r}
+library(qs)
+qsave(caudate_neurons, "Cellbender_seurat/caudate_neurons.qs")
+```
+
+```{r}
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.3")
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.4")
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.5")
+
+DimPlot(caudate_neurons, group.by = "library")
+DimPlot(caudate_neurons, group.by = "donor_id")
+DimPlot(caudate_neurons, group.by = "Condition")
+```
+
+```{r}
+FeaturePlot(caudate_neurons, features = c("DRD1", "DRD2"))
+FeaturePlot(caudate_neurons, features = c("EPHA4", "SEMA3E"))
+```
+
+
+
+```{r}
+caudate_neurons_preintergrated = subset(caudate_sobj, subset = cell_class == "neuron")
+caudate_neurons_preintergrated
+head(caudate_neurons_preintergrated)
+```
+
+
+```{r}
+DimPlot(caudate_neurons_preintergrated, group.by = "RNA_snn_res.0.2")
+DimPlot(caudate_neurons_preintergrated, group.by = "RNA_snn_res.0.3")
+DimPlot(caudate_neurons_preintergrated, group.by = "RNA_snn_res.0.4")
+DimPlot(caudate_neurons_preintergrated, group.by = "RNA_snn_res.0.5")
+
+DimPlot(caudate_neurons_preintergrated, group.by = "library")
+DimPlot(caudate_neurons_preintergrated, group.by = "donor_id")
+DimPlot(caudate_neurons_preintergrated, group.by = "Condition")
+```
+
+```{r}
+FeaturePlot(caudate_neurons_preintergrated, features = c("DRD1", "DRD2"))
+FeaturePlot(caudate_neurons_preintergrated, features = c("EPHA4", "SEMA3E"))
+
+```
+
+#for tmr: Do the rest of the featureplots for pct mito, log10numi, GAPDH, UBB, TUBB2A
+#make forloop to do umaps for every donor + maybe even for just neuronal level too 
+#try running Findallmarkers here? 
+
+
+```{r}
+head(caudate_neurons_preintergrated)
+```
+
+```{r}
+caudate_neurons_preintergrated@meta.data$log10nUMI = log10(caudate_neurons_preintergrated@meta.data$nUmi)
+caudate_neurons@meta.data$log10nUMI = log10(caudate_neurons@meta.data$nUmi)
+
+head(caudate_neurons)
+head(caudate_neurons_preintergrated)
+```
+
+
+
+
+```{r}
+FeaturePlot(caudate_neurons_preintergrated, features = c("pct_mito"))
+FeaturePlot(caudate_neurons_preintergrated, features = c("log10nUMI"))
+FeaturePlot(caudate_neurons_preintergrated, features = c("GAPDH", "UBB", "TUBB2A"))
+
+FeaturePlot(caudate_neurons, features = c("pct_mito"))
+FeaturePlot(caudate_neurons, features = c("log10nUMI"))
+FeaturePlot(caudate_neurons, features = c("GAPDH", "UBB", "TUBB2A"))
+```
+
+```{r}
+DimPlot(caudate_neurons_preintergrated, label = TRUE)
+```
+
+```{r}
+#FeaturePlot(caudate_neurons, features =c("RBFOX3", "C1QA", "CX3CR1", "CB69"))
+#FeaturePlot(caudate_neurons, features =c("EPHA4", "SEMA3E", "CASZ1", "CHAT"))
+#FeaturePlot(caudate_neurons, features =c("MBP"))
+FeaturePlot(caudate_neurons, features =c("CASZ1"))
+FeaturePlot(caudate_neurons, features =c("CHAT"))
+FeaturePlot(caudate_neurons, features =c("C1QA"))
+```
+
+
+```{r}
+FeaturePlot(caudate_neurons, features =c("C1QA", "C1QB"))
+FeaturePlot(caudate_neurons, features =c("CX3CR1", "P2RY12"))
+FeaturePlot(caudate_neurons, features =c("PPP1R1B"))
+
+```
+
+
+#Find all markers on the intergrated neuron cah
+```{r}
+#only.pos = False
+
+Idents(caudate_neurons) = caudate_neurons$RNA_snn_res.0.2
+markers = FindAllMarkers(caudate_neurons, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+
+num_clusters = length(unique(Idents(caudate_neurons))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+```{r}
+#classes = c("0?", "1?", "2?", "3?", "GAD1-2,STY1", "GAD1", "GAD1/SYT1", "microglia???", "SST/SYNPR", "LAMP5", "10?", "SLC17A8, SYT1,GAD1", "GAD1/ambig", "GAD1/MOBP")
+
+
+#classes = c("SPN", "SPN", "SPN", "SPN", "interneuron", "interneuron", "interneuron", "SPN", "interneuron", "SPN", "SPN", "cholinergic", "interneuron", "interneuron")
+
+classes = c("D1 SPN_1", "D2_SPN_1", "D1 SPN_2?", "eSPN", "interneuron_1", "interneuron_2", "interneuron_3", "SPN?", "interneuron_4", "D1 SPN_3", "D2 SPN_2", "cholinergic", "interneuron_6", "interneuron_7")
+
+caudate_neurons= assignCellClasses(caudate_neurons, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(caudate_neurons) <- "cell_class"
+
+DimPlot(caudate_neurons, label= TRUE)
+```
+
+```{r}
+FeaturePlot(caudate_neurons, features = c("pct_mito"))
+FeaturePlot(caudate_neurons, features = c("PPP1R1B", "MT-CO1"))
+FeaturePlot(caudate_neurons, features = c("DRD1", "DRD2"))
+```
+
+```{r}
+FeaturePlot(caudate_neurons, features = c("PPP1R1B"))
+FeaturePlot(caudate_neurons, features = c("SST"))
+```
+
+
+
+```{r}
+"EPHA4", "SEMA3E", "CASZ1", "CHAT", "ACHE"
+
+```
+
+
+
+#make forloop to do umaps for every donor + maybe even for just neuronal level too 
+#try running Findallmarkers here? 
+
+
+
+
+```{r}
+donor_list = unique(caudate_neurons$donor_id)
+neurons_per_donor = as.data.frame(table(caudate_neurons$donor_id))
+
+#classes = c(" ")
+
+caudate_neurons= assignCellClasses(caudate_neurons, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+Idents(caudate_neurons) <- "cell_class"
+
+
+for (donor in donor_list) {
+  single_donor_neurons = subset(caudate_neurons, subset = donor_id == donor)
+  neuron_count = neurons_per_donor$Freq[neurons_per_donor$Var1 == donor]
+  print(DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of neurons: ", neuron_count)))
+}
+
+```
+```{r}
+head(filtered_merged_caudate)
+```
+
+
+
+
+
+```{r}
+donor_list = unique(filtered_merged_caudate_sub$donor_id)
+cells_per_donor = as.data.frame(table(filtered_merged_caudate_sub$donor_id, filtered_merged_caudate_sub$cell_class))
+
+classes = c("oligo", "oligo", "oligo", "microglia", "oligo", "oligo", "astrocyte", "astrocyte", "astrocyte", "astrocyte", "SPN", "opc", "oligo", "SPN", "SPN", "interneuron", "oligo", "oligo", "endothelial", "ependymal", "oligo", "interneuron", "interneuron", "astrocyte", "immune", "oligo")
+
+filtered_merged_caudate_sub= assignCellClasses(filtered_merged_caudate_sub, classes=classes, cluster_col="RNA_snn_res.0.5", class_col = "cell_class")
+Idents(filtered_merged_caudate_sub) <- "cell_class"
+
+
+for (donor in donor_list) {
+  single_donor_cells = subset(filtered_merged_caudate_sub, subset = donor_id == donor)
+  cell_count = cells_per_donor$Freq[cells_per_donor$Var1 == donor]
+  print(DimPlot(single_donor_cells,  label = TRUE)+ ggtitle(paste(donor, "Number of cells: ", cell_count)))
+}
+```
+
+```{r}
+cells_per_donor
+```
+
+
+#putamen
+```{r}
+donor_list = unique(putamen_sobj$donor_id)
+cells_per_donor = as.data.frame(table(putamen_sobj$donor_id))
+
+classes = c("oligo", "oligo", "astrocyte", "neuron", "oligo", "microglia", "neuron", "oligo", "opc", "oligo", "neuron", "neuron", "astrocyte", "neuron", "neuron", "oligo", "endo", "neuron", "neuron", "neuron", "oligo", "neuron")
+
+putamen_sobj= assignCellClasses(putamen_sobj, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+Idents(putamen_sobj) <- "cell_class"
+
+
+for (donor in donor_list) {
+  single_donor_cells = subset(putamen_sobj, subset = donor_id == donor)
+  cell_count = cells_per_donor$Freq[cells_per_donor$Var1 == donor]
+  print(DimPlot(single_donor_cells,  label = TRUE)+ ggtitle(paste(donor, "Number of cells: ", cell_count)))
+}
+```
+
+```{r}
+head
+```
+
+
+```{r}
+DimPlot(putamen_sobj, group.by = "donor_id")
+
+```
+
+
+
+
+```{r}
+DimPlot(caudate_neurons, group.by = "RNA_snn_res.0.3")
+```
+
+```{r}
+#only.pos = False
+
+Idents(caudate_neurons) = caudate_neurons$RNA_snn_res.0.3
+markers = FindAllMarkers(caudate_neurons, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+
+num_clusters = length(unique(Idents(caudate_neurons))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+```{r}
+caudate_neurons_filtered
+```
+
+
+```{r}
+DimPlot(caudate_neurons_filtered, group.by = "RNA_snn_res.0.3")
+DimPlot(caudate_neurons_filtered, group.by = "RNA_snn_res.0.4")
+DimPlot(caudate_neurons_filtered, group.by = "RNA_snn_res.0.5")
+DimPlot(caudate_neurons_filtered, group.by = "RNA_snn_res.0.6")
+DimPlot(caudate_neurons_filtered, group.by = "RNA_snn_res.0.7")
+DimPlot(caudate_neurons_filtered, group.by = "RNA_snn_res.0.8")
+DimPlot(caudate_neurons_filtered, group.by = "RNA_snn_res.0.9")
+DimPlot(caudate_neurons_filtered, group.by = "RNA_snn_res.1")
+        
+```
+
+
+
+#reclustering from 0.2 to 0.3
+```{r}
+#combine clusters 5 and 11 because they look similar
+classes = c("D2_SPN_1", "D1_SPN_1", "D1_SPN_2","D1_SPN_4?", "eSPN", "interneuron_1", "interneuron_2", "interneuron_3", "D2_SPN_3", "interneuron_4", "D1_SPN_3", "interneuron_1", "D2_SPN_2", "cholinergic","interneuron_6","interneuron_7", "interneuron_8")
+  
+  
+  #"D1 SPN_1", "D2_SPN_1", "D1 SPN_2?", "eSPN", "interneuron_1", "interneuron_2", "interneuron_3", "SPN?", "interneuron_4", "D1 SPN_3", "D2 SPN_2", "cholinergic", "interneuron_6", "interneuron_7")
+
+caudate_neurons= assignCellClasses(caudate_neurons, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+
+Idents(caudate_neurons) <- "cell_class"
+
+DimPlot(caudate_neurons, label= TRUE)
+```
+
+```{r}
+caudate_neurons_filtered = subset(caudate_neurons, subset = cell_class != "interneuron_8")
+caudate_neurons_filtered = subset(caudate_neurons, subset = cell_class != "D2_SPN_3")
+caudate_neurons_filtered
+```
+```{r}
+DimPlot(caudate_neurons_filtered, label = TRUE)
+```
+
+
+
+```{r}
+FeaturePlot(caudate_neurons, features =c("CASZ1","CHAT"))
+FeaturePlot(caudate_neurons, features =c("DRD1", "DRD2"))
+FeaturePlot(caudate_neurons, features =c("PPP1R1B"))
+FeaturePlot(caudate_neurons, features =c("SST", "VIP"))
+FeaturePlot(caudate_neurons, features =c("GAD1", "GAD2"))
+FeaturePlot(caudate_neurons, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(caudate_neurons, features =c("PVALB", "CALB2"))
+FeaturePlot(caudate_neurons, features =c("SLC17A7", "SLC17A6"))
+```
+```{r}
+FeaturePlot(caudate_neurons, features =c("CD163", "CD74"))
+FeaturePlot(caudate_neurons, features =c("CRYAB", "TF"))
+FeaturePlot(caudate_neurons, features =c("MBP", "MOBP"))
+```
+
+
+
+
+```{r}
+Idents(putamen_neurons) = putamen_neurons$RNA_snn_res.0.3
+markers = FindAllMarkers(putamen_neurons, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+
+num_clusters = length(unique(Idents(putamen_neurons))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+```{r}
+classes = c("D2_SPN_1", "D1_SPN_1", "D1_SPN_2", "D2_SPN_2", "glutamatergic", "D1_SPN_3", "interneuron_1", "interneuron_2", "D2_SPN_3", "interneuron_3", "D1_SPN_4?", "interneuron_4", "interneuron_5", "cholinergic", "interneuron_6", "interneuron_7")
+  
+putamen_neurons= assignCellClasses(putamen_neurons, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+
+Idents(putamen_neurons) <- "cell_class"
+
+DimPlot(putamen_neurons, label= TRUE)
+```
+```{r}
+qsave(caudate_neurons, "Cellbender_seurat/new_caudate_neurons_integrated_subcluster0.3.qs")
+qsave(putamen_neurons, "Cellbender_seurat/new_putamen_neurons_integrated_subcluster0.3.qs")
+```
+
+
+
+```{r}
+FeaturePlot(putamen_neurons, features =c("CASZ1","CHAT"))
+FeaturePlot(putamen_neurons, features =c("DRD1", "DRD2"))
+FeaturePlot(putamen_neurons, features =c("PPP1R1B"))
+FeaturePlot(putamen_neurons, features =c("SST", "VIP"))
+FeaturePlot(putamen_neurons, features =c("GAD1", "GAD2"))
+FeaturePlot(putamen_neurons, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(putamen_neurons, features =c("PVALB", "CALB2"))
+FeaturePlot(putamen_neurons, features =c("SLC17A7", "SLC17A6"))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+#from chatgpt, ask later about removing doublets
+```{r}
+FeaturePlot(filtered_merged_caudate, c("MOBP"))
+```
+```{r}
+# Define marker genes
+oligo_genes <- c("OLIG2", "MBP", "MOG")
+microglia_genes <- c("CX3CR1", "P2RY12", "TMEM119")
+astrocyte_genes <- c("GFAP", "S100B", "ALDH1L1")
+
+# Load your Seurat object
+# seurat_obj <- readRDS("path_to_your_seurat_object.rds")
+
+# Add module scores
+filtered_merged_caudate <- AddModuleScore(filtered_merged_caudate, features = list(oligo_genes), name = "Oligo_Score")
+filtered_merged_caudate <- AddModuleScore(filtered_merged_caudate, features = list(microglia_genes), name = "Microglia_Score")
+filtered_merged_caudate <- AddModuleScore(filtered_merged_caudate, features = list(astrocyte_genes), name = "Astrocyte_Score")
+
+# Identify potential doublets
+filtered_merged_caudate@meta.data <- filtered_merged_caudate@meta.data %>%
+  mutate(Doublet_Score = Oligo_Score1 + Microglia_Score1 + Astrocyte_Score1)
+
+# Define a threshold for doublet score
+doublet_threshold <- quantile(filtered_merged_caudate@meta.data$Doublet_Score, 0.99)
+
+# Filter out doublets
+filtered_merged_caudate_filtered <- subset(filtered_merged_caudate, subset = Doublet_Score < doublet_threshold)
+
+# Optionally, visualize the scores
+FeaturePlot(filtered_merged_caudate, features = c("Oligo_Score1", "Microglia_Score1", "Astrocyte_Score1"))
+
+# Save the filtered Seurat object
+# saveRDS(seurat_obj_filtered, "path_to_filtered_seurat_object.rds")
+
+```

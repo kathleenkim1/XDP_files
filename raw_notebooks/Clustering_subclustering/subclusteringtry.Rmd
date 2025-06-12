@@ -1,0 +1,339 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/filtered_merged_caudate_clustered.qs")
+filtered_merged_putamen = qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+
+filtered_merged_caudate
+filtered_merged_putamen
+```
+
+```{r}
+table(filtered_merged_caudate@meta.data$RNA_snn_res.0.5)
+```
+
+```{r}
+DimPlot(filtered_merged_caudate, group.by = "RNA_snn_res.0.5")
+DimPlot(filtered_merged_putamen, group.by = "RNA_snn_res.0.5")
+```
+
+```{r}
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+
+```
+
+```{r}
+
+#classes = c("oligo?", "oligo?", "oligo?", "microglia", "oligo?", "oligo?", "astrocyte", "astrocyte", "astrocyte", "astrocyte", "neuron1", "opc", "oligo", "neuron2", "Fneuron3", "neuron4", "oligo?", "oligo?", "endothelial", "ependymal", "oligo", "neuronGAD5", "neuronGAD6", "astrocyte", "immune", "oligo?")
+
+classes = c("oligo", "oligo", "oligo", "microglia", "oligo", "oligo", "astrocyte", "astrocyte", "astrocyte", "astrocyte", "SPN1", "opc", "oligo", "SPN2", "SPN3", "interneuron1 or D1 SPN?", "oligo", "oligo", "endothelial", "ependymal", "oligo", "interneuron2", "interneuron3", "astrocyte", "immune", "oligo")
+
+#neuron6-interneuorn?
+#neuorn1-3- SPN?
+#4-5- interneuorn?
+
+filtered_merged_caudate = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.5", class_col = "cell_class")
+
+Idents(filtered_merged_caudate) <- "cell_class"
+DimPlot(filtered_merged_caudate, label = TRUE)
+```
+
+```{r}
+FeaturePlot(filtered_merged_caudate, features = c("LAMP5", "PVALB"))
+FeaturePlot(filtered_merged_caudate, features = c("VIP", "LAMP5"))
+FeaturePlot(filtered_merged_caudate, features = c("GAD1", "GAD2"))
+FeaturePlot(filtered_merged_caudate, features = c("DRD1", "DRD2"))
+FeaturePlot(filtered_merged_caudate, features = c("SST", "CALB2"))
+
+FeaturePlot(filtered_merged_caudate, features = c("CUX2", "SATB2"))
+FeaturePlot(filtered_merged_caudate, features = c("SLC17A7", "SLC17A6"))
+```
+
+```{r}
+FeaturePlot(filtered_merged_caudate, features =c("EPHA4", "SEMA3E"))
+FeaturePlot(filtered_merged_caudate, features =c("CASZ1"))
+
+```
+
+
+
+```{r}
+#FeaturePlot(filtered_merged_caudate, features = c("SYT1", "AQP4", "C1QA", "FLT1", "OLIG1", "OLIG2", "CD96", "ADGB", "GAD1", "GAD2", "MOBP", "DRD1", "DRD2"))
+
+FeaturePlot(filtered_merged_caudate, features = c("GAD1", "GAD2", "MOBP", "DRD1", "DRD2"))
+```
+
+```{r}
+table(Idents(filtered_merged_caudate))
+```
+
+
+```{r}
+unsure_clusters = c("oligo")
+unsure_subset = subset(filtered_merged_caudate, idents = unsure_clusters)
+
+oligo_poly_opc_markers = c("MBP", "MOG", "PLP", "CSPG4", "OLIG2")
+
+VlnPlot(unsure_subset, features = oligo_poly_opc_markers, group.by = idents)
+
+
+```
+
+
+```{r}
+table(filtered_merged_caudate$cell_class, filtered_merged_caudate$donor_id)
+```
+
+#resolution too high?
+```{r}
+#classes = c("m/n/o1", "astrocyte", "neuron1", "m/n/o2", "m/n/o3", "neuron2", "neuron3", "microglia", "oligo", "oligo", "opc", "neuron4", "neuron5", "astrocyte", "m/n/o4", "neuron6", "m/n/o5", "astrocyte", "neuron7", "oligo", "endo", "neuron8", "m/n/o6", "m/n/o7", "neuron9", "neuron10", "neuron11","oligo", "neuron12", "immune","neuron13")
+
+classes = c("oligo", "astrocyte", "SPN", "oligo", "oligo", "oligo", "SPN", "microglia", "oligo", "oligo", "opc", "SPN", "SPN", "astrocyte", "oligo", "SPN", "oligo", "astrocyte", "SPN", "oligo", "endo", "glutamatergic", "oligo", "oligo", "interneuron", "SPN", "cortical","oligo", "SPN", "immune","SPN")
+  
+
+#neuron 1/5/10/12/13? = SPN/DRD2
+#neuron 3/4/6/7 = SPN/DRD1
+#neuron 9 - Interneuron/GAD1
+#neuron 8 - glut
+#neuron11- cortical projection
+filtered_merged_putamen = assignCellClasses(filtered_merged_putamen, classes=classes, cluster_col="RNA_snn_res.0.5", class_col = "cell_class")
+
+Idents(filtered_merged_putamen) <- "cell_class"
+DimPlot(filtered_merged_putamen, label = TRUE)
+```
+```{r}
+FeaturePlot(filtered_merged_putamen, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6")) #neuron
+FeaturePlot(filtered_merged_putamen, features = c("AQP4", "GINS3", "GFAP")) #astrocytes
+FeaturePlot(filtered_merged_putamen, features = c("C1Q4", "C1QB", "CX3CR1", "P2RY12")) #microglia
+FeaturePlot(filtered_merged_putamen, features = c("FLT1", "DCN", "RGS5")) #endo
+FeaturePlot(filtered_merged_putamen, features = c("OLIG1", "MOG", "MOBP")) #oligo
+FeaturePlot(filtered_merged_putamen, features = c("OLIG2", "VCAN")) #opc
+```
+
+```{r}
+FeaturePlot(filtered_merged_putamen, features = c("LAMP5", "PVALB"))
+FeaturePlot(filtered_merged_putamen, features = c("VIP", "LAMP5"))
+FeaturePlot(filtered_merged_putamen, features = c("GAD1", "GAD2"))
+FeaturePlot(filtered_merged_putamen, features = c("DRD1", "DRD2"))
+FeaturePlot(filtered_merged_putamen, features = c("SST", "CALB2"))
+
+FeaturePlot(filtered_merged_putamen, features = c("CUX2", "SATB2"))
+FeaturePlot(filtered_merged_putamen, features = c("SLC17A7", "SLC17A6"))
+```
+
+```{r}
+DimPlot(filtered_merged_putamen,group.by = "RNA_snn_res.0.2")
+DimPlot(filtered_merged_putamen,group.by = "RNA_snn_res.0.3")
+DimPlot(filtered_merged_putamen,group.by = "RNA_snn_res.0.4")
+DimPlot(filtered_merged_putamen,group.by = "RNA_snn_res.0.5")
+```
+
+
+
+```{r}
+Idents(filtered_merged_putamen) = filtered_merged_putamen$RNA_snn_res.0.3
+markers = FindAllMarkers(filtered_merged_putamen, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+
+num_clusters = length(unique(Idents(filtered_merged_putamen))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+```{r}
+#classes = c("oligo", "oligo", "astrocyte", "neuron1", "neuron2","neuron3", "microglia", "neuron4", "oligo", "opc", "neuron5", "neuron6", "astrocyte", "neuron7", "oligo", "oligo", "oligo", "astrocyte", "neuron8", "endo", "neuron9", "oligo", "neuron10", "neuron11", "neuron12", "oligo", "neuron13", "astrocyte")
+
+classes = c("oligo", "oligo", "astrocyte", "SPN", "oligo","oligo", "microglia", "SPN", "oligo", "opc", "SPN", "SPN", "astrocyte", "SPN", "oligo", "oligo", "oligo", "astrocyte", "interneuron", "endo", "glutamatergic", "oligo", "interneuron", "SPN", "interneuron", "oligo", "SPN", "astrocyte")
+
+#neuron2-3: actually oligo?
+#neuron10: interneuon
+#neuron9: glutamtergic
+#neuron1/6/11: SPN/DRD2
+#neuorn4/5/13/7- SPN/DRD1
+#neuron8/12- interneuron?
+
+filtered_merged_putamen = assignCellClasses(filtered_merged_putamen, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+
+Idents(filtered_merged_putamen) <- "cell_class"
+DimPlot(filtered_merged_putamen, label = TRUE)
+```
+```{r}
+FeaturePlot(filtered_merged_putamen, features = c("DRD1", "TAC1", "PDYN"))
+FeaturePlot(filtered_merged_putamen, features = c("DRD2", "PENK", "ADCY5"))
+FeaturePlot(filtered_merged_putamen, features = c("GAD1", "GAD2"))
+FeaturePlot(filtered_merged_putamen, features = c("PVALB", "VIP"))
+FeaturePlot(filtered_merged_putamen, features = c("SST", "CALB2"))
+FeaturePlot(filtered_merged_putamen, features = c("SLC17A7", "SLC17A6", "CAMK2A"))
+
+```
+```{r}
+table(Idents(filtered_merged_putamen))
+```
+```{r}
+qsave(filtered_merged_caudate, "Cellbender_seurat/clustered_caudate.qs")
+qsave(filtered_merged_putamen, "Cellbender_seurat/clustered_putamen.qs")
+```
+
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/clustered_caudate.qs")
+filtered_merged_putamen = qread("Cellbender_seurat/clustered_putamen.qs")
+
+filtered_merged_putamen
+filtered_merged_caudate
+```
+
+
+```{r}
+table(filtered_merged_caudate@meta.data$cell_class, filtered_merged_caudate@meta.data$donor_id)
+```
+
+```{r}
+filtered_merged_caudate@meta.data
+```
+
+
+```{r}
+median_umis_per_celltype = filtered_merged_caudate@meta.data %>%
+  group_by(donor_id, cell_class) %>%
+  summarize(median_umi = median(nUmi, na.rm = TRUE), .groups = 'drop')
+
+median_umis_per_celltype 
+
+
+median_umis_per_celltype = as.data.frame(median_umis_per_celltype)
+median_umis_per_celltype
+
+caudate_SPN_mumi = median_umis_per_celltype %>% filter(median_umis_per_celltype$cell_class == "SPN")
+caudate_SPN_mumi
+```
+
+
+
+```{r}
+median_umis_per_celltype2 = filtered_merged_putamen@meta.data %>%
+  group_by(donor_id, cell_class) %>%
+  summarize(median_umi = median(nUmi, na.rm = TRUE), .groups = 'drop')
+
+median_umis_per_celltype2 = as.data.frame(median_umis_per_celltype2)
+median_umis_per_celltype2 
+
+putamen_SPN_mumi = median_umis_per_celltype2 %>% filter(median_umis_per_celltype2$cell_class == "SPN")
+putamen_SPN_mumi
+
+```
+
+```{r}
+SPN_mUMIs = merge(caudate_SPN_mumi, putamen_SPN_mumi, by = "donor_id")
+SPN_mUMIs
+                  
+```
+```{r}
+SPN_mUMIs$caudate_mumis = SPN_mUMIs$median_umi.x
+SPN_mUMIs$median_umi.x = NULL
+SPN_mUMIs$putamen_mumis = SPN_mUMIs$median_umi.y
+SPN_mUMIs$median_umi.y = NULL
+
+SPN_mUMIs
+```
+
+```{r}
+SPN_mUMIs$cell_class.y = NULL
+SPN_mUMIs
+```
+
+```{r}
+donor_metadata = read.csv("Cellbender_seurat/Donor_metadata.csv")
+donor_metadata
+```
+
+```{r}
+newmetadata = merge(SPN_mUMIs, donor_metadata, by.x = "donor_id", by.y = "Donor.ID")
+newmetadata
+```
+
+
+
+```{r}
+cortest <- cor.test(SPN_mUMIs$caudate_mumis, SPN_mUMIs$putamen_mumis, method = "spearman", exact = FALSE )
+cortest
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = SPN_mUMIs, aes(x =SPN_mUMIs$caudate_mumis, y = SPN_mUMIs$putamen_mumis,  color = SPN_mUMIs$donor_id)) + 
+  geom_point() +  labs(x="CaH mUMIs" , y= "Put mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate vs Putamen mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+```
+
+
+```{r}
+spearman_plot = function(data,x,y,id,xlabel, ylabel, title, legendname){
+  
+
+cortest <- cor.test(x, y, method = "spearman", exact = FALSE )
+cortest
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = data, aes(x =x, y = y,  color = id)) + 
+  geom_point() +  labs(x=xlabel , y= ylabel) + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle(title, subtitle = subtitle) + scale_color_discrete(name = legendname)
+
+}
+```
+
+
+```{r}
+spearman_plot(SPN_mUMIs, SPN_mUMIs$caudate_mumis, SPN_mUMIs$putamen_mumis, SPN_mUMIs$donor_id, "CaH SPN mUMIs", "Put SPN mUMIs", "CaH vs Put SPN mUMIS", "Donors")
+```
+
+
+```{r}
+spearman_plot(newmetadata, newmetadata$RQS, newmetadata$caudate_mumis, newmetadata$donor_id, "RQS", "CaH SPN mUMIs", "CaH SPN mUMIS vs RQS", "Donors")
+spearman_plot(newmetadata, newmetadata$DV200,newmetadata$caudate_mumis,  newmetadata$donor_id, "DV200",  "CaH SPN mUMIs", "CaH SPN mUMIS vs DV200", "Donors")
+spearman_plot(newmetadata,  newmetadata$MQS_numerical, newmetadata$caudate_mumis,  newmetadata$donor_id, "Purkinje MQS", "CaH SPN mUMIs", "CaH SPN mUMIS vs MQS", "Donors")
+
+spearman_plot(newmetadata,  newmetadata$RQS,newmetadata$putamen_mumis, newmetadata$donor_id, "RQS","Put SPN mUMIs", "Put SPN mUMIS vs RQS", "Donors")
+spearman_plot(newmetadata, newmetadata$DV200,newmetadata$putamen_mumis, newmetadata$donor_id,  "DV200","Put SPN mUMIs", "Put SPN mUMIS vs DV200", "Donors")
+spearman_plot(newmetadata, newmetadata$MQS_numerical,newmetadata$putamen_mumis, newmetadata$donor_id, "Purkinje MQS", "Put SPN mUMIs", "Put SPN mUMIS vs MQS", "Donors")
+```
+
+```{r}
+
+```
+
+
+
+

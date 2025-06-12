@@ -1,0 +1,189 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+```
+
+
+```{r}
+library_list = list("CaH_rxn1")
+RAW_COUNTS_BASENAME = "raw_feature_bc_matrix.h5"
+FILTERED_COUNTS_BASENAME = "filtered_feature_bc_matrix.h5"
+MOLECULE_INFO_BASENAME = "molecule_info.h5"
+DONOR_ID_BASENAME = "donor_ids.tsv"
+CELLBENDER_BASENAME = "Cellbender_out_filtered.h5"
+this_base_path = "~"
+
+raw_dgc_list = list()
+filtered_dgc_list = list()
+mol_df_list = list()
+donor_ids_list = list()
+metadata_df_list = list()
+seurat_object_list = list()
+
+#helper function for cellbender loading
+sum_duplicate_rownames_of_dgc_matrix=function(dgc){   
+    # some umi_data has repeated rownames which causes problems down the road
+    # we will sum the umi counts in these rows
+    # collect rows with duplicate rownames as a dataframe
+    n_occur = data.frame(table(rownames(dgc)))
+    repeated_rownames = n_occur[n_occur$Freq > 1,]$Var1
+    duplicated_dgc = as.data.frame(dgc[rownames(dgc) %in% repeated_rownames,])
+    duplicated_dgc['symbol'] = sub("\\.\\d$", "", rownames(duplicated_dgc))
+
+    # sum across numeric columns
+    numeric_cols = setdiff(colnames(duplicated_dgc), "symbol")
+    summed_duped_umi_rows = duplicated_dgc %>%
+        group_by(symbol) %>%
+        summarise_at(vars(numeric_cols), sum, na.rm = TRUE) %>%
+        ungroup() %>%
+        as.data.frame()
+    # set rownames to be symbol column, then remove it
+    rownames(summed_duped_umi_rows) = summed_duped_umi_rows$symbol
+    summed_duped_umi_rows = summed_duped_umi_rows[, !(names(summed_duped_umi_rows) %in% c('symbol'))]
+
+    # Hack
+    # each round of the loop will remove ONE of each duplicate row 
+    for(i in 1:max(n_occur$Freq)){
+        dgc = dgc[!rownames(dgc) %in% repeated_rownames,]
+    }
+
+    # finally, replace the deduped rows with the summed rows via an rbind
+    
+    #went line by line with filtered_counts_matrix as the dgc in this function and this next line with rbind is the issue. It seems summed_duped_umi_rows is a dataframe that should have been converted by the as() but isn't? 
+    
+    # Assuming all columns should be numeric
+summed_duped_umi_rows[] <- lapply(summed_duped_umi_rows, function(x) as.numeric(as.character(x)))
+# Replace NA with 0 or appropriate value
+summed_duped_umi_rows[is.na(summed_duped_umi_rows)] <- 0
+matrix_version <- as.matrix(summed_duped_umi_rows)
+sparse_version <- Matrix(matrix_version, sparse = TRUE)
+if (!inherits(dgc, "sparseMatrix")) {
+    dgc <- as(dgc, "sparseMatrix")
+}
+dgc <- rbind(dgc, sparse_version)
+
+    
+    
+   # dgc = rbind(dgc, as(summed_duped_umi_rows, "sparseMatrix")) #this is causeing issues :/
+
+    return(dgc)
+}
+```
+
+
+```{r}
+# loop through libraries
+for (name in library_list){
+   cat(name)
+   cat("\n")
+  
+   raw_counts_path = file.path(this_base_path, name, RAW_COUNTS_BASENAME)
+   filtered_counts_path = file.path(this_base_path, name, FILTERED_COUNTS_BASENAME)
+   molecule_info_path = file.path(this_base_path, name, MOLECULE_INFO_BASENAME)
+   donor_id_path = file.path(this_base_path, name, DONOR_ID_BASENAME)
+  
+   # load the filtered counts
+   filtered_dgc = Read10X_h5(filtered_counts_path)
+   filtered_dgc_list[[name]] = filtered_dgc
+
+
+   print("READING RAW DGC .H5")
+   raw_counts = Read10X_h5(raw_counts_path)
+   raw_dgc_list[[name]] = raw_counts
+
+
+   cd = data.frame(
+       row.names=colnames(raw_counts),
+       nUMI=colSums(raw_counts),
+       log10_nUMI = log10(colSums(raw_counts) + 1),
+       nGene=colSums(raw_counts > 0),
+       is_in_filtered=colnames(raw_counts) %in% colnames(filtered_dgc_list[[name]])
+   )
+
+
+   # load the molecule data such that you can map the barcodes to what came out of CellRanger
+   # load umi_type to get whether or not the umi was intronic
+   h5fetch = function(x){return(h5read(molecule_info_path, x))}
+   mol_df = data.frame(
+               barcode=h5fetch("barcodes")[h5fetch("barcode_idx")+1] %>% paste0("-1"),
+               feature=h5fetch("features/name")[h5fetch("feature_idx")+1],
+               umi=h5fetch("umi"),
+               umi_type=h5fetch("umi_type"),
+               count=h5fetch("count")
+       )
+      
+   # only consider cells that are in the filtered umi data
+   mol_df = mol_df[mol_df$barcode %in% colnames(filtered_dgc),]
+
+
+   mol_df_grouped = mol_df %>% group_by(barcode) %>%
+       summarize(
+           nUmi=n(),
+           nRead=sum(count),
+           pct_intronic=sum(umi_type==0)/nUmi)
+   rownames(mol_df_grouped) = mol_df_grouped$barcode
+   mol_df_list[[name]] = mol_df_grouped
+
+
+  donor_ids = read.table(donor_id_path, header=T)
+  donor_ids = donor_ids[, c("cell", "donor_id", "prob_max")]
+  donor_ids_list[[name]] = donor_ids
+
+  mol_df_rxn = mol_df_list[[name]] 
+  metadata = merge(donor_ids, mol_df_rxn, by.x = "cell", by.y = "barcode")
+  rownames(metadata) <- metadata$cell
+  all(colnames(filtered_dgc) == rownames(metadata))
+  metadata <- metadata[match(colnames(filtered_dgc), rownames(metadata)), ]
+  all(colnames(filtered_dgc) == rownames(metadata))
+
+    file_path = file.path(this_base_path, name, CELLBENDER_BASENAME)
+    h5_data = h5read(file_path, "/matrix")
+    counts = h5_data$data
+    indices = h5_data$indices
+    indptr = h5_data$indptr
+    barcodes = h5_data$barcodes
+    num_genes = length(h5_data$features$name)  # Number of genes
+    num_cells = length(barcodes)  # Number of cells
+
+    counts_matrix = sparseMatrix(i=indices + 1,  # add 1 for 1-based indexing in R
+                                    p=indptr,
+                                    x=counts,
+                                    dims=c(num_genes, num_cells))
+
+    rownames(counts_matrix) = h5_data$features$name # set rownames to be genes
+    colnames(counts_matrix) = barcodes # set colnames to be cell barcodes
+
+    # now we want to look only at cells that are in BOTh the CellRanger and CellBender objects
+    # use filtered_dgc from earlier in the loop
+    cellranger_filtered = filtered_dgc[, colnames(filtered_dgc) %in% all_of(colnames(counts_matrix))]
+    counts_matrix_filtered = counts_matrix[, colnames(counts_matrix) %in% all_of(colnames(cellranger_filtered))]
+    print(dim(counts_matrix_filtered))
+   print("1")
+    # for whatever reason, there can be duplicated rownames (i.e. genes) in the cellbender output, causing errors later on. Sum these together.
+    counts_matrix_filtered = sum_duplicate_rownames_of_dgc_matrix(counts_matrix_filtered) 
+    print(dim(counts_matrix_filtered))
+   print("2")
+    counts_matrix_filtered = counts_matrix_filtered[, match(colnames(cellranger_filtered), colnames(counts_matrix_filtered))]
+    print(dim(counts_matrix_filtered))
+   print("3")
+
+
+    # create your metadata here....
+    metadata = metadata[rownames(metadata) %in% colnames(counts_matrix_filtered), ]
+    metadata_df_list[[name]] = metadata 
+    # add metadata argument to CreateSeuratObject
+   
+   
+    cellbender_sobj = CreateSeuratObject(counts_matrix_filtered, meta.data = metadata)
+
+}
+```
+

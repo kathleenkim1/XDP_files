@@ -1,0 +1,377 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+Microglia_DE = read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__mg__20240529.csv")
+Astrocyte_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__astro__20240529.csv")
+Oligo_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__oligo__20240529.csv")
+OPC_DE= read.csv("~/GSEA/de/filtered_merged_caudate_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__opc__20240529.csv")
+ALL_SPN_DE = read.csv("ALL_SPN_DE.csv")
+ALL_IN_DE = read.csv("ALL_IN_DE.csv")
+D1_SPN_matrix_DE = read.csv("~/GSEA/de/SPN_DE/D1_SPN_matrix_DE.csv")
+D1_SPN_patch_DE= read.csv("~/GSEA/de/SPN_DE/D1_SPN_Patch_DE.csv")
+D2_SPN_matrix_DE= read.csv("~/GSEA/de/SPN_DE/D2_SPN_Matrix_DE.csv")
+D2_SPN_patch_DE = read.csv("D2_SPN_patch.csv")
+
+Microglia_DE
+Astrocyte_DE
+Oligo_DE
+OPC_DE
+ALL_SPN_DE
+ALL_IN_DE
+D1_SPN_matrix_DE
+D1_SPN_patch_DE
+D2_SPN_matrix_DE
+D2_SPN_patch_DE
+```
+
+```{r}
+gene_names <- c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1", "RFC5", "RFC3", "RFC4", "POLD2", "MLH3", "MSH6", "FANI", "POLE", "POLD4", "POLD1", "MLH1", "RFC2", "RFC1", "PMS1", "PCNA", "EXO1", "PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "FEN1", "NEIL1", "TOP1", "POLB", "HMGB1")
+
+Microglia_DE_subset= Microglia_DE[Microglia_DE$gene %in% gene_names,]
+Astrocyte_DE_subset= Astrocyte_DE[Astrocyte_DE$gene %in% gene_names,]
+Oligo_DE_subset= Oligo_DE[Oligo_DE$gene %in% gene_names,]
+OPC_DE_subset= OPC_DE[OPC_DE$gene %in% gene_names,]
+ALL_SPN_DE_subset= ALL_SPN_DE[ALL_SPN_DE$gene %in% gene_names,]
+ALL_IN_DE_subset= ALL_IN_DE[ALL_IN_DE$gene %in% gene_names,]
+D1_SPN_matrix_DE_subset= D1_SPN_matrix_DE[D1_SPN_matrix_DE$gene %in% gene_names,]
+D1_SPN_patch_DE_subset= D1_SPN_patch_DE[D1_SPN_patch_DE$gene %in% gene_names,]
+D2_SPN_matrix_DE_subset= D2_SPN_matrix_DE[D2_SPN_matrix_DE$gene %in% gene_names,]
+D2_SPN_patch_DE_subset = D2_SPN_patch_DE[D2_SPN_patch_DE$gene %in% gene_names,]
+
+
+Microglia_DE_subset$Microglia = Microglia_DE_subset$logFC
+Astrocyte_DE_subset$Astrocyte = Astrocyte_DE_subset$logFC
+Oligo_DE_subset$Oligo = Oligo_DE_subset$logFC
+OPC_DE_subset$OPC = OPC_DE_subset$logFC
+ALL_SPN_DE_subset$SPN = ALL_SPN_DE_subset$logFC
+ALL_IN_DE_subset$IN = ALL_IN_DE_subset$logFC
+D1_SPN_matrix_DE_subset$D1_SPN_Matrix = D1_SPN_matrix_DE_subset$logFC
+D1_SPN_patch_DE_subset$D1_SPN_Patch =D1_SPN_patch_DE_subset$logFC
+D2_SPN_matrix_DE_subset$D2_SPN_Matrix =D2_SPN_matrix_DE_subset$logFC
+D2_SPN_patch_DE_subset$D2_SPN_Patch=D2_SPN_patch_DE_subset$logFC
+
+
+Microglia_DE_subset
+Astrocyte_DE_subset
+Oligo_DE_subset
+OPC_DE_subset
+ALL_SPN_DE_subset
+ALL_IN_DE_subset
+D1_SPN_matrix_DE_subset
+D1_SPN_patch_DE_subset
+D2_SPN_matrix_DE_subset
+D2_SPN_patch_DE_subset
+```
+```{r}
+dfs <- list(ALL_SPN_DE_subset, ALL_IN_DE_subset, D1_SPN_matrix_DE_subset, D1_SPN_patch_DE_subset, D2_SPN_matrix_DE_subset, D2_SPN_patch_DE_subset, Microglia_DE_subset, Astrocyte_DE_subset, Oligo_DE_subset, OPC_DE_subset)
+
+# Merge dataframes by the 'gene' column
+merged_df <- Reduce(function(x, y) merge(x, y, by = "gene", all = TRUE), dfs)
+
+# Print the merged dataframe
+merged_df
+
+merged_df$logFC.x = NULL
+merged_df$adj.P.Val.x = NULL
+merged_df$logFC.y = NULL
+merged_df$adj.P.Val.y = NULL
+merged_df$comments = NULL
+merged_df$X = NULL
+merged_df$D1_SPN_Matrix = NULL
+merged_df$D1_SPN_Patch = NULL
+merged_df
+```
+
+```{r}
+merged_df_filter = na.omit(merged_df)
+rownames(merged_df_filter) = merged_df_filter$gene  
+merged_df_filter$gene = NULL
+merged_df_filter 
+```
+
+```{r}
+rownames(merged_df_filter)
+```
+
+```{r}
+library(ComplexHeatmap)
+
+# Assuming merged_df_filter contains your expression data
+# Replace this with your actual data if different
+heatmap_matrix <- as.matrix(merged_df_filter)
+
+gene_order <- c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1", "RFC5", "RFC3", "RFC4", "MLH3", "MSH6", "POLE", "MLH1", "RFC2", "RFC1", "PMS1", "PCNA", "PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "NEIL1", "POLB", "HMGB1")
+
+# Reorder rows of the matrix based on gene order
+heatmap_matrix_reordered <- heatmap_matrix[gene_order, ]
+
+# Create the heatmap
+Heatmap(heatmap_matrix_reordered, 
+        name = "Expression", 
+        col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+        cluster_rows = FALSE, cluster_columns = FALSE  # Disable row clustering
+)
+
+```
+
+```{r}
+library(ComplexHeatmap)
+library(circlize)
+
+# Assuming merged_df_filter contains your expression data
+# Replace this with your actual data if different
+heatmap_matrix <- as.matrix(merged_df_filter)
+
+gene_order <- c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1", "RFC5", "RFC3", "RFC4", "MLH3", "MSH6", "POLE", "MLH1", "RFC2", "RFC1", "PMS1", "PCNA", "PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "NEIL1", "POLB", "HMGB1")
+
+# Reorder rows of the matrix based on gene order
+heatmap_matrix_reordered <- heatmap_matrix[gene_order, ]
+
+# Split the matrix into two based on the gene order
+heatmap_matrix_mismatch_repair <- heatmap_matrix_reordered[1:16, ]
+heatmap_matrix_base_excision_repair <- heatmap_matrix_reordered[17:nrow(heatmap_matrix_reordered), ]
+
+# Create the first heatmap
+heatmap_first <- Heatmap(heatmap_matrix_mismatch_repair, 
+                         name = "Expression   ", 
+                         col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+                         cluster_rows = FALSE, cluster_columns = FALSE)
+
+# Create the second heatmap
+heatmap_second <- Heatmap(heatmap_matrix_base_excision_repair, 
+                          name = "Expression   ", 
+                          col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+                          cluster_rows = FALSE, cluster_columns = FALSE)
+
+# Stack the two heatmaps vertically
+stacked_heatmap <- c(heatmap_first, heatmap_second)
+
+# Draw the stacked heatmaps
+print(stacked_heatmap)
+
+```
+
+
+
+#putamen
+```{r}
+Microglia_DE = read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__mg__20240529.csv")
+Astrocyte_DE= read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__astro__20240529.csv")
+Oligo_DE= read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__oligo__20240529.csv")
+OPC_DE= read.csv("~/GSEA/de/filtered_merged_putamen_clustered_clean_pseudocells__split_by_cell_class__grouped_by_donor_id__mean_size_30/trend__opc__20240529.csv")
+ALL_SPN_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - All SPN.csv")
+ALL_IN_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - All IN.csv")
+ALL_eSPN_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - All eSPN.csv")
+D1_SPN_matrix_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D1_matrix.csv")
+D1_SPN_patch1_DE= read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D1_patch1.csv")
+D1_SPN_patch2_DE= read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D1_patch2.csv")
+D2_SPN_matrix_DE= read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D2_matrix.csv")
+D2_SPN_patch1_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D2_patch1.csv")
+D2_SPN_patch2_DE = read.csv("~/GSEA/de/SPN_DE/XDP DE - Putamen Neurons - 20240603 - SPN_D2_patch2.csv")
+
+Microglia_DE
+Astrocyte_DE
+Oligo_DE
+OPC_DE
+ALL_SPN_DE
+ALL_IN_DE
+ALL_eSPN_DE
+D1_SPN_matrix_DE
+D1_SPN_patch1_DE
+D1_SPN_patch2_DE
+D2_SPN_matrix_DE
+D2_SPN_patch1_DE
+D2_SPN_patch2_DE
+```
+
+```{r}
+gene_names <- c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1", "RFC5", "RFC3", "RFC4", "POLD2", "MLH3", "MSH6", "FANI", "POLE", "POLD4", "POLD1", "MLH1", "RFC2", "RFC1", "PMS1", "PCNA", "EXO1", "PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "FEN1", "NEIL1", "TOP1", "POLB", "HMGB1")
+
+Microglia_DE_subset= Microglia_DE[Microglia_DE$gene %in% gene_names,]
+Astrocyte_DE_subset= Astrocyte_DE[Astrocyte_DE$gene %in% gene_names,]
+Oligo_DE_subset= Oligo_DE[Oligo_DE$gene %in% gene_names,]
+OPC_DE_subset= OPC_DE[OPC_DE$gene %in% gene_names,]
+ALL_SPN_DE_subset= ALL_SPN_DE[ALL_SPN_DE$gene %in% gene_names,]
+ALL_IN_DE_subset= ALL_IN_DE[ALL_IN_DE$gene %in% gene_names,]
+ALL_eSPN_DE_subset= ALL_eSPN_DE[ALL_eSPN_DE$gene %in% gene_names,]
+D1_SPN_matrix_DE_subset= D1_SPN_matrix_DE[D1_SPN_matrix_DE$gene %in% gene_names,]
+D1_SPN_patch1_DE_subset= D1_SPN_patch1_DE[D1_SPN_patch1_DE$gene %in% gene_names,]
+D1_SPN_patch2_DE_subset= D1_SPN_patch2_DE[D1_SPN_patch2_DE$gene %in% gene_names,]
+D2_SPN_matrix_DE_subset= D2_SPN_matrix_DE[D2_SPN_matrix_DE$gene %in% gene_names,]
+D2_SPN_patch1_DE_subset = D2_SPN_patch1_DE[D2_SPN_patch1_DE$gene %in% gene_names,]
+D2_SPN_patch2_DE_subset = D2_SPN_patch2_DE[D2_SPN_patch2_DE$gene %in% gene_names,]
+
+
+Microglia_DE_subset$Microglia = Microglia_DE_subset$logFC
+Astrocyte_DE_subset$Astrocyte = Astrocyte_DE_subset$logFC
+Oligo_DE_subset$Oligo = Oligo_DE_subset$logFC
+OPC_DE_subset$OPC = OPC_DE_subset$logFC
+ALL_SPN_DE_subset$SPN = ALL_SPN_DE_subset$logFC
+ALL_IN_DE_subset$IN = ALL_IN_DE_subset$logFC
+ALL_eSPN_DE_subset$IN = ALL_eSPN_DE_subset$logFC
+D1_SPN_matrix_DE_subset$D1_SPN_Matrix = D1_SPN_matrix_DE_subset$logFC
+D1_SPN_patch1_DE_subset$D1_SPN_Patch =D1_SPN_patch1_DE_subset$logFC
+D1_SPN_patch2_DE_subset$D1_SPN_Patch =D1_SPN_patch2_DE_subset$logFC
+D2_SPN_matrix_DE_subset$D2_SPN_Matrix =D2_SPN_matrix_DE_subset$logFC
+D2_SPN_patch1_DE_subset$D2_SPN_Patch=D2_SPN_patch1_DE_subset$logFC
+D2_SPN_patch2_DE_subset$D2_SPN_Patch=D2_SPN_patch2_DE_subset$logFC
+
+
+Microglia_DE_subset
+Astrocyte_DE_subset
+Oligo_DE_subset
+OPC_DE_subset
+ALL_SPN_DE_subset
+ALL_IN_DE_subset
+ALL_eSPN_DE_subset
+D1_SPN_matrix_DE_subset
+D1_SPN_patch1_DE_subset
+D1_SPN_patch2_DE_subset
+D2_SPN_matrix_DE_subset
+D2_SPN_patch1_DE_subset
+D2_SPN_patch2_DE_subset
+```
+
+
+```{r}
+dfs <- list(ALL_SPN_DE_subset, ALL_IN_DE_subset, D1_SPN_matrix_DE_subset, D1_SPN_patch1_DE_subset,D1_SPN_patch2_DE_subset,D2_SPN_matrix_DE_subset, D2_SPN_patch1_DE_subset, D2_SPN_patch2_DE_subset, ALL_eSPN_DE_subset, Microglia_DE_subset, Astrocyte_DE_subset, Oligo_DE_subset, OPC_DE_subset)
+
+# Merge dataframes by the 'gene' column
+merged_df <- Reduce(function(x, y) merge(x, y, by = "gene", all = TRUE), dfs)
+
+# Print the merged dataframe
+merged_df
+
+merged_df$logFC.x = NULL
+merged_df$adj.P.Val.x = NULL
+merged_df$logFC = NULL
+merged_df$adj.P.Val = NULL
+merged_df$logFC.y = NULL
+merged_df$adj.P.Val.y = NULL
+merged_df$comments = NULL
+merged_df$X = NULL
+
+merged_df$eSPN = merged_df$IN.y
+ merged_df$IN.y= NULL
+ 
+merged_df$IN = merged_df$IN.x
+merged_df$IN.x= NULL
+
+merged_df$D1_SPN_Patch_1 = merged_df$D1_SPN_Patch.x
+merged_df$D1_SPN_Patch_2 = merged_df$D1_SPN_Patch.y
+merged_df$D2_SPN_Patch_1 = merged_df$D2_SPN_Patch.x
+merged_df$D2_SPN_Patch_2 = merged_df$D2_SPN_Patch.y
+merged_df$D1_SPN_Patch.x= NULL
+merged_df$D1_SPN_Patch.y= NULL
+merged_df$D2_SPN_Patch.x= NULL
+merged_df$D2_SPN_Patch.y= NULL
+merged_df
+```
+
+
+```{r}
+merged_df_reordered <- merged_df[, c("gene", "SPN", "IN", "D1_SPN_Matrix", "D1_SPN_Patch_1", "D1_SPN_Patch_2","D2_SPN_Matrix", "D2_SPN_Patch_1", "D2_SPN_Patch_2", "eSPN", "Microglia", "Astrocyte", "Oligo", "OPC")]
+merged_df_reordered
+```
+
+
+
+```{r}
+merged_df_filter = na.omit(merged_df_reordered)
+merged_df_filter
+
+row_index_to_delete <- c(12,17,29)
+
+# Delete the row using negative indexing
+merged_df_filter <- merged_df_filter[-row_index_to_delete, ]
+merged_df_filter
+rownames(merged_df_filter) = merged_df_filter$gene
+merged_df_filter
+```
+
+
+```{r}
+rownames(merged_df_filter) = merged_df_filter$gene  
+merged_df_filter$gene = NULL
+merged_df_filter 
+```
+
+```{r}
+rownames(merged_df_filter)
+```
+
+```{r}
+library(ComplexHeatmap)
+
+# Assuming merged_df_filter contains your expression data
+# Replace this with your actual data if different
+heatmap_matrix <- as.matrix(merged_df_filter)
+
+gene_order <- c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1", "RFC3", "RFC4", "MLH3", "MSH6", "POLE", "POLD4", "POLD1", "MLH1", "RFC2", "RFC1", "PMS1", "PARP1", "TDG", "LIG3", "OGG1", "TDP1", "APEX1", "XRCC1", "NEIL1", "POLB", "HMGB1")
+
+# Reorder rows of the matrix based on gene order
+heatmap_matrix_reordered <- heatmap_matrix[gene_order, ]
+
+# Split the matrix into two based on the gene order
+heatmap_matrix_mismatch_repair <- heatmap_matrix_reordered[1:16, ]
+heatmap_matrix_base_excision_repair <- heatmap_matrix_reordered[17:nrow(heatmap_matrix_reordered), ]
+
+# Create the first heatmap
+heatmap_first <- Heatmap(heatmap_matrix_mismatch_repair, 
+                         name = "Expression  ", 
+                         col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+                         cluster_rows = FALSE, cluster_columns = FALSE)
+
+# Create the second heatmap
+heatmap_second <- Heatmap(heatmap_matrix_base_excision_repair, 
+                          name = "Expression  ", 
+                          col = colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+                          cluster_rows = FALSE, cluster_columns = FALSE)
+
+# Stack the two heatmaps vertically
+stacked_heatmap <- c(heatmap_first, heatmap_second)
+
+# Draw the stacked heatmaps
+print(stacked_heatmap)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# Convert dataframe to matrix
+heatmap_matrix <- as.matrix(merged_df_filter)
+
+gene_order <- c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1", "RFC5", "RFC3", "RFC4", "MLH3", "MSH6", "POLE", "MLH1", "RFC2", "RFC1", "PMS1", "PCNA", "PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "NEIL1", "POLB", "HMGB1")
+
+# Reorder rows of the matrix based on gene order
+heatmap_matrix_reordered <- heatmap_matrix[gene_order, ]
+
+# Load the pheatmap library
+library(pheatmap)
+
+# Create heatmap with pheatmap
+pheatmap(heatmap_matrix_reordered, 
+         color = colorRampPalette(c("blue", "white", "red"))(100),
+         cluster_rows = FALSE, cluster_cols = FALSE,
+         main = "Caudate Heatmap attempt", 
+         annotation_col = NULL)  # No column annotations
+
+```
+
+
+
+
+
+

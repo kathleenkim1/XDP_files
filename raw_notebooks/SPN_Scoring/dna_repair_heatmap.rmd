@@ -1,0 +1,191 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+final_merged_xdp_transformed
+```
+
+
+```{r}
+# Step 1: Load your Seurat object
+# load("your_seurat_object.RData")
+
+# Step 2: Define the genes of interest
+genes_of_interest <- c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1","RCF5","RFC3", "RFC4", "POLD2",  "MLH3", "MSH6", "FAN1", "POLE", "POLD4", "POLD1", "MLH1", "RFC2", "RCF1", "PMS1", "PCNA", "EXO1")
+  
+  #c("PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "NEIL1", "TOP1", "POLB", "HMGB1")
+  
+  
+ 
+                       
+
+# Step 3: Fetch the data for these genes
+gene_data <- FetchData(object = final_merged_xdp_transformed, vars = c(genes_of_interest, "donor_id", "reclustered_patch_matrix_exotic"))
+gene_data
+
+# Calculate average expression for each gene by donor and region
+average_expression <- aggregate(. ~ donor_id + reclustered_patch_matrix_exotic, data = gene_data, FUN = mean)
+
+# View the results
+print(average_expression)
+
+```
+
+```{r}
+test = subset(average_expression, subset = reclustered_patch_matrix_exotic == "SPN_matrix")
+test$reclustered_patch_matrix_exotic = NULL
+test
+
+rownames(test) = test$donor_id
+test$donor_id = NULL
+test
+
+new_dm = as.matrix(t(test))
+new_dm
+
+library(pheatmap)
+new_dm_ordered <- new_dm[, new_order]
+
+pheatmap(new_dm_ordered,
+         scale = "column",   # Optional: scale rows to have mean 0 and variance 1
+         clustering_distance_rows = "euclidean",  # or "correlation"
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete",  # or "average", "ward.D2", etc.
+         cluster_cols = FALSE, 
+         show_rownames = TRUE,  # Set to FALSE to hide row names
+         show_colnames = TRUE)  # Set to FALSE to hide column names
+
+```
+
+```{r}
+genes_of_interest <- c("PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "NEIL1", "TOP1", "POLB", "HMGB1")
+  
+  #c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1","RCF5","RFC3", "RFC4", "POLD2",  "MLH3", "MSH6", "FAN1", "POLE", "POLD4", "POLD1", "MLH1", "RFC2", "RCF1", "PMS1", "PCNA", "EXO1")
+  
+#  
+  
+
+
+seurat_object = subset(final_merged_xdp_transformed, subset = reclustered_patch_matrix_exotic == "SPN_matrix")
+new_order <- c("PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043","SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM") 
+seurat_object$donor_id <- factor(seurat_object$donor_id, levels = new_order)
+
+# Check the new levels order
+levels(seurat_object$donor_id)
+
+DoHeatmap(object = seurat_object, 
+          features = genes_of_interest, 
+          group.by = "donor_id",
+          slot = "data",  # Use "data" for normalized counts, or "scale.data" if you want scaled data
+          assay = "SCT", label = T)  # Or another assay if you are using a different one
+```
+
+
+
+
+
+
+
+
+
+#bottom 10
+```{r}
+Merged_SPN_MMR_bottom
+final_merged_xdp_transformed@meta.data
+```
+
+```{r}
+bottom_SPNS = subset(final_merged_xdp_transformed, cells =  bottoms)
+bottom_SPNS@meta.data
+```
+
+
+```{r}
+# Step 1: Load your Seurat object
+# load("your_seurat_object.RData")
+
+# Step 2: Define the genes of interest
+genes_of_interest <- c("PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "NEIL1", "TOP1", "POLB", "HMGB1")
+  
+  
+  
+  #c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1","RCF5","RFC3", "RFC4", "POLD2",  "MLH3", "MSH6", "FAN1", "POLE", "POLD4", "POLD1", "MLH1", "RFC2", "RCF1", "PMS1", "PCNA", "EXO1")
+  
+ 
+# Step 3: Fetch the data for these genes
+gene_data <- FetchData(object = bottom_SPNS, vars = c(genes_of_interest, "donor_id", "reclustered_patch_matrix_exotic"))
+gene_data
+
+# Calculate average expression for each gene by donor and region
+average_expression <- aggregate(. ~ donor_id + reclustered_patch_matrix_exotic, data = gene_data, FUN = mean)
+
+# View the results
+print(average_expression)
+
+```
+
+```{r}
+test = subset(average_expression, subset = reclustered_patch_matrix_exotic == "SPN_matrix")
+test$reclustered_patch_matrix_exotic = NULL
+test
+
+rownames(test) = test$donor_id
+test$donor_id = NULL
+test
+```
+
+
+```{r}
+new_dm = as.matrix(t(test))
+new_dm
+```
+
+
+```{r}
+library(pheatmap)
+new_dm_ordered <- new_dm[, new_order]
+new_dm_ordered
+```
+
+
+```{r}
+pheatmap(new_dm_ordered,
+         scale = "column",   # Optional: scale rows to have mean 0 and variance 1
+         clustering_distance_rows = "euclidean",  # or "correlation"
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete",  # or "average", "ward.D2", etc.
+         cluster_cols = FALSE, 
+         show_rownames = TRUE,  # Set to FALSE to hide row names
+         show_colnames = TRUE)  # Set to FALSE to hide column names
+
+```
+
+
+```{r}
+genes_of_interest <- c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1","RCF5","RFC3", "RFC4", "POLD2",  "MLH3", "MSH6", "FAN1", "POLE", "POLD4", "POLD1", "MLH1", "RFC2", "RCF1", "PMS1", "PCNA", "EXO1")
+  
+  #c("PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "NEIL1", "TOP1", "POLB", "HMGB1")
+  
+ 
+  
+#  
+
+
+seurat_object = subset(bottom_SPNS, subset = reclustered_patch_matrix_exotic == "SPN_matrix")
+new_order <- c("PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043","SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM") 
+seurat_object$donor_id <- factor(seurat_object$donor_id, levels = new_order)
+
+# Check the new levels order
+levels(seurat_object$donor_id)
+
+DoHeatmap(object = seurat_object, 
+          features = genes_of_interest, 
+          group.by = "donor_id",
+          slot = "data",  # Use "data" for normalized counts, or "scale.data" if you want scaled data
+          assay = "SCT", label = T)  # Or another assay if you are using a different one
+```
+
+
+

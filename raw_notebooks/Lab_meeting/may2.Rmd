@@ -1,0 +1,2275 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+
+```{r}
+library(harmony)
+All_XDP_Cohorts_bennett = (All_XDP_Cohorts_bennett
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.05)
+    %>% FindClusters(res=0.1)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% FindClusters(res=0.6)
+    %>% FindClusters(res=0.7)
+    %>% FindClusters(res=0.8)    
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+All_XDP_Cohorts_bennett
+All_XDP_Cohorts_bennett@meta.data
+DimPlot(All_XDP_Cohorts_bennett, group.by = "donor_id", raster = F) 
+DimPlot(All_XDP_Cohorts_bennett, group.by = "library", raster = F)
+DimPlot(All_XDP_Cohorts_bennett, group.by = "cohort", raster = F)
+DimPlot(All_XDP_Cohorts_bennett, group.by = "library_cohort", raster = F)
+DimPlot(All_XDP_Cohorts_bennett, group.by = "cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_bennett, group.by = "neuron_cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_bennett, group.by = "condition", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_bennett, group.by = "region", label=T, raster = F)
+```
+
+
+```{r}
+All_XDP_Cohorts_bennett@meta.data 
+```
+
+```{r}
+a =  DimPlot(All_XDP_Cohorts_SN, group.by = "donor_id", label = F, raster = F)
+
+ggsave(a, filename= "new.png", width = 16, height = 8)
+```
+
+```{r}
+DimPlot(All_XDP_Cohorts_SN, group.by = "donor_id", raster = F) 
+DimPlot(All_XDP_Cohorts_SN, group.by = "Cohort", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "library_cohort", raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "cell_class", label=T, raster = F)
+DimPlot(All_XDP_Cohorts_SN, group.by = "Condition", label=T, raster = F)
+
+```
+
+
+```{r}
+All_XDP_Cohorts_SN = qread("All_XDP_Cohorts_SN_sct.qs")
+
+All_XDP_Cohorts_meta = All_XDP_Cohorts@meta.data
+All_XDP_Cohorts_SN_meta = All_XDP_Cohorts_SN@meta.data
+All_XDP_Cohorts_DFC_meta = All_XDP_Cohorts_DFC@meta.data
+
+All_XDP_Cohorts_meta
+All_XDP_Cohorts_SN_meta
+All_XDP_Cohorts_DFC_meta
+```
+
+```{r}
+All_XDP_Cohorts_meta$antigen_processing_scores = NULL
+All_XDP_Cohorts_meta$RNA_snn_res.0.05 = NULL
+All_XDP_Cohorts_meta$RNA_snn_res.0.1 = NULL
+All_XDP_Cohorts_meta$Scoreinterferon_alpha = NULL
+All_XDP_Cohorts_meta$C_plus_scores = NULL
+All_XDP_Cohorts_meta$final_cell_class_merged = NULL
+All_XDP_Cohorts_meta$ScoreNFKB = NULL
+All_XDP_Cohorts_meta$C_minus_scores = NULL
+
+setdiff(colnames(All_XDP_Cohorts_meta), colnames(All_XDP_Cohorts_SN_meta))
+
+All_XDP_Cohorts_SN_meta$neuron_cell_class = All_XDP_Cohorts_SN_meta$final_cell_class_merged_harmony
+All_XDP_Cohorts_DFC_meta$neuron_cell_class = All_XDP_Cohorts_DFC_meta$final_cell_class_merged_harmony
+```
+
+```{r}
+All_cells_df = rbind(All_XDP_Cohorts_meta,
+All_XDP_Cohorts_SN_meta,
+All_XDP_Cohorts_DFC_meta)
+All_cells_df
+```
+
+
+
+
+
+
+#QC
+```{r}
+cells_per_donor = as.data.frame(table(All_cells_df$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(All_cells_df$Class_label_name, All_cells_df$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df$Cohort <- All_cells_df$Cohort[match(cell_class_df$Var2, All_cells_df$donor_id)]
+
+cell_class_df$Cohort_Condition <- All_cells_df$Cohort_Condition[match(cell_class_df$Var2, All_cells_df$donor_id)]
+
+cell_class_df$Sex <- All_cells_df$Sex[match(cell_class_df$Var2, All_cells_df$donor_id)]
+
+cell_class_df$Condition <- All_cells_df$Condition[match(cell_class_df$Var2, All_cells_df$donor_id)]
+
+cell_class_df
+
+# Count the number of cells per donor
+donor_counts <- table(All_cells_df$donor_id)
+
+# Convert to dataframe for sorting
+donor_df <- as.data.frame(donor_counts)
+colnames(donor_df) <- c("donor_id", "cell_count")
+
+# Identify controls (CM, CF) - ensuring it only checks ENDING
+controls <- donor_df[grepl("CM$|CF$|CM2$|CM6$", donor_df$donor_id), ]
+cases <- donor_df[!grepl("CM$|CF$|CM2$|CM6$", donor_df$donor_id), ]
+
+
+# Sort both groups by cell count in descending order
+controls <- controls[order(-controls$cell_count), ]
+cases <- cases[order(-cases$cell_count), ]
+
+
+# Combine ordered donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Print or use the ordered donor IDs
+print(ordered_donors)
+
+
+            
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = ordered_donors)
+# Extract Cohort information
+cell_class_df <- cell_class_df %>%
+  arrange(Cohort, match(Var2, ordered_donors)) %>%
+  mutate(Var2 = factor(Var2, levels = unique(Var2))) 
+
+astro_labels <- cell_class_df %>%
+  filter(Var1 == "White Matter") %>%
+  mutate(y_mid = cell_proportions / 2) 
+
+cell_class_df
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors") + ylab("Number of cells by Astrocyte WM GM") + labs(fill = "Astrocyte WM GM") +theme(axis.text.x = element_text(angle = 45, hjust = 1))+ geom_text(data = cell_class_df, aes(x = Var2, y = Freq.y, label = Freq.y), vjust = -0.2, size = 3, nudge_y = 0.5) +ylim(0, 2000)
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors") + ylab("Astrocyte WM GM Proportion") + labs(fill = "Astrocyte WM GM")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + geom_text(
+    data = astro_labels,  
+    aes(x = Var2, y = y_mid, label = round(cell_proportions, 2)),  # Correctly centered text
+    size = 3
+  )
+
+
+a = ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors") + ylab("Number of cells by Astrocyte WM GM") + labs(fill = "Astrocyte WM GM") +theme(axis.text.x = element_text(angle = 45, hjust = 1))  +facet_grid(~ Cohort, scales = "free_x", space = "free_x")+ geom_text(data = cell_class_df, aes(x = Var2, y = Freq.y, label = Freq.y), vjust = -0.2, size = 3, nudge_y = 0.5) 
+
+b= ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors") + ylab("Astrocyte WM GM Proportion") + labs(fill = "Astrocyte WM GM")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))   + facet_grid(~ Cohort, scales = "free_x", space = "free_x")+ geom_text(
+    data = astro_labels,  
+    aes(x = Var2, y = y_mid, label = round(cell_proportions, 2)),  # Correctly centered text
+    size = 3
+  )
+
+ggsave(a, filename = "pic.png", width = 14, height = 5)
+ggsave(b, filename = "pic2.png", width = 14, height = 5)
+```
+
+```{r}
+All_cells_df
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+temp = subset(All_cells_df, subset = Region == "Caudate" | Region =="Putamen")
+
+# Count total cells per donor
+cells_per_donor <- as.data.frame(table(temp$donor_id))
+colnames(cells_per_donor) <- c("donor_id", "total_cells")
+
+# Count cells by class and donor
+cell_class_df <- as.data.frame(table(temp$final_cell_class_merged_harmony, temp$donor_id))
+colnames(cell_class_df) <- c("Class_label_name", "donor_id", "Freq")
+
+# Merge cell class counts with total cell counts
+cell_class_df <- merge(cell_class_df, cells_per_donor, by = "donor_id")
+
+# Calculate proportions
+cell_class_df$cell_proportions <- cell_class_df$Freq / cell_class_df$total_cells
+
+# Add donor-level metadata
+cell_class_df$Cohort <- All_cells_df$Cohort[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Cohort_Condition <- All_cells_df$Cohort_Condition[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Sex <- All_cells_df$Sex[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Condition <- All_cells_df$Condition[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+
+# Identify controls and cases by donor_id suffix
+controls <- cells_per_donor[grepl("CM$|CF$|CM2$|CM6$", cells_per_donor$donor_id), ]
+cases <- cells_per_donor[!grepl("CM$|CF$|CM2$|CM6$", cells_per_donor$donor_id), ]
+
+# Sort each group by descending cell count
+controls <- controls[order(-controls$total_cells), ]
+cases <- cases[order(-cases$total_cells), ]
+
+# Combine sorted donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Set donor_id as a factor with correct order
+cell_class_df$donor_id <- factor(cell_class_df$donor_id, levels = ordered_donors)
+
+# Optional: re-sort full dataframe to follow donor order
+cell_class_df <- cell_class_df %>%
+  arrange(factor(donor_id, levels = ordered_donors))
+
+# First, extract the values for OPC and Oligo
+opc_val <- cell_class_df %>% filter(Class_label_name == "opc") %>% pull(cell_proportions)
+oligo_val <- cell_class_df %>% filter(Class_label_name == "oligo") %>% pull(cell_proportions)
+
+# Now compute y_mid for neurons
+astro_labels <- cell_class_df %>%
+  filter(Class_label_name == "neuron") %>%
+  mutate(y_mid = (cell_proportions / 2) + opc_val + oligo_val)
+
+
+# PLOT 1: Absolute counts
+ggplot(cell_class_df, aes(x = donor_id, y = Freq, fill = Class_label_name)) +
+  geom_bar(stat = "identity") +
+  xlab("Donors") + ylab("Number of cells by Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+# PLOT 2: Proportions
+ggplot(cell_class_df, aes(x = donor_id, y = cell_proportions, fill = Class_label_name)) +
+  geom_bar(stat = "identity", position = "stack") +
+  xlab("Donors") + ylab("Class Label Proportion") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# PLOT 3: Faceted absolute counts
+a <- ggplot(cell_class_df, aes(x = donor_id, y = Freq, fill = Class_label_name)) +
+  geom_bar(stat = "identity") +
+  xlab("Donors") + ylab("Number of cells by Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_grid(~ Cohort, scales = "free_x", space = "free_x") +
+  geom_text(aes(y = total_cells, label = total_cells), vjust = -0.2, size = 3, nudge_y = 0.5)
+
+# PLOT 4: Faceted proportions
+b <- ggplot(cell_class_df, aes(x = donor_id, y = cell_proportions, fill = Class_label_name)) +
+  geom_bar(stat = "identity", position = "stack") +
+  xlab("Donors") + ylab("Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_grid(~ Cohort, scales = "free_x", space = "free_x")+ 
+  geom_text( data = astro_labels,  
+    aes(x = donor_id, y = y_mid, label = round(cell_proportions, 2)),  # Correctly centered text
+    size = 3)
+
+# Save plots
+ggsave(a, filename = "pic.png", width = 18, height = 5)
+ggsave(b, filename = "pic2.png", width = 18, height = 5)
+
+```
+
+```{r}
+temp = subset(All_cells_df, subset = Region == "Caudate" | Region == "Putamen")
+
+# Count total cells per donor
+cells_per_donor <- as.data.frame(table(temp$donor_id))
+colnames(cells_per_donor) <- c("donor_id", "total_cells")
+
+# Count cells by class and donor
+cell_class_df <- as.data.frame(table(temp$Class_label_name, temp$donor_id))
+colnames(cell_class_df) <- c("Class_label_name", "donor_id", "Freq")
+
+# Merge cell class counts with total cell counts
+cell_class_df <- merge(cell_class_df, cells_per_donor, by = "donor_id")
+
+# Calculate proportions
+cell_class_df$cell_proportions <- cell_class_df$Freq / cell_class_df$total_cells
+
+# Add donor-level metadata
+cell_class_df$Cohort <- All_cells_df$Cohort[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Cohort_Condition <- All_cells_df$Cohort_Condition[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Sex <- All_cells_df$Sex[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+cell_class_df$Condition <- All_cells_df$Condition[match(cell_class_df$donor_id, All_cells_df$donor_id)]
+
+# Identify controls and cases by donor_id suffix
+controls <- cells_per_donor[grepl("CM$|CF$|CM2$|CM6$", cells_per_donor$donor_id), ]
+cases <- cells_per_donor[!grepl("CM$|CF$|CM2$|CM6$", cells_per_donor$donor_id), ]
+
+# Sort each group by descending cell count
+controls <- controls[order(-controls$total_cells), ]
+cases <- cases[order(-cases$total_cells), ]
+
+# Combine sorted donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Set donor_id as a factor with correct order
+cell_class_df$donor_id <- factor(cell_class_df$donor_id, levels = ordered_donors)
+
+# Optional: re-sort full dataframe to follow donor order
+cell_class_df <- cell_class_df %>%
+  arrange(factor(donor_id, levels = ordered_donors))
+
+# First, extract the values for OPC and Oligo
+opc_val <- cell_class_df %>% filter(Class_label_name == "OPC_Oligo") %>% pull(cell_proportions)
+oligo_val <- cell_class_df %>% filter(Class_label_name == "Vascular") %>% pull(cell_proportions)
+
+# Now compute y_mid for neurons
+astro_labels <- cell_class_df %>%
+  filter(Class_label_name == "CN_LGE_GABA") %>%
+  mutate(y_mid = (cell_proportions / 2) + opc_val + oligo_val)
+
+
+# PLOT 1: Absolute counts
+ggplot(cell_class_df, aes(x = donor_id, y = Freq, fill = Class_label_name)) +
+  geom_bar(stat = "identity") +
+  xlab("Donors") + ylab("Number of cells by Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+
+# PLOT 2: Proportions
+ggplot(cell_class_df, aes(x = donor_id, y = cell_proportions, fill = Class_label_name)) +
+  geom_bar(stat = "identity", position = "stack") +
+  xlab("Donors") + ylab("Class Label Proportion") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# PLOT 3: Faceted absolute counts
+a <- ggplot(cell_class_df, aes(x = donor_id, y = Freq, fill = Class_label_name)) +
+  geom_bar(stat = "identity") +
+  xlab("Donors") + ylab("Number of cells by Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_grid(~ Cohort, scales = "free_x", space = "free_x") +
+  geom_text(aes(y = total_cells, label = total_cells), vjust = -0.2, size = 3, nudge_y = 0.5)
+
+# PLOT 4: Faceted proportions
+b <- ggplot(cell_class_df, aes(x = donor_id, y = cell_proportions, fill = Class_label_name)) +
+  geom_bar(stat = "identity", position = "stack") +
+  xlab("Donors") + ylab("Class Labels") +
+  labs(fill = "Class Labels") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  facet_grid(~ Cohort, scales = "free_x", space = "free_x")+ 
+  geom_text( data = astro_labels,  
+    aes(x = donor_id, y = y_mid, label = round(cell_proportions, 2)),  # Correctly centered text
+    size = 3)
+
+# Save plots
+ggsave(a, filename = "pic.png", width = 18, height = 5)
+ggsave(b, filename = "pic2.png", width = 18, height = 5)
+
+```
+
+
+```{r}
+All_XDP_Cohorts_bennett = qread("All_XDP_Cohorts_CaH_Put_final.qs")
+All_XDP_Cohorts_bennett
+All_XDP_Cohorts_bennett@meta.data
+```
+
+
+```{r}
+histograms_by_all_celltype = function(final_df, score_col, xlab, width_size, height_size){
+
+#celltypes = c("astrocyte", "microglia", "oligo", "opc", "endothelial","immune", "ependymal", "non_SPN", "eSPN", "SPN_matrix", "SPN_patch", "SPN_exotic")
+
+ celltypes = unique(final_df[["cell_class"]])  
+plots <- list()
+
+for (celltype in celltypes) {
+  df_sub = final_df[final_df$cell_class == celltype, ]
+   
+  if (nrow(df_sub) == 0) {
+    message(paste("No data for cell type:", celltype, "- skipping."))
+    next
+  }
+  
+min = 0
+max = max(df_sub[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+  
+  a = plot_overlapping_density_histogram(df = df_sub, 
+                                          hist_col = df_sub[[score_col]],
+                                          fill_col = "condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN_V8" = "green", "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+                                          breaks = limits,
+                                          title = paste0("XDP vs Control: ", celltype),
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+    plots[[celltype]] = a
+  
+}
+
+final_plot <- plot_grid(plotlist = plots, ncol = 5)
+
+# Display or save the final plot
+print(final_plot)  # Display
+ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+
+
+histograms_by_all_celltype_cohort = function(final_df, score_col, xlab, width_size, height_size){
+
+ celltypes = sort(unique(final_df[["cell_class"]]))
+plots <- list()
+
+for (celltype in celltypes) {
+  df_sub = final_df[final_df$cell_class == celltype, ]
+   
+  if (nrow(df_sub) == 0) {
+    message(paste("No data for cell type:", celltype, "- skipping."))
+    next
+  }
+  
+min = 0
+max = max(df_sub[[score_col]])
+step = (max-min)/100
+
+limits = seq(min, max, step)
+  
+  a = plot_overlapping_density_histogram(df = df_sub, 
+                                          hist_col = df_sub[[score_col]],
+                                          fill_col = "Condition_Cohort",
+                                          colors = c("XDP_Cohort_1" = "red", "Control_Cohort_1" = "blue","XDP_Cohort_2" = "orange", "Control_Cohort_2" = "green"),
+                                          breaks = limits,
+                                          title = paste0("XDP vs Control: ", celltype),
+                                          xlab = xlab,
+                                          fig_filename = NULL)
+  
+    plots[[celltype]] = a
+  
+}
+
+final_plot <- plot_grid(plotlist = plots, ncol = 5)
+
+# Display or save the final plot
+print(final_plot)  # Display
+ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+
+histograms_by_donor <- function(final_df, score_col, celltype, xlab, width_size, height_size) {
+  
+  unique_donors <- unique(final_df$donor_id)
+
+  # Identify controls and cases
+  controls <- unique_donors[grepl("CM$|CF$|CM2$|CM6$", unique_donors)]
+  cases <- unique_donors[!grepl("CM$|CF$|CM2$|CM6$", unique_donors)]
+
+  # Alphabetically sort both groups
+  controls <- sort(controls)
+  cases <- sort(cases)
+
+  # Combine ordered donor IDs (cases first, then controls)
+  ordered_donors <- c(cases, controls)
+  
+  print(ordered_donors)
+
+  plots <- list()
+
+  # Subset dataframe for the specific cell type
+  final_df_cellclass <- subset(final_df, cell_class == celltype)
+
+  # Determine global x-axis limits (bins)
+  min_val <- 0
+  max_val <- max(final_df_cellclass[[score_col]], na.rm = TRUE)
+  step <- (max_val - min_val) / 100
+  limits <- seq(min_val, max_val, step)
+
+  # **Determine global y-axis limit** by finding the maximum count across all donors
+  max_peak_y <- 0  # Initialize
+  
+   for (donor in ordered_donors) {
+    df_sub <- final_df_cellclass[final_df_cellclass$donor_id == donor, ]
+    if (nrow(df_sub) > 0) {
+      hist_data <- hist(df_sub[[score_col]], breaks = limits, plot = FALSE)
+      max_peak_y <- max(max_peak_y, max(hist_data$density, na.rm = TRUE))  # Use density (peak) instead of total count
+    }
+  }
+  
+  # **Now generate histograms with consistent y-axis limits**
+  for (donor in ordered_donors) {
+    df_sub <- final_df_cellclass[final_df_cellclass$donor_id == donor, ]
+    
+    if (nrow(df_sub) == 0) {
+      message(paste("No data for donor:", donor, "- skipping."))
+      next
+    }
+
+    cell_count <- nrow(df_sub)
+    
+    a <- plot_overlapping_density_histogram(
+      df = df_sub, 
+      hist_col = df_sub[[score_col]],
+      fill_col = "condition",
+      colors = c("XDP" = "red", "Control" = "blue", "BICAN_V8" = "green", 
+                 "pd" = "red", "ctr" = "blue", "XDP_18_006" = "orange"),
+      breaks = limits,
+      title = paste0(donor, ": ", celltype, " (Cells: ", cell_count, ")"),
+      xlab = xlab,
+      fig_filename = NULL
+    )
+    
+    # Modify the y-axis limit directly using ggplot2
+    a <- a + ggplot2::ylim(0, max_peak_y)  # Set consistent y-axis limit
+    
+    plots[[donor]] <- a
+  }
+  
+  final_plot <- plot_grid(plotlist = plots, ncol = 5)
+  
+  print(final_plot)  
+  ggsave("combined_plot.png", final_plot, width = width_size, height = height_size)
+}
+
+```
+
+
+
+```{r}
+histograms_by_donor(All_XDP_Cohorts_bennett@meta.data, "antigen_processing_scores", "neuron" ,"antigen_processing_scores", 25, 15)
+```
+```{r}
+table(All_XDP_Cohorts_bennett@meta.data$neuron_cell_class)
+
+All_XDP_Cohorts_bennett@meta.data$SPN_cell_class = All_XDP_Cohorts_bennett$neuron_cell_class
+All_XDP_Cohorts_bennett@meta.data$SPN_cell_class[All_XDP_Cohorts_bennett@meta.data$SPN_cell_class == "cholinergic"] = "non_SPN"
+All_XDP_Cohorts_bennett@meta.data$SPN_cell_class[All_XDP_Cohorts_bennett@meta.data$SPN_cell_class == "D1_matrix"] = "SPN_matrix"
+All_XDP_Cohorts_bennett@meta.data$SPN_cell_class[All_XDP_Cohorts_bennett@meta.data$SPN_cell_class == "D2_eSPN"] = "non_SPN"
+All_XDP_Cohorts_bennett@meta.data$SPN_cell_class[All_XDP_Cohorts_bennett@meta.data$SPN_cell_class == "D2_matrix"] = "SPN_matrix"
+All_XDP_Cohorts_bennett@meta.data$SPN_cell_class[All_XDP_Cohorts_bennett@meta.data$SPN_cell_class == "D2_patch"] = "SPN_patch"
+All_XDP_Cohorts_bennett@meta.data$SPN_cell_class[All_XDP_Cohorts_bennett@meta.data$SPN_cell_class == "eSPN"] = "non_SPN"
+
+table(All_XDP_Cohorts_bennett@meta.data$SPN_cell_class)
+
+
+
+```
+
+```{r}
+All_XDP_Cohorts_bennett@meta.data
+All_XDP_Cohorts@meta.data
+```
+
+
+```{r}
+temp = subset(All_XDP_Cohorts@meta.data, subset = final_cell_class_merged_harmony == "astrocyte")
+
+min =  min(temp$Scorebican_recon_astro_markers_top50_wm
+)
+max = max(temp$Scorebican_recon_astro_markers_top50_wm
+)
+step = (max-min)/100
+
+limits = seq(min, max, step)
+
+
+a = plot_overlapping_density_histogram(df = temp, 
+                                          hist_col = temp$Scorebican_recon_astro_markers_top50_wm,
+                                          fill_col = "Condition",
+                                  colors = Condition_colors,
+                                          breaks = limits,
+                                          title = paste0("Astrocyte"),
+                                          xlab = "WM Score",
+                                          fig_filename = NULL) + facet_wrap(~ Cohort)
+ print(a)
+ ggsave(a, filename = "pic.png", width = 10, height = 4)
+```
+
+
+
+```{r}
+temp$Cohort_Condition = paste0(temp$Cohort, "_", temp$Condition)
+cell_class = "astrocyte"
+score_col = "Scorebican_recon_astro_markers_top50_wm"
+ylab ="WM Score"
+titl = "WM Score in Astrocyte"
+  
+df_avg <- temp %>%
+  group_by(donor_id, Condition, Cohort, Cohort_Condition) %>%
+  summarise(avg_score = mean(.data[[score_col]]), .groups = 'drop')
+df_avg
+
+
+# Plot the average score per donor for each condition
+a = ggplot(df_avg, aes(x = Cohort_Condition, y = avg_score, color = Condition, shape = Cohort)) +
+  geom_point(aes(group = donor_id), size = 3, alpha = 0.8) + scale_color_manual(values = rev(scales::hue_pal()(2)))+ # One point per donor
+  labs(x = "Cohort_Condition", y = paste0("Mean ", ylab), color = "Condition", shape = "Cohort", title =titl)+ scale_shape_manual(values = rev(c(16, 17, 18))) +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + theme(
+            plot.title = element_text(size = 20), # title font size
+            axis.line = element_line(color = "black"),  # Add axis lines
+            axis.ticks = element_line(color = "black"),  # Add axis ticks
+            axis.text = element_text(size = 14),  # Increase tick label font size
+            axis.title = element_text(size = 15),  # Increase axis label font size
+            axis.text.x = element_text(angle = 45, hjust = 1)  # tilt axis labels
+        )+
+  theme(
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 18),  # Increase legend title size
+   # legend.key.size = unit(1.5, "cm")  # Increase legend key size
+  ) 
+
+print(a)
+
+ggsave(a, filename = "dotplot.png", width = 7, height = 6)
+```
+
+
+
+#wilcox test
+```{r}
+xdp_meta = xdp_co1_meta
+xdp_meta = subset(xdp_meta, final_cell_class == "astrocyte")
+xdp_meta
+
+xdp_meta_cases = subset(xdp_meta, Condition == "XDP")
+xdp_meta_controls = subset(xdp_meta, Condition == "Control")
+xdp_meta_cases
+xdp_meta_controls
+
+XDP_scores <- xdp_meta_cases$ScoreNFKB  
+XDP_Control_scores <- xdp_meta_controls$ScoreNFKB 
+
+result1 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "two.sided")
+result2 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "less")
+result3 <- wilcox.test(XDP_scores, XDP_Control_scores, alternative = "greater")
+print(result1)
+print(result2)
+print(result3)
+```
+
+
+
+
+```{r}
+D_genes = qread("temp_disco/more_temp_1205/final_d_genes.qs")
+D_genes
+```
+
+
+```{r}
+All_XDP_Cohorts <- AddModuleScore_UCell(All_XDP_Cohorts, features = list(D_genes = D_genes), name = '_scores')
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+cleaned_CaH_Put_Cohort1_meta
+xdp_co1_meta
+```
+
+
+```{r}
+histograms_by_all_celltype(cleaned_CaH_Put_Cohort1_meta, "C_minus_scores", "C_minus_scores", 20, 10)
+```
+
+```{r}
+histograms_by_all_celltype(xdp_co1_meta, "C_minus_scores", "C_minus_scores", 20, 10)
+```
+
+
+```{r}
+histograms_by_donor(xdp_co1_meta, "ScoreNFKB", "astrocyte" ,"ScoreNFKB", 25, 15)
+```
+
+```{r}
+table(cleaned_CaH_Put_Cohort1_meta$neuron_cell_class)
+```
+
+
+```{r}
+xdp_cohorts_meta
+```
+
+
+
+
+
+```{r}
+xdp_recon_meta = qread("/broad/macosko/kimkathl/XDP/Analysis/Gray_White_Matter_Scores/xdp_recon_meta.qs")
+xdp_bican_meta = qread("/broad/macosko/kimkathl/XDP/Analysis/Gray_White_Matter_Scores/bican_recon_meta.qs")
+
+xdp_recon_meta
+xdp_bican_meta
+```
+```{r}
+temp = subset(xdp_recon_meta, subset = Class_label_name == "CN LGE GABA")
+a = ggplot(temp, aes(x = x_um, y = y_um, color = Group_label_name)) + geom_point(size = 1, alpha = 0.8) + facet_wrap(~ Group_label_name, ncol = 5)
+ggsave(a, filename = "a.png", width = 14, height = 6)
+
+temp = subset(xdp_bican_meta, subset = Class_label_name == "CN LGE GABA")
+a = ggplot(temp, aes(x = x_um_rotated, y = y_um_rotated, color = Group_label_name)) + geom_point(size = 1, alpha = 0.8) + facet_wrap(~ Group_label_name, ncol = 5)
+ggsave(a, filename = "a.png", width = 14, height = 6)
+```
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+XDP_Cohorts_1_2_full@meta.data
+```
+
+
+```{r}
+cells_per_donor = as.data.frame(table(XDP_Cohorts_1_2_full@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(XDP_Cohorts_1_2_full@meta.data$GM_WM_astrocytes, XDP_Cohorts_1_2_full@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df$Cohort <- XDP_Cohorts_1_2_full@meta.data$Cohort[match(cell_class_df$Var2, XDP_Cohorts_1_2_full@meta.data$donor_id)]
+cell_class_df
+
+# Count the number of cells per donor
+donor_counts <- table(XDP_Cohorts_1_2_full@meta.data$donor_id)
+
+# Convert to dataframe for sorting
+donor_df <- as.data.frame(donor_counts)
+colnames(donor_df) <- c("donor_id", "cell_count")
+
+# Identify controls (CM, CF) - ensuring it only checks ENDING
+controls <- donor_df[grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+cases <- donor_df[!grepl("CM$|CF$|CM2$", donor_df$donor_id), ]
+
+# Sort both groups by cell count in descending order
+controls <- controls[order(-controls$cell_count), ]
+cases <- cases[order(-cases$cell_count), ]
+
+# Combine ordered donor IDs
+ordered_donors <- c(controls$donor_id, cases$donor_id)
+
+# Print or use the ordered donor IDs
+print(ordered_donors)
+
+
+            
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = ordered_donors)
+# Extract Cohort information
+cell_class_df <- cell_class_df %>%
+  arrange(Cohort, match(Var2, ordered_donors)) %>%
+  mutate(Var2 = factor(Var2, levels = unique(Var2))) 
+
+
+cell_class_df
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors") + ylab("Number of cells by Astrocyte Subclasses") + labs(fill = "Astrocyte Subclass") +theme(axis.text.x = element_text(angle = 45, hjust = 1))  +facet_grid(~ Cohort, scales = "free_x", space = "free_x")
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors") + ylab("Astrocyte Subclass Proportion") + labs(fill = "Astrocyte Subclass")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))   + facet_grid(~ Cohort, scales = "free_x", space = "free_x")
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors") + ylab("Number of cells by Astrocyte Subclass") + labs(fill = "Astrocyte Subclass")+ geom_vline(xintercept =  12.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors") + ylab("Astrocyte Subclass Proportion") + labs(fill = "Astrocyte Subclass")+ geom_vline(xintercept =  12.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+
+```
+
+
+
+
+
+
+
+
+```{r}
+#histogram for pct_intronic
+median_pct_intronic = median(All_cells_df$pct_intronic)
+title = paste0("All_cells_df: pct intronic, " , "Median: ", sprintf("%0.3f", median_pct_intronic), "%")
+pct_intronic_hist = hist(sobj$pct_intronic, main = title, xlab = "pct intronic", col="grey", breaks = 100) + facet_wrap(~ library_cohort)
+
+median_pct_intronic = median(filtered_All_cells_df$pct_intronic)
+title = paste0("filtered_All_cells_df: pct intronic, " , "Median: ", sprintf("%0.3f", median_pct_intronic), "%")
+pct_intronic_hist = hist(sobj$pct_intronic, main = title, xlab = "pct intronic", col="grey", breaks = 100)
+
+#histogram for nUMI --> take log10 of nUMI tonormalize
+log_nUMI = log10(All_cells_df$nUmi)
+median_log_nUMI = median(log_nUMI)
+title = paste0("All_cells_df: log10(nUMI), ", "Median: ", sprintf("%0.3f", median_log_nUMI))
+log_nUMI_hist = hist(log_nUMI, main= title, xlab = "log10(nUMI)", col="grey", breaks = 100)
+
+saturation <- All_cells_df$nRead/All_cells_df$nUmi
+median_umi_per_read = median(saturation)
+title = paste0("All_cells_df: nReads/nUMI, " , "Median: ", sprintf("%0.3f", median_umi_per_read))  
+saturation_hist = hist(saturation, main= title, xlab = "nRead/nUMI", col="grey", breaks = 100)
+
+saturation <- filtered_All_cells_df$nRead/filtered_All_cells_df$nUmi
+median_umi_per_read = median(saturation)
+title = paste0("filtered_All_cells_df: nReads/nUMI, " , "Median: ", sprintf("%0.3f", median_umi_per_read))  
+saturation_hist = hist(saturation, main= title, xlab = "nRead/nUMI", col="grey", breaks = 100)
+
+median_pct_mito = median(All_cells_df$pct_mito)
+title = paste0("All_cells_df: pct mito, " , "Median: ", sprintf("%0.3f", median_pct_mito), "%")
+pct_intronic_hist = hist(sobj$pct_mito, main = title, xlab = "pct mito", col="grey", breaks = 100)
+
+median_pct_mito = median(filtered_All_cells_df$pct_mito)
+title = paste0("filtered_All_cells_df: pct mito, " , "Median: ", sprintf("%0.3f", median_pct_mito), "%")
+pct_intronic_hist = hist(sobj$pct_mito, main = title, xlab = "pct mito", col="grey", breaks = 100)
+```
+
+
+```{r}
+All_cells_df = qread("All_cells_df.qs")
+```
+
+```{r}
+
+
+All_cells_df$Cohort[All_cells_df$Cohort == "1"] = "Cohort_1"
+All_cells_df$Cohort[All_cells_df$Cohort == "2"] = "Cohort_2"
+All_cells_df$Cohort[All_cells_df$Cohort == "3"] = "Cohort_3"
+table(All_cells_df$Cohort)
+```
+
+
+```{r}
+All_cells_df
+```
+
+```{r}
+table(All_cells_df$library_cohort)
+```
+
+```{r}
+All_cells_df
+bad_libraries <- c("SN_rxn1_cohort_2", "SN_rxn2_cohort_2")
+bad_donors <- c("SCF_23_079CF", "SCF_23_074CF", "SCF_22_065CM", 
+                "SCF_21_036B", "SCF_21_034", "SCF_21_032", 
+                "SCF_21_029", "SCF_22_049CCF")
+
+All_cells_df <- subset(All_cells_df, 
+                       !(library_cohort %in% bad_libraries & donor_id %in% bad_donors))
+All_cells_df
+```
+```{r}
+library(ggridges)
+All_cells_df$Region <- factor(All_cells_df$Region, levels = c("Caudate", "Putamen", "SN", "DFC"))
+a = ggplot(All_cells_df, aes(x = pct_mito, y = Cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Mito", x = "% Mito", y = "Cohort")+ facet_wrap(~ Region, ncol = 4)
+ggsave(a, filename = "picc.png", width = 12, height = 6)
+```
+
+
+```{r}
+
+
+a= ggplot(All_cells_df, aes(x = pct_mito, y = Region, fill = Cohort)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Mito", x = "% Mito", y = "Region")
+ggsave(a, filename = "picc.png", width = 6, height = 8)
+
+```
+
+
+```{r}
+library(ggridges)
+All_cells_df$library_cohort <- factor(All_cells_df$library_cohort, levels = c(
+  # Cohort 1
+  "CaH_rxn1_cohort_1", "CaH_rxn2_cohort_1", "CaH_rxn3_cohort_1", "CaH_rxn4_cohort_1",
+  "Put_rxn1_cohort_1", "Put_rxn2_cohort_1", "Put_rxn3_cohort_1", "Put_rxn4_cohort_1",
+  "SN_rxn1_cohort_1",  "SN_rxn2_cohort_1",  "SN_rxn3_cohort_1",  "SN_rxn4_cohort_1",
+  "DFC_rxn1_cohort_1", "DFC_rxn2_cohort_1", "DFC_rxn3_cohort_1", "DFC_rxn4_cohort_1",
+
+  # Cohort 2
+  "CaH_rxn1_cohort_2", "CaH_rxn2_cohort_2",
+  "Put_rxn1_cohort_2", "Put_rxn2_cohort_2",
+  "SN_rxn1_cohort_2",  "SN_rxn2_cohort_2",
+  "DFC_rxn1_cohort_2", "DFC_rxn2_cohort_2",
+
+  # Cohort 3
+  "CaH_rxn1_cohort_3", "CaH_rxn2_cohort_3",
+  "Put_rxn1_cohort_3", "Put_rxn2_cohort_3",
+  "SN_rxn1_cohort_3",  "SN_rxn2_cohort_3",
+  "DFC_rxn1_cohort_3", "DFC_rxn2_cohort_3"
+))
+a = ggplot(All_cells_df, aes(x = pct_intronic, y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Intronic", x = "% Intronic", y = "library_cohort")+ facet_wrap(~ donor_id)
+ggsave(a, filename = "picc.png", width = 20, height = 20) 
+
+a =ggplot(All_cells_df, aes(x = log10(nUmi), y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "log10(nUMI)", x = "log10(nUMI)", y = "library_cohort")
+ggsave(a, filename = "picc.png", width = 6, height = 8)
+
+a = ggplot(All_cells_df, aes(x = nRead/nUmi, y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "saturation", x = "nRead/nUMI", y = "library_cohort")
+ggsave(a, filename = "picc.png", width = 6, height = 8)
+
+a= ggplot(All_cells_df, aes(x = pct_mito, y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Mito", x = "% Mito", y = "library_cohort")
+ggsave(a, filename = "picc.png", width = 6, height = 8)
+
+```
+
+
+```{r}
+CaH_Cohort1 = qread("Cohort1/sobjs/CaH_Cohort1_unfiltered.qs")
+Put_Cohort1 = qread("Cohort1/sobjs/Put_Cohort1_unfiltered.qs")
+CaH_Cohort2 = qread("Cohort2/sobjs/CaH_Cohort2_unfiltered.qs")
+Put_Cohort2 = qread("Cohort2/sobjs/Put_Cohort2_unfiltered.qs")
+CaH_Cohort3 = qread("Cohort3/sobjs/CaH_Cohort3_unfiltered.qs")
+Put_Cohort3 = qread("Cohort3/sobjs/Put_Cohort3_unfiltered.qs")
+```
+
+
+```{r}
+CaH_Cohort3@meta.data$Cohort = "cohort_3"
+CaH_Cohort2@meta.data$Cohort = "cohort_2"
+CaH_Cohort1@meta.data$Cohort = "cohort_1"
+Put_Cohort1@meta.data$Cohort = "cohort_1"
+Put_Cohort2@meta.data$Cohort = "cohort_2"
+Put_Cohort3@meta.data$Cohort = "cohort_3"
+DFC_Cohort1@meta.data$Cohort = "cohort_1"
+DFC_Cohort2@meta.data$Cohort = "cohort_2"
+DFC_Cohort3@meta.data$Cohort = "cohort_3"
+SN_Cohort1@meta.data$Cohort = "cohort_1"
+SN_Cohort2@meta.data$Cohort = "cohort_2"
+SN_Cohort3@meta.data$Cohort = "cohort_3"
+
+unfiltered_all_df = rbind(CaH_Cohort3@meta.data,
+CaH_Cohort2@meta.data,
+CaH_Cohort1@meta.data,
+Put_Cohort1@meta.data,
+Put_Cohort2@meta.data,
+Put_Cohort3@meta.data,
+DFC_Cohort1@meta.data,
+DFC_Cohort2@meta.data,
+DFC_Cohort3@meta.data,
+SN_Cohort1@meta.data,
+SN_Cohort2@meta.data,
+SN_Cohort3@meta.data)
+unfiltered_all_df
+
+unfiltered_all_df$library_cohort = paste0(unfiltered_all_df$library, "_", unfiltered_all_df$Cohort)
+```
+
+```{r}
+unfiltered_all_df$library_cohort <- factor(unfiltered_all_df$library_cohort, levels = c(
+  # Cohort 1
+  "CaH_rxn1_cohort_1", "CaH_rxn2_cohort_1", "CaH_rxn3_cohort_1", "CaH_rxn4_cohort_1",
+  "Put_rxn1_cohort_1", "Put_rxn2_cohort_1", "Put_rxn3_cohort_1", "Put_rxn4_cohort_1",
+  "SN_rxn1_cohort_1",  "SN_rxn2_cohort_1",  "SN_rxn3_cohort_1",  "SN_rxn4_cohort_1",
+  "DFC_rxn1_cohort_1", "DFC_rxn2_cohort_1", "DFC_rxn3_cohort_1", "DFC_rxn4_cohort_1",
+
+  # Cohort 2
+  "CaH_rxn1_cohort_2", "CaH_rxn2_cohort_2",
+  "Put_rxn1_cohort_2", "Put_rxn2_cohort_2",
+  "SN_rxn1_cohort_2",  "SN_rxn2_cohort_2",
+  "DFC_rxn1_cohort_2", "DFC_rxn2_cohort_2",
+
+  # Cohort 3
+  "CaH_rxn1_cohort_3", "CaH_rxn2_cohort_3",
+  "Put_rxn1_cohort_3", "Put_rxn2_cohort_3",
+  "SN_rxn1_cohort_3",  "SN_rxn2_cohort_3",
+  "DFC_rxn1_cohort_3", "DFC_rxn2_cohort_3"
+))
+a = ggplot(unfiltered_all_df, aes(x = pct_intronic, y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Intronic (unfiltered)", x = "% Intronic", y = "library_cohort")
+ggsave(a, filename = "picc.png", width = 6, height = 8)
+
+a =ggplot(unfiltered_all_df, aes(x = log10(nUmi), y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "log10(nUMI) (unfiltered)", x = "log10(nUMI)", y = "library_cohort")
+ggsave(a, filename = "picc.png", width = 6, height = 8)
+
+a = ggplot(unfiltered_all_df, aes(x = nRead/nUmi, y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "saturation (unfiltered)", x = "nRead/nUMI", y = "library_cohort")
+ggsave(a, filename = "picc.png", width = 6, height = 8)
+
+a= ggplot(unfiltered_all_df, aes(x = pct_mito, y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Mito (unfiltered)", x = "% Mito", y = "library_cohort") +xlim(0,20)
+ggsave(a, filename = "picc.png", width = 6, height = 8)
+
+```
+
+
+
+
+```{r}
+temp = subset(All_cells_df, subset = Cohort == "Cohort_3")
+
+a= ggplot(temp, aes(x = pct_mito, y = library_cohort, fill = Region)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Mito", x = "% Mito", y = "library_cohort") + facet_wrap(~ donor_id, ncol = 9)
+ggsave(a, filename = "picc.png", width = 25, height = 5)
+```
+
+```{r}
+unique(All_cells_df$donor_id)
+```
+```{r}
+All_cells_df = qread("All_cells_df.qs")
+```
+
+
+```{r}
+All_cells_df
+```
+```{r}
+All_cells_df %>%
+  dplyr::count(donor_id, Condition) %>%
+  dplyr::filter(n > 1)
+
+All_cells_df$Condition[All_cells_df$donor_id == "SCF_22-050CM6"] = "Control"
+```
+
+```{r}
+All_cells_df$donor_id <- factor(All_cells_df$donor_id,
+  levels = All_cells_df %>%
+    dplyr::distinct(donor_id, Condition) %>%
+    dplyr::arrange(factor(Condition, levels = c("Control", "XDP")), donor_id) %>%
+    dplyr::pull(donor_id)
+)
+
+a = ggplot(All_cells_df,aes(x = pct_intronic, y = donor_id, fill = Cohort)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Intronic", x = "% Intronic", y = "donor_id")+ facet_wrap(~ Region, ncol = 4)
+ggsave(a, filename = "picc.png", width = 10, height = 10) 
+```
+
+
+```{r}
+ggplot(All_cells_df, aes(x = log10(nUmi), y = donor_id, fill = Cohort)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "log10(nUMI)", x = "log10(nUMI)", y = "donor_id")+ facet_wrap(~ Region, nrow = 1)
+
+ggplot(All_cells_df, aes(x = nRead/nUmi, y = donor_id, fill = Cohort)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "saturation", x = "nRead/nUMI", y = "donor_id")+ facet_wrap(~ Region, nrow = 1)
+
+ggplot(All_cells_df, aes(x = pct_mito, y = donor_id, fill = Cohort)) +
+  geom_density_ridges(alpha = 0.7, scale = 1.2) +
+  theme_ridges() +
+  labs(title = "% Mito", x = "% Mito", y = "donor_id")+ facet_wrap(~ Region, nrow = 1)
+```
+
+
+
+
+#QC by library and donor
+```{r}
+#histogram for pct_intronic
+summary_data <- All_cells_df %>%
+  group_by(donor_id) %>%
+  summarize(
+    median_pct_intronic = median(pct_intronic, na.rm = TRUE), 
+    log_nUMI = median(log10(nUmi), na.rm = TRUE),  # Compute log inside summarize
+    saturation = median(nRead / nUmi, na.rm = TRUE),  # Ensure division inside summarize
+    median_pct_mito = median(pct_mito, na.rm = TRUE)
+  )
+
+summary_data
+
+
+ggplot(All_cells_df, aes(x = All_cells_df$pct_intronic)) + facet_wrap(~ donor_id + Cohort) + geom_histogram(bins = 100) 
+```
+
+```{r}
+cah_meta = filtered_All_cells_df@meta.data
+put_meta = filtered_Put_Cohort3@meta.data 
+```
+
+
+```{r}
+medians <- cah_meta%>%
+  group_by(donor_id, Condition) %>%  # Include case/control in grouping
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+
+x_order = c(
+  "SCF_22-046CF", "SCF_22-050CM6","SCF_22-056CF", "SCF_22-057CM", "SCF_23-081CM",
+  "SCF-19-020", "SCF-22-042", "SCF-22-044",
+  "SCF-22-045", "SCF_20-026", 
+  "SCF_22-048",  "SCF_22-052",
+  "SCF_22-060", "SCF_23-080", "SCF_23-083"
+)
+
+
+# Convert donor_id to a factor with a specified order in BOTH datasets
+cah_meta$donor_id <- factor(cah_meta$donor_id, levels = x_order)
+medians$donor_id <- factor(medians$donor_id, levels = x_order)
+
+# Plot histogram with facet per donor and median as text
+ggplot(cah_meta, aes(x = pct_intronic, fill = Condition)) + 
+  facet_wrap(~ donor_id) + 
+  geom_histogram(bins = 100, alpha = 0.6) +
+  scale_fill_manual(values = c("Control" = "blue", "XDP" = "red")) +  # Define colors
+  geom_text(data = medians, aes(x = Inf, y = Inf, 
+                                label = paste0("Median: ", round(median_pct_intronic, 2))), 
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 4, color = "black") +
+  theme_minimal() +
+  labs(fill = "Condition") + ggtitle("Caudate pct intronic by donor") +ylab("Donor")
+
+
+
+# Compute median for each donor
+medians <- put_meta%>%
+  group_by(donor_id, Condition) %>%  # Include case/control in grouping
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+
+# Plot histogram with facet per donor and median as text
+ggplot(put_meta, aes(x = pct_intronic, fill = Condition)) + 
+  facet_wrap(~ donor_id) + 
+  geom_histogram(bins = 100, alpha = 0.6) +
+  scale_fill_manual(values = c("Control" = "blue", "XDP" = "red")) +  # Define colors
+  geom_text(data = medians, aes(x = Inf, y = Inf, 
+                                label = paste0("Median: ", round(median_pct_intronic, 2))), 
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 4, color = "black") +
+  theme_minimal() +
+  labs(fill = "Condition") + ggtitle("Putamen pct intronic by donor") +ylab("Donor")
+
+
+medians <- cah_meta %>%
+  group_by(donor_id, Condition) %>%  # Include case/control in grouping
+  summarize(median_log_nUMI = median(log10(nUmi), na.rm = TRUE))
+# Plot histogram with facet per donor and median as text
+ggplot(cah_meta, aes(x = log10(nUmi), fill = Condition)) + 
+  facet_wrap(~ donor_id) + 
+  geom_histogram(bins = 100, alpha = 0.6) +
+  scale_fill_manual(values = c("Control" = "blue", "XDP" = "red")) +  # Define colors
+  geom_text(data = medians, aes(x = Inf, y = Inf, 
+                                label = paste0("Median: ", round(median_log_nUMI, 2))), 
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 4, color = "black") +
+  theme_minimal() +
+  labs(fill = "Condition") + ggtitle("Caudate log(UMI) by donor") +ylab("Donor")
+
+
+
+# Compute median for each donor
+medians <- put_meta%>%
+  group_by(donor_id, Condition) %>%  # Include case/control in grouping
+  summarize(median_log_nUMI = median(log10(nUmi), na.rm = TRUE))
+
+# Plot histogram with facet per donor and median as text
+ggplot(put_meta, aes(x = log10(nUmi), fill = Condition)) + 
+  facet_wrap(~ donor_id) + 
+  geom_histogram(bins = 100, alpha = 0.6) +
+  scale_fill_manual(values = c("Control" = "blue", "XDP" = "red")) +  # Define colors
+  geom_text(data = medians, aes(x = Inf, y = Inf, 
+                                label = paste0("Median: ", round(median_log_nUMI, 2))), 
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 4, color = "black") +
+  theme_minimal() +
+  labs(fill = "Condition") + ggtitle("Putamen log(UMI) by donor") +ylab("Donor")
+
+
+cah_meta$saturation <- cah_meta$nRead/cah_meta$nUmi
+put_meta$saturation <- put_meta$nRead/put_meta$nUmi
+
+medians <- cah_meta%>%
+  group_by(donor_id, Condition) %>%  # Include case/control in grouping
+  summarize(median_saturation = median(saturation, na.rm = TRUE))
+
+# Plot histogram with facet per donor and median as text
+ggplot(cah_meta, aes(x = saturation, fill = Condition)) + 
+  facet_wrap(~ donor_id) + 
+  geom_histogram(bins = 100, alpha = 0.6) +
+  scale_fill_manual(values = c("Control" = "blue", "XDP" = "red")) +  # Define colors
+  geom_text(data = medians, aes(x = Inf, y = Inf, 
+                                label = paste0("Median: ", round(median_saturation, 2))), 
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 4, color = "black") +
+  theme_minimal() +
+  labs(fill = "Condition") + ggtitle("Caudate saturation by donor") +ylab("Donor")
+
+
+
+# Compute median for each donor
+medians <- put_meta%>%
+  group_by(donor_id, Condition) %>%  # Include case/control in grouping
+  summarize(median_saturation = median(saturation, na.rm = TRUE))
+
+# Plot histogram with facet per donor and median as text
+
+ggplot(put_meta, aes(x = saturation, fill = Condition)) + 
+  facet_wrap(~ donor_id) + 
+  geom_histogram(bins = 100, alpha = 0.6) +
+  scale_fill_manual(values = c("Control" = "blue", "XDP" = "red")) +  # Define colors
+  geom_text(data = medians, aes(x = Inf, y = Inf, 
+                                label = paste0("Median: ", round(median_saturation, 2))), 
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 4, color = "black") +
+  theme_minimal() +
+  labs(fill = "Condition") + ggtitle("Putamen saturation by donor") +ylab("Donor")
+
+
+medians <- cah_meta%>%
+  group_by(donor_id, Condition) %>%  # Include case/control in grouping
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+
+
+# Plot histogram with facet per donor and median as text
+ggplot(cah_meta, aes(x = pct_mito, fill = Condition)) + 
+  facet_wrap(~ donor_id) + 
+  geom_histogram(bins = 100, alpha = 0.6) +
+  scale_fill_manual(values = c("Control" = "blue", "XDP" = "red")) +  # Define colors
+  geom_text(data = medians, aes(x = Inf, y = Inf, 
+                                label = paste0("Median: ", round(median_pct_mito, 2))), 
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 4, color = "black") +
+  theme_minimal() +
+  labs(fill = "Condition") + ggtitle("Caudate pct mito by donor") +ylab("Donor")
+
+
+
+# Compute median for each donor
+medians <- put_meta%>%
+  group_by(donor_id, Condition) %>%  # Include case/control in grouping
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+
+
+# Plot histogram with facet per donor and median as text
+ggplot(put_meta, aes(x = pct_mito, fill = Condition)) + 
+  facet_wrap(~ donor_id) + 
+  geom_histogram(bins = 100, alpha = 0.6) +
+  scale_fill_manual(values = c("Control" = "blue", "XDP" = "red")) +  # Define colors
+  geom_text(data = medians, aes(x = Inf, y = Inf, 
+                                label = paste0("Median: ", round(median_pct_mito, 2))), 
+            hjust = 1.1, vjust = 1.1, inherit.aes = FALSE, size = 4, color = "black") +
+  theme_minimal() +
+  labs(fill = "Condition") + ggtitle("Putamen pct mito by donor") +ylab("Donor")
+
+```
+
+
+```{r}
+#histogram for pct_intronic
+median_pct_intronic = median(Put_Cohort3$pct_intronic)
+title = paste0("Put_Cohort3: pct intronic, " , "Median: ", sprintf("%0.3f", median_pct_intronic), "%")
+pct_intronic_hist = hist(sobj$pct_intronic, main = title, xlab = "pct intronic", col="grey", breaks = 100)
+
+median_pct_intronic = median(filtered_Put_Cohort3$pct_intronic)
+title = paste0("filtered_Put_Cohort3: pct intronic, " , "Median: ", sprintf("%0.3f", median_pct_intronic), "%")
+pct_intronic_hist = hist(sobj$pct_intronic, main = title, xlab = "pct intronic", col="grey", breaks = 100)
+
+#histogram for nUMI --> take log10 of nUMI tonormalize
+log_nUMI = log10(Put_Cohort3$nUmi)
+median_log_nUMI = median(log_nUMI)
+title = paste0("Put_Cohort3: log10(nUMI), ", "Median: ", sprintf("%0.3f", median_log_nUMI))
+log_nUMI_hist = hist(log_nUMI, main= title, xlab = "log10(nUMI)", col="grey", breaks = 100)
+
+saturation <- Put_Cohort3$nRead/Put_Cohort3$nUmi
+median_umi_per_read = median(saturation)
+title = paste0("Put_Cohort3: nReads/nUMI, " , "Median: ", sprintf("%0.3f", median_umi_per_read))  
+saturation_hist = hist(saturation, main= title, xlab = "nRead/nUMI", col="grey", breaks = 100)
+
+saturation <- filtered_Put_Cohort3$nRead/filtered_Put_Cohort3$nUmi
+median_umi_per_read = median(saturation)
+title = paste0("filtered_Put_Cohort3: nReads/nUMI, " , "Median: ", sprintf("%0.3f", median_umi_per_read))  
+saturation_hist = hist(saturation, main= title, xlab = "nRead/nUMI", col="grey", breaks = 100)
+
+median_pct_mito = median(Put_Cohort3$pct_mito)
+title = paste0("Put_Cohort3: pct mito, " , "Median: ", sprintf("%0.3f", median_pct_mito), "%")
+pct_intronic_hist = hist(sobj$pct_mito, main = title, xlab = "pct mito", col="grey", breaks = 100)
+
+median_pct_mito = median(filtered_Put_Cohort3$pct_mito)
+title = paste0("filtered_Put_Cohort3: pct mito, " , "Median: ", sprintf("%0.3f", median_pct_mito), "%")
+pct_intronic_hist = hist(sobj$pct_mito, main = title, xlab = "pct mito", col="grey", breaks = 100)
+```
+
+
+```{r}
+total_donors_cells_caudate <- as.data.frame(table(filtered_All_cells_df@meta.data$donor_id))
+colnames(total_donors_cells_caudate) <- c("donor_id", "cell_count")
+
+# Add condition information
+total_donors_cells_caudate$Condition <- filtered_All_cells_df@meta.data$Condition[match(total_donors_cells_caudate$donor_id, filtered_All_cells_df@meta.data$donor_id)]
+
+total_donors_cells_caudate$donor_id <- factor(total_donors_cells_caudate$donor_id, levels = total_donors_cells_caudate$donor_id[order(total_donors_cells_caudate$cell_count, decreasing = TRUE)])
+
+
+ggplot(total_donors_cells_caudate, aes(x = donor_id, y = cell_count, fill = Condition)) + 
+  geom_bar(stat = "identity") + 
+  geom_text(aes(label = cell_count), vjust = -0.3, color = "black", size = 3) + 
+  xlab("Donors from Caudate Village") + 
+  ylab("Number of Cells") + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+scale_fill_manual(values = c("XDP" = "#F8766D", "Control" = "#00BFC4"))
+
+```
+
+```{r}
+total_donors_cells_caudate <- as.data.frame(table(filtered_All_cells_df@meta.data$donor_id,filtered_All_cells_df@meta.data$library ))
+colnames(total_donors_cells_caudate) <- c("donor_id", "library", "cell_count")
+total_donors_cells_caudate
+
+# Add condition information
+total_donors_cells_caudate$Condition <- filtered_All_cells_df@meta.data$Condition[match(total_donors_cells_caudate$donor_id, filtered_All_cells_df@meta.data$donor_id)]
+total_donors_cells_caudate
+
+caudate_cell = as.data.frame(table(filtered_All_cells_df@meta.data$Condition))
+caudate_cell$Condition = caudate_cell$Var1
+caudate_cell$Var1 = NULL
+caudate_cell$Village = "Caudate"
+putamen_cell = as.data.frame(table(filtered_Put_Cohort3@meta.data$Condition))
+putamen_cell$Condition = putamen_cell$Var1
+putamen_cell$Var1 = NULL
+putamen_cell$Village = "Putamen"
+cells_villages = rbind(caudate_cell, putamen_cell)
+
+total_freq_per_village <- aggregate(Freq ~ Village, data = cells_villages, FUN = sum)
+total_freq_per_village
+
+ggplot(cells_villages, aes(x = Village, y = Freq, fill = Condition)) +
+  geom_bar(stat = "identity") +  
+  geom_text(aes(label = Freq), position = position_stack(vjust = 0.5), size = 3, color = "white") +  
+  geom_text(data = total_freq_per_village, aes(x = Village, y = Freq, label = Freq), vjust = -0.5, size = 4, inherit.aes = FALSE) +  
+  labs(title = "Cell Counts by Region and Condition", x = "Region", y = "Cell Counts", fill = "Condition") +
+  theme_minimal()
+
+
+```
+
+```{r}
+caudate_cell = as.data.frame(table(filtered_All_cells_df@meta.data$library))
+caudate_cell$library = caudate_cell$Var1
+caudate_cell$Var1 = NULL
+caudate_cell$Village = "Caudate"
+putamen_cell = as.data.frame(table(filtered_Put_Cohort3@meta.data$library))
+putamen_cell$library = putamen_cell$Var1
+putamen_cell$Var1 = NULL
+putamen_cell$Village = "Putamen"
+cells_villages = rbind(caudate_cell, putamen_cell)
+
+total_freq_per_village <- aggregate(Freq ~ Village, data = cells_villages, FUN = sum)
+total_freq_per_village
+
+ggplot(cells_villages, aes(x = Village, y = Freq, fill = library)) +
+  geom_bar(stat = "identity") +  
+  geom_text(aes(label = Freq), position = position_stack(vjust = 0.5), size = 3, color = "white") +  
+  geom_text(data = total_freq_per_village, aes(x = Village, y = Freq, label = Freq), vjust = -0.5, size = 4, inherit.aes = FALSE) +  
+  labs(title = "Cell Counts by Region and Library", x = "Region", y = "Cell Counts", fill = "Condition") +
+  theme_minimal()
+```
+
+```{r}
+per_donor = as.data.frame(table(filtered_All_cells_df@meta.data$donor_id))
+per_donor
+
+cells_per_donor_per_rxn = as.data.frame(table(filtered_All_cells_df@meta.data$donor_id, filtered_All_cells_df@meta.data$library))
+cells_per_donor_per_rxn = merge(cells_per_donor_per_rxn, per_donor, by = "Var1" )
+cells_per_donor_per_rxn
+
+cells_per_donor_per_rxn$Var1 = factor(cells_per_donor_per_rxn$Var1, levels = x_order)
+
+ggplot(cells_per_donor_per_rxn, aes(x = Var1, y = Freq.x, fill = Var2)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") +  geom_text(data = cells_per_donor_per_rxn, aes(x = Var1, y = Freq.y, label = Freq.y), vjust = -0.2, size = 3, nudge_y = 0.5) + ylab("Number of Cells") +
+ labs(fill = "Library")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+per_donor = as.data.frame(table(filtered_Put_Cohort3@meta.data$donor_id))
+per_donor
+
+cells_per_donor_per_rxn = as.data.frame(table(filtered_Put_Cohort3@meta.data$donor_id, filtered_Put_Cohort3@meta.data$library))
+cells_per_donor_per_rxn = merge(cells_per_donor_per_rxn, per_donor, by = "Var1" )
+cells_per_donor_per_rxn
+
+cells_per_donor_per_rxn$Var1 = factor(cells_per_donor_per_rxn$Var1, levels = x_order)
+
+ggplot(cells_per_donor_per_rxn, aes(x = Var1, y = Freq.x, fill = Var2)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") +  geom_text(data = cells_per_donor_per_rxn, aes(x = Var1, y = Freq.y, label = Freq.y), vjust = -0.2, size = 3, nudge_y = 0.5) + ylab("Number of Cells") +
+ labs(fill = "Library")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+DimPlot(filtered_All_cells_df, group.by = "Condition")
+DimPlot(filtered_All_cells_df, group.by = "library")
+DimPlot(filtered_All_cells_df, group.by = "donor_id")
+
+DimPlot(filtered_Put_Cohort3, group.by = "Condition")
+DimPlot(filtered_Put_Cohort3, group.by = "library")
+DimPlot(filtered_Put_Cohort3, group.by = "donor_id")
+
+FeaturePlot(filtered_All_cells_df, features = c("nUmi", "pct_mito"))
+```
+
+
+```{r}
+cells_per_donor_per_rxn = as.data.frame(table(filtered_All_cells_df@meta.data$donor_id, filtered_All_cells_df@meta.data$library))
+cells_per_donor_per_rxn
+cells_per_donor_per_rxn$Var1 = factor(cells_per_donor_per_rxn$Var1, levels = x_order)
+
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(fill = "Library")
+
+cells_per_donor_per_rxn = as.data.frame(table(filtered_Put_Cohort3@meta.data$donor_id, filtered_Put_Cohort3@meta.data$library))
+cells_per_donor_per_rxn
+
+cells_per_donor_per_rxn$Var1 = factor(cells_per_donor_per_rxn$Var1, levels = x_order)
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + labs(fill = "Library")
+```
+```{r}
+median_genes_per_donor <-filtered_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor
+
+median_genes_per_donor <-filtered_All_cells_df@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor
+median_genes_per_donor$donor_id = factor(median_genes_per_donor$donor_id, levels = x_order)
+ggplot(median_genes_per_donor, aes(x=donor_id, y = median_genes, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median number of genes") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  +ggtitle("Caudate: Median genes per library")
+```
+
+
+```{r}
+median_genes_per_donor <-filtered_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor
+
+median_genes_per_donor <-filtered_Put_Cohort3@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor
+median_genes_per_donor$donor_id = factor(median_genes_per_donor$donor_id, levels = x_order)
+ggplot(median_genes_per_donor, aes(x=donor_id, y = median_genes, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median number of genes") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  +ggtitle("Putamen: Median genes per library")
+```
+
+```{r}
+median_umis_per_donor <-filtered_All_cells_df@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+median_umis_per_donor$donor_id = factor(median_umis_per_donor$donor_id, levels = x_order)
+ggplot(median_umis_per_donor, aes(x=donor_id, y = mUMI, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median UMIs") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +ggtitle("Caudate: Median UMIs")
+
+
+median_umis_per_donor <-filtered_Put_Cohort3@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+median_umis_per_donor$donor_id = factor(median_umis_per_donor$donor_id, levels = x_order)
+ggplot(median_umis_per_donor, aes(x=donor_id, y = mUMI, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median UMIs") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +ggtitle("Putamen: Median UMIs")
+```
+
+```{r}
+total_donors_cells_caudate_per_rxn = as.data.frame(table(filtered_All_cells_df@meta.data$donor_id, filtered_All_cells_df$library))
+
+#install.packages("forcats")
+library(forcats)
+
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_per_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_Freq = sum(Freq))
+
+# Reorder Var1 based on total_Freq
+total_donors_cells_caudate_per_rxn <- total_donors_cells_caudate_per_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_Freq[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>%
+  mutate(Var1 = fct_reorder(Var1, -total_Freq))
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_caudate_per_rxn, aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_Freq, label = total_Freq), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Number of Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+total_donors_cells_putamen_per_rxn = as.data.frame(table(filtered_Put_Cohort3@meta.data$donor_id, filtered_Put_Cohort3$library))
+total_donors_cells_putamen_per_rxn
+
+#install.packages("forcats")
+#library(forcats)
+
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_per_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_Freq = sum(Freq))
+
+# Reorder Var1 based on total_Freq
+total_donors_cells_putamen_per_rxn <- total_donors_cells_putamen_per_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_Freq[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>%
+  mutate(Var1 = fct_reorder(Var1, -total_Freq))
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_per_rxn, aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_Freq, label = total_Freq), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Number of Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+#calculate how many cells are being filtered out from EACH donor
+```{r}
+total_donors_cells_caudate_by_rxn = as.data.frame(table(filtered_All_cells_df@meta.data$donor_id, filtered_All_cells_df@meta.data$library))
+total_donors_cells_caudate_by_rxn
+
+total_donors_cells_putamen_by_rxn = as.data.frame(table(filtered_Put_Cohort3@meta.data$donor_id, filtered_Put_Cohort3@meta.data$library))
+total_donors_cells_putamen_by_rxn
+
+#prefilter
+prefilter_caudate_by_rxn = as.data.frame(table(All_cells_df@meta.data$donor_id, All_cells_df@meta.data$library))
+prefilter_caudate_by_rxn = subset(prefilter_caudate_by_rxn, subset = Var1 != "SCF_21_036B")
+prefilter_caudate_by_rxn
+
+prefilter_putamen_by_rxn = as.data.frame(table(Put_Cohort3@meta.data$donor_id, Put_Cohort3@meta.data$library))
+prefilter_putamen_by_rxn
+```
+
+```{r}
+total_donors_cells_caudate_by_rxn$filtered_cells = prefilter_caudate_by_rxn$Freq - total_donors_cells_caudate_by_rxn$Freq
+total_donors_cells_caudate_by_rxn
+
+total_donors_cells_putamen_by_rxn$filtered_cells =  prefilter_putamen_by_rxn$Freq - total_donors_cells_putamen_by_rxn$Freq
+total_donors_cells_putamen_by_rxn
+
+```
+```{r}
+total_donors_cells_caudate_by_rxn$proportion = total_donors_cells_caudate_by_rxn$filtered_cells/total_donors_cells_caudate_by_rxn$Freq
+total_donors_cells_caudate_by_rxn$proportion <- round(total_donors_cells_caudate_by_rxn$proportion, 2)
+total_donors_cells_caudate_by_rxn
+```
+
+```{r}
+total_donors_cells_caudate_by_rxn
+summary_data
+```
+
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells), total_cells = sum(Freq))
+
+summary_data$total_proportion = summary_data$total_filtered_cells/summary_data$total_cells
+summary_data$total_proportion <- round(summary_data$total_proportion, 2)
+
+summary_data
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_caudate_by_rxn <- total_donors_cells_caudate_by_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_proportion[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_proportion))
+summary_data
+
+# Create the stacked bar plot
+ggplot(summary_data, aes(x = Var1, y = total_proportion)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_proportion, label = total_proportion), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Proportion of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+summary_data
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_caudate_by_rxn <- total_donors_cells_caudate_by_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_caudate_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_putamen_by_rxn <- total_donors_cells_putamen_by_rxn %>%
+mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+total_donors_cells_putamen_by_rxn$proportion = total_donors_cells_putamen_by_rxn$filtered_cells/total_donors_cells_putamen_by_rxn$Freq
+total_donors_cells_putamen_by_rxn$proportion <- round(total_donors_cells_putamen_by_rxn$proportion, 2)
+total_donors_cells_putamen_by_rxn
+
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells), total_cells = sum(Freq), total_proportion = sum(proportion))
+
+summary_data
+
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_putamen_by_rxn <- total_donors_cells_putamen_by_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_proportion[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_proportion))
+summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_by_rxn, aes(x = Var1, y = proportion, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_proportion, label = total_proportion), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Proportion of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells), total_cells = sum(Freq))
+
+summary_data$total_proportion = summary_data$total_filtered_cells/summary_data$total_cells
+summary_data$total_proportion <- round(summary_data$total_proportion, 2)
+
+summary_data
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_putamen_by_rxn <- total_donors_cells_putamen_by_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_proportion[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_proportion))
+summary_data
+
+# Create the stacked bar plot
+ggplot(summary_data, aes(x = Var1, y = total_proportion)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_proportion, label = total_proportion), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Proportion of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+cells_per_donor = as.data.frame(table(filtered_All_cells_df@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(filtered_All_cells_df@meta.data$cell_class, filtered_All_cells_df@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+```{r}
+cells_per_donor = as.data.frame(table(filtered_Put_Cohort3@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(filtered_Put_Cohort3@meta.data$cell_class, filtered_Put_Cohort3@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Putamen Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(filtered_All_cells_df@meta.data$donor_id))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+# mean_nUmi = filtered_All_cells_df@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_UMI = mean(nUmi, na.rm = TRUE))
+# mean_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+# mean_nGenes = filtered_All_cells_df@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_nGenes = mean(nFeature_RNA, na.rm = TRUE))
+# mean_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+# mean_reads_per_umi = filtered_All_cells_df@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_reads_per_umi = mean((nRead/nUmi), na.rm = TRUE))
+# mean_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+# mean_pct_intronic = filtered_All_cells_df@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_pct_intronic = mean(pct_intronic, na.rm = TRUE))
+# mean_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = filtered_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+# mean_pct_mito = filtered_All_cells_df@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_pct_mito = mean(pct_mito, na.rm = TRUE))
+# mean_pct_mito
+```
+```{r}
+library(gridExtra)
+caudate_library_qc_df_list = list(median_nUmi, median_nGenes, median_reads_per_umi, median_pct_intronic,  median_pct_mito)
+caudate_library_qc_df = reduce(caudate_library_qc_df_list, left_join, by = "donor_id")
+caudate_library_qc_df
+
+caudate_library_qc_df[, -1] <- round(caudate_library_qc_df[, -1], digits = 2)
+caudate_library_qc_df
+table_grob = tableGrob(caudate_library_qc_df)
+ggsave("caudate_donor_qc_df.png", table_grob, width = 15, height = 6, dpi = 300)
+```
+
+
+```{r}
+library(purrr)
+# List of data frames to merge
+df_list <- list(median_nUmi, median_nGenes,median_reads_per_umi, median_pct_intronic, median_pct_mito )
+
+# Merge all data frames on the common column Donor.ID
+merged_df <- reduce(df_list, function(x, y) merge(x, y, by = "donor_id"))
+
+# Print the merged data frame
+print(merged_df)
+
+qc_graphs = function(data, y, xlab, ylab, title){
+
+
+data$donor_id = factor(data$donor_id, levels = x_order)
+median = median(y)
+
+ggplot(data, aes(x = donor_id, y = y, fill = donor_id)) +
+  geom_bar(stat = "identity") + xlab(xlab) + ylab(ylab)+ labs(fill = "donor_id")+ ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f", median)))+geom_hline(yintercept = median, linetype = "dashed", color = "black") +
+  geom_vline(xintercept =  5.5, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+qc_graphs(merged_df, merged_df$median_UMI, "Donors", "median UMI", "CaH Village: median UMI")
+qc_graphs(merged_df, merged_df$median_nGenes, "Donors", "median nGenes", "CaH Village: median nGenes")
+qc_graphs(merged_df, merged_df$median_reads_per_umi, "Donors", "median reads/UMI", "CaH Village: median reads/UMI")
+qc_graphs(merged_df, merged_df$median_pct_intronic, "Donors", "median pct intronic", "CaH Village: median pct intronic")
+qc_graphs(merged_df, merged_df$median_pct_mito, "Donors", "median pct mito", "CaH Village: median pct mito")
+```
+
+
+#putamen
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(filtered_Put_Cohort3@meta.data$donor_id))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+# mean_nUmi = filtered_Put_Cohort3@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_UMI = mean(nUmi, na.rm = TRUE))
+# mean_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+# mean_nGenes = filtered_Put_Cohort3@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_nGenes = mean(nFeature_RNA, na.rm = TRUE))
+# mean_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+# mean_reads_per_umi = filtered_Put_Cohort3@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_reads_per_umi = mean((nRead/nUmi), na.rm = TRUE))
+# mean_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+# mean_pct_intronic = filtered_Put_Cohort3@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_pct_intronic = mean(pct_intronic, na.rm = TRUE))
+# mean_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = filtered_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+# mean_pct_mito = filtered_Put_Cohort3@meta.data %>%
+#   group_by(donor_id) %>%
+#   summarize(mean_pct_mito = mean(pct_mito, na.rm = TRUE))
+# mean_pct_mito
+
+# List of data frames to merge
+df_list <- list(median_nUmi, median_nGenes,median_reads_per_umi, median_pct_intronic, median_pct_mito )
+
+# Merge all data frames on the common column Donor.ID
+merged_df <- reduce(df_list, function(x, y) merge(x, y, by = "donor_id"))
+
+# Print the merged data frame
+print(merged_df)
+```
+
+```{r}
+putamen_library_qc_df_list = list(median_nUmi, median_nGenes, median_reads_per_umi, median_pct_intronic,  median_pct_mito)
+putamen_library_qc_df = reduce(putamen_library_qc_df_list, left_join, by = "donor_id")
+putamen_library_qc_df
+
+putamen_library_qc_df[, -1] <- round(putamen_library_qc_df[, -1], digits = 2)
+putamen_library_qc_df
+table_grob = tableGrob(putamen_library_qc_df)
+ggsave("putamen_donor_qc_df.png", table_grob, width = 15, height = 6, dpi = 300)
+```
+
+```{r}
+qc_graphs(merged_df, merged_df$median_UMI, "Donors", "median UMI", "Put Village: median UMI")
+qc_graphs(merged_df, merged_df$median_nGenes, "Donors", "median nGenes", "Put Village: median nGenes")
+qc_graphs(merged_df, merged_df$median_reads_per_umi, "Donors", "median reads/UMI", "Put Village: median reads/UMI")
+qc_graphs(merged_df, merged_df$median_pct_intronic, "Donors", "median pct intronic", "Put Village: median pct intronic")
+qc_graphs(merged_df, merged_df$median_pct_mito, "Donors", "median pct mito", "Put Village: median pct mito")
+```
+
+
+
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(filtered_All_cells_df@meta.data$library))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_All_cells_df@meta.data %>%
+  group_by(library) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_All_cells_df@meta.data %>%
+  group_by(library) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_All_cells_df@meta.data %>%
+  group_by(library) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_All_cells_df@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+
+#median/mean pctmito
+median_pct_mito = filtered_All_cells_df@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+```
+```{r}
+library(gridExtra)
+caudate_library_qc_df_list = list(median_nUmi, median_nGenes, median_reads_per_umi, median_pct_intronic,  median_pct_mito)
+caudate_library_qc_df = reduce(caudate_library_qc_df_list, left_join, by = "library")
+caudate_library_qc_df
+
+caudate_library_qc_df[, -1] <- round(caudate_library_qc_df[, -1], digits = 2)
+caudate_library_qc_df
+table_grob = tableGrob(caudate_library_qc_df)
+ggsave("caudate_library_qc_df.png", table_grob, width = 15, height = 6, dpi = 300)
+```
+
+
+```{r}
+library(purrr)
+# List of data frames to merge
+df_list <- list(median_nUmi, median_nGenes,median_reads_per_umi, median_pct_intronic, median_pct_mito )
+
+# Merge all data frames on the common column Donor.ID
+merged_df <- reduce(df_list, function(x, y) merge(x, y, by = "library"))
+
+# Print the merged data frame
+print(merged_df)
+
+
+merged_df_final_combined = rbind(merged_df,merged_df_final)
+merged_df_final_combined
+
+qc_graphs_lib = function(data, y, xlab, ylab, title){
+
+x_order = c("CaH_rxn1", "CaH_rxn2", "Put_rxn1", "Put_rxn2")  
+
+data$library = factor(data$library, levels = x_order)
+median = median(y)
+
+ggplot(data, aes(x = library, y = y, fill = library)) +
+  geom_bar(stat = "identity") + xlab(xlab) + ylab(ylab)+ labs(fill = "library")+ ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f", median)))+geom_hline(yintercept = median, linetype = "dashed", color = "black") +
+  geom_vline(xintercept =  8.5, linetype = "dashed", color = "black")+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+}
+```
+
+```{r}
+qc_graphs_lib(merged_df_final_combined, merged_df_final_combined$median_UMI, "Library", "median UMI", "CaH + Put: median UMI")
+qc_graphs_lib(merged_df_final_combined, merged_df_final_combined$median_nGenes, "Library", "median nGenes", "CaH + Put: median nGenes")
+qc_graphs_lib(merged_df_final_combined, merged_df_final_combined$median_reads_per_umi, "Library", "median reads/UMI", "CaH + Put: median reads/UMI")
+qc_graphs_lib(merged_df_final_combined, merged_df_final_combined$median_pct_intronic, "Library", "median pct intronic", "CaH + Put: median pct intronic")
+qc_graphs_lib(merged_df_final_combined, merged_df_final_combined$median_pct_mito, "Library", "median pct mito", "CaH + Put: median pct mito")
+```
+
+
+```{r}
+cells_per_donor = as.data.frame(table(cleaned_All_cells_df@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(cleaned_All_cells_df@meta.data$cell_class, cleaned_All_cells_df@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(cleaned_All_cells_df@meta.data$donor_id))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = cleaned_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+
+#median/mean nGenes
+median_nGenes = cleaned_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+
+#median/mean reads/numi
+median_reads_per_umi = cleaned_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+
+#median/mean pctintronic
+median_pct_intronic = cleaned_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = cleaned_All_cells_df@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+
+```
+
+```{r}
+library(purrr)
+# List of data frames to merge
+df_list <- list(median_nUmi, median_nGenes,median_reads_per_umi, median_pct_intronic, median_pct_mito )
+
+# Merge all data frames on the common column Donor.ID
+merged_df <- reduce(df_list, function(x, y) merge(x, y, by = "donor_id"))
+
+# Print the merged data frame
+print(merged_df)
+
+
+qc_graphs(merged_df, merged_df$median_UMI, "Donors", "median UMI", "CaH Village: median UMI")
+qc_graphs(merged_df, merged_df$median_nGenes, "Donors", "median nGenes", "CaH Village: median nGenes")
+qc_graphs(merged_df, merged_df$median_reads_per_umi, "Donors", "median reads/UMI", "CaH Village: median reads/UMI")
+qc_graphs(merged_df, merged_df$median_pct_intronic, "Donors", "median pct intronic", "CaH Village: median pct intronic")
+qc_graphs(merged_df, merged_df$median_pct_mito, "Donors", "median pct mito", "CaH Village: median pct mito")
+```
+
+
+
+```{r}
+cells_per_donor = as.data.frame(table(cleaned_Put_Cohort3@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(cleaned_Put_Cohort3@meta.data$cell_class, cleaned_Put_Cohort3@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df
+
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Putamen Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  5.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+
+
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(cleaned_Put_Cohort3@meta.data$donor_id))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = cleaned_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+
+#median/mean nGenes
+median_nGenes = cleaned_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+
+#median/mean reads/numi
+median_reads_per_umi = cleaned_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+
+#median/mean pctintronic
+median_pct_intronic = cleaned_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = cleaned_Put_Cohort3@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+
+library(purrr)
+# List of data frames to merge
+df_list <- list(median_nUmi, median_nGenes,median_reads_per_umi, median_pct_intronic, median_pct_mito )
+
+# Merge all data frames on the common column Donor.ID
+merged_df <- reduce(df_list, function(x, y) merge(x, y, by = "donor_id"))
+
+# Print the merged data frame
+print(merged_df)
+
+
+table(cleaned_Put_Cohort3$donor_id)
+
+qc_graphs(merged_df, merged_df$median_UMI, "Donors", "median UMI", "Put Village: median UMI")
+qc_graphs(merged_df, merged_df$median_nGenes, "Donors", "median nGenes", "Put Village: median nGenes")
+qc_graphs(merged_df, merged_df$median_reads_per_umi, "Donors", "median reads/UMI", "Put Village: median reads/UMI")
+qc_graphs(merged_df, merged_df$median_pct_intronic, "Donors", "median pct intronic", "Put Village: median pct intronic")
+qc_graphs(merged_df, merged_df$median_pct_mito, "Donors", "median pct mito", "Put Village: median pct mito")
+```
+
+
+

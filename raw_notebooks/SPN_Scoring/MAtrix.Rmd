@@ -1,0 +1,602 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+old_fractions = as.data.frame(table(merged_xdp_transformed$patch_matrix, merged_xdp_transformed$donor_id ))
+new_fractions = as.data.frame(table(merged_xdp_transformed_reclustered_integrated@meta.data$reclustered_patch_matrix,merged_xdp_transformed_reclustered_integrated$donor_id))
+old_fractions$patch_matrix = old_fractions$Var1
+old_fractions$Var1 = NULL
+old_fractions$donor_id = old_fractions$Var2
+old_fractions$Var2 = NULL
+old_fractions$old_fraction = old_fractions$Freq
+old_fractions$Freq = NULL 
+
+new_fractions$patch_matrix = new_fractions$Var1
+new_fractions$Var1 = NULL
+new_fractions$donor_id = new_fractions$Var2
+new_fractions$Var2 = NULL
+new_fractions$new_fraction = new_fractions$Freq
+new_fractions$Freq = NULL
+
+old = as.data.frame(table(merged_xdp_transformed$donor_id ))
+new = as.data.frame(table(merged_xdp_transformed_reclustered_integrated$donor_id))
+old
+new
+
+old_fractions = merge(old_fractions, old, by.x = "donor_id", by.y = "Var1")
+new_fractions = merge(new_fractions, new, by.x = "donor_id", by.y = "Var1")
+old_fractions
+new_fractions
+```
+```{r}
+old_fractions$old_ratio = old_fractions$old_fraction/old_fractions$Freq
+new_fractions$new_ratio = new_fractions$new_fraction/new_fractions$Freq
+old_fractions
+new_fractions
+```
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+old_fractions$donor_id = factor(old_fractions$donor_id, levels = x_order)
+
+ggplot(old_fractions, aes(x=donor_id, y = old_fraction, fill=patch_matrix)) + geom_bar(stat = "identity") +  xlab("Donors") + ylab("Neuron cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+
+ggplot(old_fractions, aes(x = donor_id, y = old_ratio, fill = patch_matrix)) +
+  geom_bar(stat = "identity") +
+  xlab("Donors") +
+  ylab("Fraction of cells in neurons") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(fill = "Donor") +
+  geom_vline(xintercept = 4.5, linetype = "solid", color = "black")
+
+new_fractions$donor_id = factor(new_fractions$donor_id, levels = x_order)
+
+ggplot(new_fractions, aes(x=donor_id, y = new_fraction, fill=patch_matrix)) + geom_bar(stat = "identity") +  xlab("Donors") + ylab("Neuron cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+
+ggplot(new_fractions, aes(x = donor_id, y = new_ratio, fill = patch_matrix)) +
+  geom_bar(stat = "identity") +
+  xlab("Donors") +
+  ylab("Fraction of cells in neurons") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(fill = "Donor") +
+  geom_vline(xintercept = 4.5, linetype = "solid", color = "black")
+```
+```{r}
+head(merged_xdp_transformed)
+```
+
+```{r}
+DimPlot(merged_xdp_transformed_reclustered_integrated, group.by = "cell_class", label = T)
+```
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+`
+
+
+#xdp integrated Matrix score
+```{r}
+XDP_matrix_scores = SPN_score_normalized(xdp_matrix_markers_final, final_merged_xdp_transformed, logfc_val = "weighted_logFC", method = "multiply")
+```
+
+
+```{r}
+color6 = c("SPN_matrix" = "red", "non-SPN" = "blue", "SPN_patch" = "orange")
+
+SPN_score_graphs(XDP_matrix_scores, donor_order = donors, total_expression = "total_expression",  fillcol = "reclustered_patch_matrix", 
+                             color = color6, 
+                             donor_graph_title = "SPN Matrix vs non-SPNs", 
+                             final_merged_xdp_transformed, 
+                             SPN_score_col_name = "test") 
+```
+
+```{r}
+color1 = c("SPN" = "red", "non-SPN"= "blue") #for subcluster: SPN vs non-SPNS
+color2 = c("red", "blue")
+color3 = c("SPN"="red", "eSPN"="yellow", "other"="green", "IN" = "blue") #for subclass
+
+SPN_score_graphs(XDP_matrix_scores, donor_order = donors, total_expression = "total_expression",  fillcol = "reclustered_subcluster", 
+                             color = color1, 
+                             donor_graph_title = "Matrix SPNs vs non-SPNs", 
+                             final_merged_xdp_transformed, 
+                             SPN_score_col_name = "test")
+```
+
+
+```{r}
+matrix <- XDP_matrix_scores[XDP_matrix_scores$reclustered_patch_matrix == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(0, 150, 2),
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  patch <- XDP_matrix_scores[XDP_matrix_scores$reclustered_patch_matrix == "SPN_patch", ]
+  plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(0, 150, 2),
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  nonSPN <- XDP_matrix_scores[XDP_matrix_scores$reclustered_patch_matrix == "non-SPN", ]
+  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(0, 150, 2),
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+```
+```{r}
+SPN_score_output
+```
+
+```{r}
+SPN_score_output = XDP_matrix_scores
+SCtransformcounts = final_merged_xdp_transformed
+
+  threshold <- quantile(SPN_score_output[["total_expression"]][SPN_score_output[["reclustered_patch_matrix"]] == "SPN_matrix"], 0.1, na.rm = TRUE)
+  print(threshold)
+  
+  # Subset the data
+  SPN_score_output_identity_loss_SPN <- SPN_score_output[SPN_score_output[["total_expression"]] < threshold & SPN_score_output[["reclustered_patch_matrix"]] == "SPN_matrix", ]
+  
+  print(SPN_score_output_identity_loss_SPN)
+  print(table(SPN_score_output_identity_loss_SPN$donor_id))
+  
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Losing_Identity"
+  SCtransformcounts@meta.data
+  
+  # Visualize on UMAP
+  pic <- DimPlot(SCtransformcounts, group.by = "SPN_identity", split.by = "Condition", cols = c("red", "grey"))
+  print(pic)
+  
+```
+
+```{r}
+ggplot(data = SPN_score_output_identity_loss_SPN, aes(x = total_expression, y = nUmi, color = reclustered_patch_matrix)) + geom_point(alpha = 0.3) + xlab("SPN Matrix Score")
+ggplot(data = SPN_score_output_identity_loss_SPN, aes(x = total_expression, y = pct_mito, color = reclustered_patch_matrix)) + geom_point(alpha = 0.3)+ xlab("SPN Matrix Score") 
+ggplot(data = SPN_score_output_identity_loss_SPN, aes(x = nUmi, y = pct_mito, color = reclustered_patch_matrix)) + geom_point(alpha = 0.3)
+```
+```{r}
+ggplot(data = SPN_score_output_identity_loss_SPN, aes(x = nUmi, y = pct_mito, color = total_expression, shape = Condition)) + geom_point(alpha = 0.6, size = 2) + labs(color = "SPN Matrix Score", shape = "Condition")+ scale_shape_manual(values = c(4, 16)) 
+```
+```{r}
+SPN_score_output_identity_loss_SPN_XDP = subset(SPN_score_output_identity_loss_SPN, subset = SPN_score_output_identity_loss_SPN$Condition == "XDP")
+
+ggplot(data = SPN_score_output_identity_loss_SPN_XDP, aes(x = nUmi, y = pct_mito, color = total_expression)) + geom_point(alpha = 0.6, size = 2) + labs(color = "SPN Matrix Score") +ggtitle("XDP") 
+
+SPN_score_output_identity_loss_SPN_Control = subset(SPN_score_output_identity_loss_SPN, subset = SPN_score_output_identity_loss_SPN$Condition == "Control")
+
+ggplot(data = SPN_score_output_identity_loss_SPN_Control, aes(x = nUmi, y = pct_mito, color = total_expression)) + geom_point(alpha = 0.6, size = 2) + labs(color = "SPN Matrix Score") + ggtitle("Control")
+```
+
+
+
+```{r}
+XDP_matrix_scores$identity <- ifelse(XDP_matrix_scores$cell_id %in% identity_loss_cells, "Bottom 10% SPN Matrix", "Other")
+XDP_matrix_scores
+
+ggplot(data = XDP_matrix_scores, aes(x = total_expression, y = nUmi, color = identity)) + geom_point(alpha = 0.2) + xlab("SPN Matrix Score")
+ggplot(data = XDP_matrix_scores, aes(x = total_expression, y = pct_mito, color = identity)) + geom_point(alpha = 0.2)+ xlab("SPN Matrix Score") 
+ggplot(data = XDP_matrix_scores, aes(x = nUmi, y = pct_mito, color = identity)) + geom_point(alpha = 0.2) 
+  
+```
+```{r}
+ggplot(data = XDP_matrix_scores, aes(x = total_expression, y = nUmi, color = reclustered_patch_matrix)) + geom_point(alpha = 0.2) + xlab("SPN Matrix Score")
+ggplot(data = XDP_matrix_scores, aes(x = total_expression, y = pct_mito, color = reclustered_patch_matrix)) + geom_point(alpha = 0.2) + xlab("SPN Matrix Score")
+ggplot(data = XDP_matrix_scores, aes(x = nUmi, y = pct_mito, color = reclustered_patch_matrix)) + geom_point(alpha = 0.2) 
+  
+```
+
+
+#BICAN validation 
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered_transformed
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed)
+```
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered_transformed[["umap_rna"]] = BICAN_3P_V8_CaH_neurons_filtered_transformed[["umap"]]
+BICAN_3P_V8_CaH_neurons_filtered_transformed
+```
+
+
+#Actual Clustering Code- caudate
+```{r}
+# Counts of super lowly expressed genes are essentially random
+# Also, we don't really care about housekeeping genes that have almost the same expression in every cell
+# Before clustering, we want to find "highly variable genes" (hvgs) that tend to be both highly expressed and vary a lot from cell to cell.
+# we do this by finding hvgs in each participant individually, and collating the genes
+# that are highly variable in at least half of donors.
+
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(merged_xdp_transformed, subset_col="DONOR", original_nfeatures=2500)
+
+
+n_dims_use=20
+
+
+# now cluster
+# the "%>%" lines are a little piece of syntax from the dyplr library,
+# short for "apply the following transformation to the object"
+# doing this line-by-line allows us to apply a sequence of transformations
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered = (BICAN_3P_V8_CaH_neurons_filtered_transformed
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="DONOR") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via merged_xdp_transformed$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: merged_xdp_transformed$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+
+# Now we can plot the data and just see what it looks like
+
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+```
+
+```{r}
+library(harmony)
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated = (BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered
+    %>% RunHarmony(
+        group.by = "DONOR")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated@meta.data
+```
+
+```{r}
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "predClass")
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "DONOR")
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "library")
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "sub_class")
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "subcluster", label = T)
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "SPN_class")
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "D1_D2")
+```
+
+
+```{r}
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "SCT_snn_res.0.2")
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "SCT_snn_res.0.3")
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "SCT_snn_res.0.4")
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "SCT_snn_res.0.5")
+```
+
+```{r}
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("DRD1", "DRD2"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features =c("CASZ1","CHAT"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features =c("C1QA"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("PPP1R1B", "pct_mt"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("GAD1", "GAD2"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("VIP", "CALB2"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("SLC17A7", "SLC17A6"))
+```
+
+
+```{r}
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("SEMA5B", "MTGE8", "KREMEN1", "PDE1C"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("TSHZ1", "TAC1", "NNAT"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("ID4", "OPRM1"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("ID4", "SGK1", "EPHA4", "SV2B"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("NECAB1", "CO11A1"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("ASIC4"))
+FeaturePlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, features = c("CASZ1", "CACNG5", "PCDH8"))
+```
+
+
+```{r}
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+```
+
+
+```{r}
+a = FindAllMarkers(object = BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1)
+a
+```
+
+
+```{r}
+classes = c("D1_SPN_matrix", "D2_SPN_matrix", "D1_SPN_patch", "interneuron_1", "eSPN", "D2_SPN_patch", "interneuron_2", "interneuron_3", "D2_SPN_patch", "cholinergic")
+
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated = assignCellClasses(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, classes=classes, cluster_col="SCT_snn_res.0.2", class_col = "reclustered_cell_class")
+Idents(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated) = "reclustered_cell_class"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, label = T)
+```
+
+
+```{r}
+Idents(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated) = "reclustered_cell_class"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, label = T)
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, group.by = "cell_class", split.by = "region")
+```
+
+
+
+```{r}
+qsave(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, "~/SOBJ_USE_THESE/BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated.qs")
+
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated = qread("~/SOBJ_USE_THESE/BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated.qs")
+```
+
+
+
+```{r}
+xdp_matrix_markers_final
+```
+
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated@meta.data
+```
+
+```{r}
+BICAN_matrix_scores = BICAN_SPN_score_normalized(xdp_matrix_markers_final, BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, logfc_val = "weighted_logFC", method = "multiply")
+```
+
+```{r}
+unique(BICAN_matrix_scores$reclustered_cell_class)
+```
+
+```{r}
+BICAN_matrix_scores$reclustered_patch_matrix = BICAN_matrix_scores$reclustered_cell_class
+BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "D2_SPN_matrix" ] = "SPN_matrix"
+  BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "D1_SPN_patch" ] = "SPN_patch"
+  BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "D1_SPN_matrix" ] = "SPN_matrix" 
+  BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "interneuron_3" ] = "non-SPN"
+  BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "interneuron_1" ] = "non-SPN"
+  BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "eSPN" ] = "non-SPN"
+  BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "D2_SPN_patch" ] = "SPN_patch"
+  BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "interneuron_2" ] = "non-SPN" 
+  BICAN_matrix_scores$reclustered_patch_matrix[BICAN_matrix_scores$reclustered_patch_matrix == "cholinergic" ] = "non-SPN"
+BICAN_matrix_scores
+```
+
+
+```{r}
+color4 = c("SPN_matrix" = "red", "non-SPN" = "blue", "SPN_patch" = "orange")
+
+BICAN_SPN_score_graphs(BICAN_matrix_scores, donor_order = BICANdonors, total_expression = "total_expression",  fillcol = "reclustered_patch_matrix", 
+                             color = color4, 
+                             donor_graph_title = "Matrix SPNs vs non-SPNs", 
+                             BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, 
+                             SPN_score_col_name = "BICANtest") 
+```
+
+
+```{r}
+BICAN_SPN_score_graphs(BICAN_matrix_scores, donor_order = BICANdonors, total_expression = "total_expression",  fillcol = "SPN_class", 
+                             color = color1, 
+                             donor_graph_title = "Matrix SPNs vs non-SPNs", 
+                             BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated, 
+                             SPN_score_col_name = "BICANtest") 
+
+```
+
+#I think a good proof of concept would be to show that the lowest 10% of matrix SPNs are bad quality nuclei? 
+
+
+```{r}
+SPN_score_output = BICAN_matrix_scores
+SCtransformcounts = BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated
+
+  threshold <- quantile(SPN_score_output[["total_expression"]][SPN_score_output[["reclustered_patch_matrix"]] == "SPN_matrix"], 0.1, na.rm = TRUE)
+  print(threshold)
+  
+  # Subset the data
+  SPN_score_output_identity_loss_SPN <- SPN_score_output[SPN_score_output[["total_expression"]] < threshold & SPN_score_output[["reclustered_patch_matrix"]] == "SPN_matrix", ]
+  
+  print(SPN_score_output_identity_loss_SPN)
+  print(table(SPN_score_output_identity_loss_SPN$donor_id))
+  
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Bottom 10%"
+  SCtransformcounts@meta.data
+  
+  # Visualize on UMAP
+  pic <- DimPlot(SCtransformcounts, group.by = "SPN_identity", cols = c("red", "grey"))
+  print(pic)
+  
+```
+
+```{r}
+ggplot(data = SPN_score_output_identity_loss_SPN, aes(x = total_expression, y = NUM_TRANSCRIPTS, color = reclustered_patch_matrix)) + geom_point(alpha = 0.3) + xlab("SPN Matrix Score")
+ggplot(data = SPN_score_output_identity_loss_SPN, aes(x = total_expression, y = pct_mt, color = reclustered_patch_matrix)) + geom_point(alpha = 0.3)+ xlab("SPN Matrix Score") 
+ggplot(data = SPN_score_output_identity_loss_SPN, aes(x = NUM_TRANSCRIPTS, y = pct_mt, color = reclustered_patch_matrix)) + geom_point(alpha = 0.3)
+
+ggplot(data = SPN_score_output_identity_loss_SPN, aes(x = NUM_TRANSCRIPTS, y = pct_mt, color = total_expression)) + geom_point(alpha = 0.6) + labs(color = "SPN Matrix Score")
+```
+
+
+
+```{r}
+BICAN_matrix_scores$identity <- ifelse(BICAN_matrix_scores$cell_id %in% identity_loss_cells, "Bottom 10% SPN Matrix", "Other")
+BICAN_matrix_scores
+
+ggplot(data = BICAN_matrix_scores, aes(x = total_expression, y = NUM_TRANSCRIPTS, color = identity)) + geom_point(alpha = 0.2) + xlab("SPN Matrix Score")
+ggplot(data = BICAN_matrix_scores, aes(x = total_expression, y = pct_mt, color = identity)) + geom_point(alpha = 0.2)+ xlab("SPN Matrix Score") 
+ggplot(data = BICAN_matrix_scores, aes(x = NUM_TRANSCRIPTS, y = pct_mt, color = identity)) + geom_point(alpha = 0.2) 
+  
+```
+
+
+
+```{r}
+ggplot(data = BICAN_matrix_scores, aes(x = total_expression, y = NUM_TRANSCRIPTS, color = reclustered_patch_matrix)) + geom_point(alpha = 0.2) + xlab("SPN Matrix Score")
+ggplot(data = BICAN_matrix_scores, aes(x = total_expression, y = pct_mt, color = reclustered_patch_matrix)) + geom_point(alpha = 0.2) + xlab("SPN Matrix Score")
+ggplot(data = BICAN_matrix_scores, aes(x = NUM_TRANSCRIPTS, y = pct_mt, color = reclustered_patch_matrix)) + geom_point(alpha = 0.2) 
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+XDP_matrix_scores
+nonorm_XDP_matrix_scores
+```
+```{r}
+XDP_matrix = XDP_matrix_scores %>% select(cell_id, total_expression)
+XDP_matrix$Normalized_SPN_score = XDP_matrix$total_expression
+XDP_matrix$total_expression = NULL
+XDP_matrix
+nonormXDP_matrix = nonorm_XDP_matrix_scores %>% select(cell_id, total_expression)
+nonormXDP_matrix$UnNormalized_SPN_score = nonormXDP_matrix$total_expression
+nonormXDP_matrix$total_expression = NULL
+nonormXDP_matrix
+```
+```{r}
+score_compare = merge(XDP_matrix, nonormXDP_matrix, by = "cell_id")
+score_compare
+```
+
+```{r}
+ggplot(data = score_compare, aes(x = UnNormalized_SPN_score, y = Normalized_SPN_score)) + geom_point(alpha = 0.3, color = "red")
+```
+
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated@meta.data$reclustered_patch_matrix = BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_cell_class
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "D2_SPN_matrix" ] = "SPN_matrix"
+  BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "D1_SPN_patch" ] = "SPN_patch"
+  BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "D1_SPN_matrix" ] = "SPN_matrix" 
+  BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "interneuron_3" ] = "non-SPN"
+  BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "interneuron_1" ] = "non-SPN"
+  BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "eSPN" ] = "non-SPN"
+  BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "D2_SPN_patch" ] = "SPN_patch"
+  BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "interneuron_2" ] = "non-SPN" 
+  BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix[BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix == "cholinergic" ] = "non-SPN"
+BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated
+head(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated)
+
+```
+
+
+```{r}
+new_fractions = as.data.frame(table(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$reclustered_patch_matrix,BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$DONOR))
+
+new_fractions$patch_matrix = new_fractions$Var1
+new_fractions$Var1 = NULL
+new_fractions$donor_id = new_fractions$Var2
+new_fractions$Var2 = NULL
+new_fractions$new_fraction = new_fractions$Freq
+new_fractions$Freq = NULL
+new_fractions
+
+new = as.data.frame(table(BICAN_3P_V8_CaH_neurons_filtered_transformed_reclustered_integrated$DONOR))
+new
+
+new_fractions = merge(new_fractions, new, by.x = "donor_id", by.y = "Var1")
+
+new_fractions
+```
+
+```{r}
+new_fractions$new_ratio = new_fractions$new_fraction/new_fractions$Freq
+new_fractions
+```
+
+```{r}
+ggplot(new_fractions, aes(x=donor_id, y = new_fraction, fill=patch_matrix)) + geom_bar(stat = "identity") + xlab("BICAN Donors") + ylab("Neuron cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") 
+
+ggplot(new_fractions, aes(x = donor_id, y = new_ratio, fill = patch_matrix)) +
+  geom_bar(stat = "identity") +
+  xlab("BICAN Donors") +
+  ylab("Fraction of cells in neurons") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(fill = "Donor") 
+```
+
+
+```{r}
+head(merged_xdp_transformed)
+```
+
+
+```{r}
+DimPlot(merged_xdp_transformed, group.by= "cell_class", label = TRUE)
+```
+
+```{r}
+head(final_merged_xdp_transformed)
+```
+
+
+```{r}
+DimPlot(merged_xdp_transformed_reclustered_integrated, group.by = "reclustered_patch_matrix")
+temp = subset(merged_xdp_transformed_reclustered_integrated, subset = reclustered_patch_matrix != "SPN_junk")
+DimPlot(temp, group.by = "reclustered_patch_matrix", label = T)
+```
+
+

@@ -1,0 +1,296 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+```
+
+
+```{r}
+seurat_object_list <- qread("Cellbender_seurat/seurat_object_list.qs")
+head(seurat_object_list)
+```
+
+
+```{r}
+filtered_seurat_object_list = list()
+
+library_list = list("CaH_rxn1",
+                    "CaH_rxn2", 
+                    "CaH_rxn3", 
+                    "CaH_rxn4", 
+                    "Put_rxn1", 
+                    "Put_rxn2", 
+                    "Put_rxn3", 
+                    "Put_rxn4")
+#qc_df_list = list()
+
+#qc_df = dataframe()
+#qc_df$library_name = library_list
+
+for (name in library_list){
+
+sobj = seurat_object_list[[name]] 
+
+#filter your seurat objects so that all of the unassigned / doublet cells are removed
+sobj = sobj[, !sobj$donor_id %in% c("doublet", "unassigned")]
+
+
+filtered_seurat_object_list[[name]] = sobj
+qsfilepath <- paste0("Cellbender_seurat/filtered_", name, ".qs") #output folder
+qsave(sobj, file = qsfilepath) 
+
+
+
+
+
+#histogram for pct_intronic
+median_pct_intronic = median(sobj$pct_intronic)
+title = paste0(name, ": pct intronic, " , "Median: ", sprintf("%0.3f", median_pct_intronic))
+pct_intronic_hist = hist(sobj$pct_intronic, main = title, xlab = "pct intronic", col="grey")
+
+#print graph
+pct_intronic_hist_filename = paste0("graphs_to_export/", name, "_pct_intronic_hist.png")
+png(pct_intronic_hist_filename, width = 800, height = 600,  bg = "white")
+plot(pct_intronic_hist)
+dev.off()
+
+
+
+#histogram for nUMI --> take log10 of nUMI to normalize
+log_nUMI = log10(sobj$nUmi)
+title = paste0(name, ": log10(nUMI)")
+log_nUMI_hist = hist(log_nUMI, main= title, xlab = "log10(nUMI)", col="grey")
+
+#print graph
+log_nUMI_hist_filename = paste0("graphs_to_export/", name, "_log_nUMI_hist.png")
+png(log_nUMI_hist_filename, width = 800, height = 600,  bg = "white")
+plot(log_nUMI_hist)
+dev.off()
+
+
+
+#calculate pct_mito per each librery. Take the colSums of the seurat object countsfor genes starting with MT-, and divide that by the total colSums
+
+sobj$pct_mito = 100*colSums(sobj@assays$RNA@counts[grepl("^MT-", rownames(sobj)),]) / colSums(sobj@assays$RNA@counts)
+
+#Eventually we'll want to get rid of  cells with too high pct_mito and/or too low pct_intronic
+
+
+saturation <- sobj$nRead/sobj$nUmi
+median_umi_per_read = median(saturation)
+title = paste0(name, ": nReads/nUMI, " , "Median: ", sprintf("%0.3f", median_umi_per_read))  
+saturation_hist = hist(saturation, main= title, xlab = "nRead/nUMI", col="grey")
+
+#print graph
+saturation_hist_filename = paste0("graphs_to_export/", name, "_saturation_hist.png")
+png(saturation_hist_filename, width = 800, height = 600,  bg = "white")
+plot(saturation_hist)
+dev.off()
+
+
+}
+
+```
+
+
+```{r}
+library(ggplot2)
+```
+
+
+```{r}
+head(filtered_seurat_object_list)
+```
+
+
+```{r}
+# Assuming you have a list of Seurat objects named seurat_list
+
+# Extract the number of cells from each Seurat object
+num_cells <- sapply(filtered_seurat_object_list, function(sobj) {
+  length(sobj)
+})
+
+# Plot the number of cells for each Seurat object
+barplot(num_cells, names.arg = names(filtered_seurat_object_list), xlab = "Seurat Object", ylab = "Number of Cells", col = "skyblue", main = "Number of Cells in Each Seurat Object")
+
+```
+
+
+#Donor distribution across reactions
+```{r}
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+mergeSeuratListWithMetadata = function(seurat_obj_list, cell_ids=NULL, project=NULL){
+
+    # Harmonize metadata columns
+    all_colnames = unique(unlist(lapply(seurat_obj_list, function(x) colnames(x@meta.data))))
+    seurat_obj_list = lapply(seurat_obj_list, function(x) {
+        missing_cols = setdiff(all_colnames, colnames(x@meta.data))
+        if(length(missing_cols) > 0){
+            x@meta.data[missing_cols] = NA
+        }
+        return(x)
+    })
+
+    if (is.null(project)){
+        project = "merged"
+    }
+    
+    if (is.null(cell_ids)){
+        seurat_merged = Reduce(function(x, y) Seurat::merge(x, y, project=project), 
+            seurat_obj_list)
+    } else {
+        seurat_merged = Reduce(function(x, y) Seurat::merge(x, y, project=project), 
+            add.cell.ids=cell_ids, 
+            seurat_obj_list)
+    }
+    
+    md = lapply(seurat_obj_list, function(x){
+        x@meta.data$orig.row.names = rownames(x@meta.data)
+        x@meta.data
+    })
+    
+    md = do.call(rbind, md)
+    rownames(md) = md$orig.row.names
+    md$orig.row.names = NULL
+    seurat_merged@meta.data = md
+    return(seurat_merged)
+}
+```
+
+
+```{r}
+seurat_obj_list = list(CaH_1 = filtered_seurat_object_list[["CaH_rxn1"]], CaH_2 = filtered_seurat_object_list[["CaH_rxn2"]], CaH_3= filtered_seurat_object_list[["CaH_rxn3"]], CaH_4= filtered_seurat_object_list[["CaH_rxn4"]])
+```
+
+
+
+```{r}
+caudate_sobj = mergeSeuratListWithMetadata(sobj_list, cell_ids = names(sobj_list))
+#qsave(caudate_sobj, "some/where")
+```
+
+
+```{r}
+
+caudate_sobj_list = list(CaH_rxn1 = filtered_seurat_object_list[["CaH_rxn1"]], CaH_rxn2=filtered_seurat_object_list[["CaH_rxn2"]], CaH_rxn3 = filtered_seurat_object_list[["CaH_rxn3"]], CaH_rxn4 = filtered_seurat_object_list[["CaH_rxn4"]])
+
+caudate_sobj = mergeSeuratListWithMetadata(caudate_sobj_list, cell_ids = names(caudate_sobj_list))
+qsave(caudate_sobj, "Cellbender_seurat/caudate_sobj.qs")
+
+```
+
+
+```{r}
+sobj_list = list(CaH_1 = ..., CaH_2 = ..., etc.)
+caudate_sobj = mergeSeuratListWithMetadata(sobj_list, cell_ids = names(sobj_list))
+qsave(caudate_sobj, "some/where")
+Then you can make plots to explore across libraries (e.g. to see if there's a particular participant or library with bad RNA quality) (edited) 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+ for (val in data) {
+  median_val <- median(data)
+  
+  # Append the value and its median to the dataframe
+  empty_df <- rbind(empty_df, data.frame(value = val, median_value = median_val))
+} 
+    
+
+
+```
+
+
+
+
+
+```{r}
+mergeSeuratListWithMetadata = function(seurat_obj_list, cell_ids=NULL, project=NULL){
+
+    # Harmonize metadata columns
+    all_colnames = unique(unlist(lapply(seurat_obj_list, function(x) colnames(x@meta.data))))
+    seurat_obj_list = lapply(seurat_obj_list, function(x) {
+        missing_cols = setdiff(all_colnames, colnames(x@meta.data))
+        if(length(missing_cols) > 0){
+            x@meta.data[missing_cols] = NA
+        }
+        return(x)
+    })
+
+    if (is.null(project)){
+        project = "merged"
+    }
+    
+    if (is.null(cell_ids)){
+        seurat_merged = Reduce(function(x, y) Seurat::merge(x, y, project=project), 
+            seurat_obj_list)
+    } else {
+        seurat_merged = Reduce(function(x, y) Seurat::merge(x, y, project=project), 
+            add.cell.ids=cell_ids, 
+            seurat_obj_list)
+    }
+    
+    md = lapply(seurat_obj_list, function(x){
+        x@meta.data$orig.row.names = rownames(x@meta.data)
+        x@meta.data
+    })
+    
+    md = do.call(rbind, md)
+    rownames(md) = md$orig.row.names
+    md$orig.row.names = NULL
+    seurat_merged@meta.data = md
+    return(seurat_merged)
+}
+
+#and I would call it like
+sobj_list = list(CaH_1 = ..., CaH_2 = ..., etc.)
+caudate_sobj = mergeSeuratListWithMetadata(sobj_list, cell_ids = names(sobj_list))
+qsave(caudate_sobj, "some/where")
+#Then you can make plots to explore across libraries (e.g. to see if there's a particular participant or library with bad RNA quality) (edit
+```
+

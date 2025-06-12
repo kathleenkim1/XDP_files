@@ -1,0 +1,253 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(qs)
+library(Seurat)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+caudate_neuron = qread("UPDATED_caudate_neuron_subclustered.qs")
+putamen_neuron = qread("UPDATED_putamen_neuron_subclustered.qs")
+
+caudate_neuron
+putamen_neuron
+```
+```{r}
+unique(caudate_neuron$cell_class)
+```
+
+
+```{r}
+caudate_cells_df = as.data.frame(table(caudate_neuron$donor_id, caudate_neuron$cell_class))
+caudate_cells_df
+
+caudate_cells_df_wide <- caudate_cells_df %>%
+  spread(key = Var2, value = Freq, fill = 0)
+
+print(caudate_cells_df_wide)
+
+caudate_cells_df_wide <- caudate_cells_df_wide %>%
+  rowwise() %>%
+  mutate(total_frequency = sum(c_across(c("D1_SPN_1", "interneuron_2", "D1_SPN_matrix_1" , "D2_SPN_matrix_1", "SPN", "D1_SPN_2", "D2_SPN_1", "interneuron_3", "D1_SPN_matrix_2", "D1_SPN_patch", "interneuron_1", "eSPN", "interneuron_5", "cholinergic", "interneuron_4", "interneuron_6"))))
+
+print(caudate_cells_df_wide)
+caudate_cells_df_wide$Donor = caudate_cells_df_wide$Var1
+caudate_cells_df_wide$Var1 = NULL
+caudate_cells_df_wide
+```
+
+```{r}
+cell_type_barplot = function(data, y, label, xlab, ylab,title){
+
+median_cells = median(y)
+
+ggplot(data, aes(x=caudate_cells_df_wide$Donor, y = y,fill=caudate_cells_df_wide$Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = label), vjust = -0.3, color = "black", size = 3) + xlab(xlab) + ylab(ylab) + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_hline(yintercept = median_cells, linetype = "dashed", color = "black") + ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f",median_cells))) +geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+
+#added sprintf("%0.2f" for propotions
+}
+```
+
+```{r}
+caudate_cells_df_wide$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", caudate_cells_df_wide$Donor), "Control", "XDP")
+caudate_cells_df_wide
+
+caudate_cells_df_wide<- caudate_cells_df_wide %>% arrange(desc(condition))
+```
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+caudate_cells_df_wide$Donor = factor(caudate_cells_df_wide$Donor, levels = x_order)
+```
+
+
+```{r}
+cell_types <- c("D1_SPN_1", "D1_SPN_1", "interneuron_2", "D1_SPN_matrix_1" , "D2_SPN_matrix_1", "SPN", "D1_SPN_2", "D2_SPN_1", "interneuron_3", "D1_SPN_matrix_2", "D1_SPN_patch", "interneuron_1", "eSPN", "interneuron_5", "cholinergic", "interneuron_4", "interneuron_6","interneuron_6")
+
+# Loop through each cell type and call the cell_type_barplot function
+for (cell_type in cell_types) {
+    cell_count <- caudate_cells_df_wide[[cell_type]]
+    a = cell_type_barplot(caudate_cells_df_wide,cell_count, cell_count, paste("Donors from Caudate Village"), paste("Number of", cell_type, "Cells"), cell_type)
+    print(a)
+  }
+```
+
+```{r}
+for (cell_type in cell_types) {
+    cell_count <- caudate_cells_df_wide[[cell_type]]/caudate_cells_df_wide$total_frequency
+    a = cell_type_barplot(caudate_cells_df_wide,cell_count, sprintf("%0.2f", cell_count), "Donors from Caudate Village", paste(cell_type, "Cells Proportions"), cell_type)
+    print(a)
+  }
+```
+
+```{r}
+donor_list = unique(caudate_neuron$donor_id)
+neurons_per_donor = as.data.frame(table(caudate_neuron$donor_id))
+
+for (donor in donor_list) {
+  single_donor_neurons = subset(caudate_neuron, subset = donor_id == donor)
+  neuron_count = neurons_per_donor$Freq[neurons_per_donor$Var1 == donor]
+  a = DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of neurons: ", neuron_count))
+  print(DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of neurons: ", neuron_count)))
+  
+  ggsave(paste("output/", donor, ".png"), plot = a, width = 10, height = 7)
+}
+```
+
+
+
+#putamen
+```{r}
+unique(putamen_neuron$cell_class)
+```
+
+
+```{r}
+putamen_cells_df = as.data.frame(table(putamen_neuron$donor_id, putamen_neuron$cell_class))
+putamen_cells_df
+
+putamen_cells_df_wide <- putamen_cells_df %>%
+  spread(key = Var2, value = Freq, fill = 0)
+
+print(putamen_cells_df_wide)
+
+putamen_cells_df_wide <- putamen_cells_df_wide %>%
+  rowwise() %>%
+  mutate(total_frequency = sum(c_across(c("D2_SPN_matrix", "interneuron_2", "interneuron_4" , "D1_SPN_matrix_1", "glutamatergic", "interneuron_5", "D1_SPN_1", "D1_SPN_patch", "D2_SPN_1", "eSPN", "interneuron_3", "interneuron_1", "D2_SPN_2", "cholinergic", "interneuron_7", "interneuron_6"))))
+
+print(putamen_cells_df_wide)
+putamen_cells_df_wide$Donor = putamen_cells_df_wide$Var1
+putamen_cells_df_wide$Var1 = NULL
+putamen_cells_df_wide
+```
+
+```{r}
+cell_type_barplot = function(data, y, label, xlab, ylab,title){
+
+median_cells = median(y)
+
+ggplot(data, aes(x=putamen_cells_df_wide$Donor, y = y,fill=putamen_cells_df_wide$Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = label), vjust = -0.3, color = "black", size = 3) + xlab(xlab) + ylab(ylab) + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_hline(yintercept = median_cells, linetype = "dashed", color = "black") + ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f",median_cells))) +geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+
+#added sprintf("%0.2f" for propotions
+}
+```
+
+```{r}
+putamen_cells_df_wide$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", putamen_cells_df_wide$Donor), "Control", "XDP")
+putamen_cells_df_wide
+
+putamen_cells_df_wide<- putamen_cells_df_wide %>% arrange(desc(condition))
+```
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+putamen_cells_df_wide$Donor = factor(putamen_cells_df_wide$Donor, levels = x_order)
+```
+
+
+```{r}
+cell_types <- c("D2_SPN_matrix", "D2_SPN_matrix", "interneuron_2", "interneuron_4" , "D1_SPN_matrix_1", "glutamatergic", "interneuron_5", "D1_SPN_1", "D1_SPN_patch", "D2_SPN_1", "eSPN", "interneuron_3", "interneuron_1", "D2_SPN_2", "cholinergic", "interneuron_7", "interneuron_6","interneuron_6")
+
+# Loop through each cell type and call the cell_type_barplot function
+for (cell_type in cell_types) {
+    cell_count <- putamen_cells_df_wide[[cell_type]]
+    a = cell_type_barplot(putamen_cells_df_wide,cell_count, cell_count, paste("Donors from Putamen Village"), paste("Number of", cell_type, "Cells"), cell_type)
+    print(a)
+}
+```
+
+```{r}
+for (cell_type in cell_types) {
+    cell_count <- putamen_cells_df_wide[[cell_type]]/putamen_cells_df_wide$total_frequency
+    a = cell_type_barplot(putamen_cells_df_wide,cell_count, sprintf("%0.2f", cell_count), "Donors from Putamen Village", paste(cell_type, "Cell Proportions"), cell_type)
+    print(a)
+  }
+```
+
+
+```{r}
+donor_list = unique(putamen_neuron$donor_id)
+neurons_per_donor = as.data.frame(table(putamen_neuron$donor_id))
+
+for (donor in donor_list) {
+  single_donor_neurons = subset(putamen_neuron, subset = donor_id == donor)
+  neuron_count = neurons_per_donor$Freq[neurons_per_donor$Var1 == donor]
+   a = DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of neurons: ", neuron_count))
+  print(DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of neurons: ", neuron_count)))
+  
+  ggsave(paste("output/putamen_", donor, ".png"), plot = a, width = 10, height = 7)
+}
+```
+
+
+
+#redo umap
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/clustered_caudate.qs")
+
+head(filtered_merged_caudate)
+
+DimPlot(filtered_merged_caudate, label = TRUE)
+```
+
+
+```{r}
+cells_per_donor = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(filtered_merged_caudate@meta.data$cell_class, filtered_merged_caudate@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+```
+
+```{r}
+donor_list = unique(filtered_merged_caudate$donor_id)
+neurons_per_donor = as.data.frame(table(filtered_merged_caudate$donor_id))
+
+donor_list
+neurons_per_donor
+
+for (donor in donor_list) {
+  single_donor_neurons = subset(filtered_merged_caudate, subset = donor_id == donor)
+  neuron_count = neurons_per_donor$Freq[neurons_per_donor$Var1 == donor]
+ a = DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of cells: ", neuron_count))
+  print(DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of cells: ", neuron_count)))
+  
+ ggsave(paste("output/cahumap", donor, ".png"), plot = a, width = 10, height = 7)
+}
+```
+
+
+
+
+
+```{r}
+donor_list = unique(cell_class_df$Var2)
+cells_per_donor = as.data.frame(table(cell_class_df$Var2))
+donor_list
+cells_per_donor
+```
+
+
+```{r}
+for (donor in donor_list) {
+  single_donor_neurons = subset(filtered_merged_caudate, subset = Var2 == donor)
+  neuron_count = cells_per_donor$Freq.y[cells_per_donor$Var1 == donor]
+ # a = DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of neurons: ", neuron_count))
+  print(DimPlot(single_donor_neurons,  label = TRUE)+ ggtitle(paste(donor, "Number of neurons: ", neuron_count)))
+  
+ # ggsave(paste("output/", donor, ".png"), plot = a, width = 10, height = 7)
+}
+```
+

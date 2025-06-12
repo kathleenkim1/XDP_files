@@ -1,0 +1,999 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+#SPN-ness score
+#Findallmarkers on controls: SPN vs non-SPNs 
+```{r}
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron"] = "non-SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "eSPN"] = "non-SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "cholinergic"] = "non-SPN"
+
+Idents(caudate_neurons) = "sub_class"
+DimPlot(caudate_neurons, label = TRUE)
+```
+
+```{r}
+caudate_controls = subset(caudate_neurons, subset = Condition == "Control")
+caudate_controls
+Idents(caudate_controls) = "sub_class"
+DimPlot(caudate_controls, label = TRUE)
+```
+
+```{r}
+Idents(caudate_controls) = caudate_controls$sub_class
+caudate_controls_markers = FindAllMarkers(caudate_controls)
+                                          #, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+caudate_controls_markers
+```
+
+
+```{r}
+subsetmarkers= subset(caudate_controls_markers, subset = pct.2 < 0.2)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.5)
+newmarker
+
+final = subset(newmarker, subset= cluster =="SPN")
+final
+
+```
+
+```{r}
+features <- final$gene
+a = DotPlot(caudate_controls, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggsave("output/genes.png", a, width = 30, height = 5)
+```
+
+```{r}
+nonSPN_cah_transformed= subset(caudate_neurons, subset = sub_class != "SPN")
+
+```
+
+```{r}
+SPN_cah_transformed
+nonSPN_cah_transformed
+```
+
+
+#CaH SPN
+```{r}
+significant_genes = unique(final$gene)
+
+exp = FetchData(SPN_cah_transformed, vars = significant_genes)
+exp
+
+final
+
+rownames(final) = final$gene
+final$gene = NULL
+exp
+
+# Assuming final and exp are your dataframes
+logfc_df <- final
+counts_df <- exp
+
+logfc_df
+counts_df
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc_ordered$avg_log2FC))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc_ordered$avg_log2FC)
+logfc_vector
+ #THIS IS FOR LOG TRANSFORMATINO BUT I DONT LIKE IT
+ custom_log_transform <- function(x, logFC_value) {
+      x * 2^logFC_value
+  }
+  
+# Multiply each column in counts_df by the corresponding logFC value
+ result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+
+
+#THE ACTUAL
+ #result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+
+# Print the result
+print(result_df)
+
+metadata <- SPN_cah_transformed@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, donor_id) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+
+CaH_SPN_summary_expr_data = summarized_expr_data
+CaH_SPN_summary_expr_data
+```
+
+
+#CAH nonSPN
+```{r}
+significant_genes = unique(final$gene)
+
+exp = FetchData(nonSPN_cah_transformed, vars = significant_genes)
+exp
+
+final
+
+rownames(final) = final$gene
+final$gene = NULL
+exp
+
+# Assuming final and exp are your dataframes
+logfc_df <- final
+counts_df <- exp
+
+logfc_df
+counts_df
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc_ordered$avg_log2FC))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc_ordered$avg_log2FC)
+logfc_vector
+ #THIS IS FOR LOG TRANSFORMATINO BUT I DONT LIKE IT
+ custom_log_transform <- function(x, logFC_value) {
+      x * 2^logFC_value
+  }
+  
+# Multiply each column in counts_df by the corresponding logFC value
+ result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+
+
+#THE ACTUAL
+ #result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+
+# Print the result
+print(result_df)
+
+metadata <- nonSPN_cah_transformed@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id,donor_id) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+
+CaH_nonSPN_summary_expr_data = summarized_expr_data
+CaH_nonSPN_summary_expr_data
+```
+
+
+```{r}
+CaH_SPN_summary_expr_data$cell_type = "SPN"
+CaH_nonSPN_summary_expr_data$cell_type = "non-SPN" 
+
+head(CaH_SPN_summary_expr_data)
+head(CaH_nonSPN_summary_expr_data)
+```
+
+```{r}
+CaH_Transcriptional_DE = rbind(CaH_SPN_summary_expr_data, CaH_nonSPN_summary_expr_data)
+CaH_Transcriptional_DE
+```
+```{r}
+CaH_Transcriptional_DE$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", CaH_Transcriptional_DE$donor_id), "Control", "XDP")
+CaH_Transcriptional_DE
+```
+
+
+```{r}
+donors = unique(CaH_Transcriptional_DE$donor_id)
+
+for (donor in donors) {
+test = CaH_Transcriptional_DE[CaH_Transcriptional_DE$donor_id == donor,]
+
+spn_df <- test[test$cell_type == "SPN", ]
+
+# Calculate quantiles
+quantiles <- quantile(spn_df$total_expression, c(0.1, 0.2))
+quantiles
+a = plot_overlapping_density_histogram(df = test, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,200,5),
+    title= paste("CaH SPNs vs non-SPNs (log transformed): ", donor),
+    xlab = "CaH SPN score",
+    fig_filename = NULL) + geom_vline(xintercept = quantiles, linetype = "dashed", color = "red") +
+  annotate("text", x = quantiles, y = 0.02, label = c("10%", "20%"), vjust = -1, color = "red")
+
+print(a)
+}
+
+```
+
+
+```{r}
+XDP = CaH_Transcriptional_DE[CaH_Transcriptional_DE$Condition == "XDP",]
+
+spn_df <- XDP[XDP$cell_type == "SPN", ]
+quantiles <- quantile(spn_df$total_expression, c(0.1, 0.2))
+quantiles
+
+
+plot_overlapping_density_histogram(df = XDP, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,200,5),
+    title= paste("CaH SPNs vs non-SPNs (log transformed): XDP"),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)+ geom_vline(xintercept = quantiles, linetype = "dashed", color = "red") +
+  annotate("text", x = quantiles, y = 0.02, label = c("10%", "20%"), vjust = -1, color = "red")
+
+
+Control = CaH_Transcriptional_DE[CaH_Transcriptional_DE$Condition == "Control",]
+spn_df <- Control[Control$cell_type == "SPN", ]
+quantiles <- quantile(spn_df$total_expression, c(0.1, 0.2))
+quantiles
+
+plot_overlapping_density_histogram(df = Control, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,200,5),
+    title= paste("CaH SPNs vs non-SPNs (log transformed): Control "),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)+ geom_vline(xintercept = quantiles, linetype = "dashed", color = "red") +
+  annotate("text", x = quantiles, y = 0.02, label = c("10%", "20%"), vjust = -1, color = "red")
+
+```
+#XDP vs Control
+```{r}
+SPNs = CaH_Transcriptional_DE[CaH_Transcriptional_DE$cell_type == "SPN",]
+
+plot_overlapping_density_histogram(df = SPNs, 
+    hist_col = "total_expression",
+    fill_col = "Condition",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,200,5),
+    title= paste("CaH SPNs: XDP vs Controls"),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)
+
+nonSPNs = CaH_Transcriptional_DE[CaH_Transcriptional_DE$cell_type == "non-SPN",]
+
+plot_overlapping_density_histogram(df = nonSPNs, 
+    hist_col = "total_expression",
+    fill_col = "Condition",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,150,5),
+    title= paste("CaH non-SPNs: XDP vs Controls"),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+donors = unique(CaH_Transcriptional_DE$donor_id)
+
+for (donor in donors) {
+test = CaH_Transcriptional_DE[CaH_Transcriptional_DE$donor_id == donor,]
+
+spn_df <- test[test$cell_type == "SPN", ]
+
+# Calculate quantiles
+quantiles <- quantile(spn_df$total_expression, c(0.1, 0.2))
+quantiles
+
+a= ggplot(test, aes(x = cell_type, y = total_expression, color = cell_type)) +
+  geom_jitter(width = 0.2) +
+  geom_hline(yintercept = quantiles, linetype = "dashed", color = "red") +
+  labs(title = donor, x = "Cell Type", y = "SPN-ness Score") +
+  annotate("text", x = 1.5, y = quantiles, label = c("10%","20%"), hjust = -1, color = "red")
+
+
+summary(spn_df$total_expression)
+quantile(spn_df$total_expression, c(0.1, 0.2))
+
+print(a)
+}
+
+```
+
+
+```{r}
+XDP = CaH_Transcriptional_DE[CaH_Transcriptional_DE$Condition == "XDP",]
+
+spn_df <- XDP[XDP$cell_type == "SPN", ]
+quantiles <- quantile(spn_df$total_expression, c(0.1, 0.2))
+quantiles
+
+ggplot(XDP, aes(x = cell_type, y = total_expression, color = cell_type)) +
+  geom_jitter(width = 0.2) +
+  geom_hline(yintercept = quantiles, linetype = "dashed", color = "red") +
+  labs(title = "XDP", x = "Cell Type", y = "SPN-ness Score") +
+  annotate("text", x = 1.5, y = quantiles, label = c("10%","20%"), hjust = -1, color = "red")
+
+
+Control = CaH_Transcriptional_DE[CaH_Transcriptional_DE$Condition == "Control",]
+spn_df <- Control[Control$cell_type == "SPN", ]
+quantiles <- quantile(spn_df$total_expression, c(0.1, 0.2))
+quantiles
+
+ggplot(Control, aes(x = cell_type, y = total_expression, color = cell_type)) +
+  geom_jitter(width = 0.2) +
+  geom_hline(yintercept = quantiles, linetype = "dashed", color = "red") +
+  labs(title = "Control", x = "Cell Type", y = "SPN-ness Score") +
+  annotate("text", x = 1.5, y = quantiles, label = c("10%","20%"), hjust = -1, color = "red")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r} 
+CaH_Transcriptional_DE
+```
+
+```{r}
+df = caudate_neurons@meta.data 
+df
+```
+
+```{r}
+specific_row <- df["CaH_1__CGTGAGCTCTTAGCCC-1", ]
+print(specific_row)
+
+
+```
+
+
+```{r}
+ggplot(XDP, aes(x = total_expression, fill = cell_type)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Density Plot of Scores", x = "Score", y = "Density")
+```
+
+
+
+
+```{r}
+ggplot(XDP, aes(x = cell_type, y = total_expression, color = cell_type)) +
+  geom_jitter() +
+  labs(title = "XDP combined", x = "Cell Type", y = "CaH SPN Score")
+
+ggplot(Control, aes(x = cell_type, y = total_expression, color = cell_type)) +
+  geom_jitter() +
+  labs(title = "Control combined", x = "Cell Type", y = "CaH SPN Score")
+```
+
+```{r}
+donors = unique(CaH_Transcriptional_DE$donor_id)
+
+for (donor in donors) {
+test = CaH_Transcriptional_DE[CaH_Transcriptional_DE$donor_id == donor,]
+a = ggplot(CaH_Transcriptional_DE, aes(x = cell_type, y = total_expression, color = cell_type)) +
+  geom_jitter(alpha =0.4) +
+  labs(title = donor, x = "Cell Type", y = "CaH SPN Score")
+
+print(a)
+}
+```
+
+#Arbitrary cutoff of SPN Score 50- anything below in XDP is a weird cell
+```{r}
+CaH_Transcriptional_DE
+```
+
+```{r}
+nozero = subset(CaH_Transcriptional_DE, subset = CaH_Transcriptional_DE$total_expression >0)
+nozero
+```
+```{r}
+wtf = subset(CaH_Transcriptional_DE, subset = CaH_Transcriptional_DE$cell_type== "non-SPN")
+wtf
+```
+
+
+```{r}
+Weird_SPNs = subset(nozero, subset = nozero$cell_type== "SPN")
+Weird_SPNs
+
+Weird_SPNs1 = subset(Weird_SPNs, subset = Weird_SPNs$total_expression < 90.5)
+Weird_SPNs1
+```
+
+
+```{r}
+weird = as.data.frame(table(Weird_SPNs1$donor_id))
+weird
+```
+```{r}
+all = as.data.frame(table(CaH_Transcriptional_DE$donor_id))
+all
+```
+
+```{r}
+combine = merge(weird, all, by = "Var1")
+combine
+```
+```{r}
+combine$percent = combine$Freq.x/combine$Freq.y
+combine
+```
+
+```{r}
+nozero
+```
+
+
+```{r}
+nozero_control = subset(nozero, subset = Condition == "Control")
+nozero_XDP = subset(nozero, subset = Condition == "XDP")
+nozero_control
+nozero_XDP
+```
+
+
+```{r}
+df = nozero_control
+
+spn_df <- df[df$cell_type == "SPN", ]
+
+quantile_90 <- quantile(spn_df$total_expression, 0.90)
+print(quantile_90)
+
+library(ggplot2)
+
+# Calculate quantiles
+quantiles <- quantile(spn_df$total_expression, c(0.05, 0.1, 0.15, 0.2, 0.25))
+
+# Density plot with quantiles
+ggplot(df, aes(x = total_expression, fill = cell_type)) +
+  geom_density(alpha = 0.5) +
+  geom_vline(xintercept = quantiles, linetype = "dashed", color = "red") +
+  labs(title = "Density Plot with Quantiles", x = "Score", y = "Density") +
+  annotate("text", x = quantiles, y = 0.02, label = c("5%", "10%","15%", "20%", "25%"), vjust = -1, color = "red")
+
+
+# Histogram with quantiles
+ggplot(df, aes(x = total_expression, fill = cell_type)) +
+  geom_histogram(alpha = 0.5, position = "identity", bins = 30) +
+  geom_vline(xintercept = quantiles, linetype = "dashed", color = "red") +
+  labs(title = "Histogram with Quantiles", x = "Score", y = "Count") +
+  annotate("text", x = quantiles, y = 10, label = c("5%", "10%","15%", "20%", "25%"), vjust = -1, color = "red")
+
+
+# Jitter plot with quantiles
+ggplot(df, aes(x = cell_type, y = total_expression, color = cell_type)) +
+  geom_jitter(width = 0.2) +
+  geom_hline(yintercept = quantiles, linetype = "dashed", color = "red") +
+  labs(title = "Jitter Plot with Quantiles", x = "Cell Type", y = "Score") +
+  annotate("text", x = 1.5, y = quantiles, label = c("5%", "10%","15%", "20%", "25%"), hjust = -1, color = "red")
+
+
+summary(spn_df$total_expression)
+quantile(spn_df$total_expression, c(0.05, 0.1))
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#PUTAMEN SPN-ness score
+#Findallmarkers on controls: SPN vs non-SPNs 
+```{r}
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "eSPN"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "cholinergic"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "glutamatergic"] = "non-SPN"
+
+Idents(putamen_neurons) = "sub_class"
+DimPlot(putamen_neurons, label = TRUE)
+```
+
+```{r}
+putamen_controls = subset(putamen_neurons, subset = Condition == "Control")
+putamen_controls
+Idents(putamen_controls) = "sub_class"
+DimPlot(putamen_controls, label = TRUE)
+```
+```{r}
+Idents(putamen_controls) = putamen_controls$sub_class
+putamen_controls_markers = FindAllMarkers(putamen_controls)
+                                          #, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+putamen_controls_markers
+```
+
+
+```{r}
+subsetmarkers= subset(putamen_controls_markers, subset = pct.2 < 0.2)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.8)
+newmarker
+
+final = subset(newmarker, subset= cluster =="SPN")
+final
+```
+
+```{r}
+features <- final$gene
+DotPlot(putamen_controls, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+nonSPN_put_transformed= subset(putamen_neurons, subset = sub_class != "SPN")
+
+```
+
+```{r}
+SPN_put_transformed
+nonSPN_put_transformed
+```
+
+
+#put SPN
+```{r}
+final = subset(newmarker, subset= cluster =="SPN")
+
+significant_genes = unique(final$gene)
+
+exp = FetchData(SPN_put_transformed, vars = significant_genes)
+exp
+
+final
+
+rownames(final) = final$gene
+final$gene = NULL
+exp
+
+# Assuming final and exp are your dataframes
+logfc_df <- final
+counts_df <- exp
+
+logfc_df
+counts_df
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc_ordered$avg_log2FC))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc_ordered$avg_log2FC)
+logfc_vector
+ #THIS IS FOR LOG TRANSFORMATINO BUT I DONT LIKE IT
+#  custom_log_transform <- function(x, logFC_value) {
+#       x * 2^logFC_value
+#   }
+#   
+# # Multiply each column in counts_df by the corresponding logFC value
+#  result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+
+
+#THE ACTUAL
+ result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+
+# Print the result
+print(result_df)
+
+metadata <- SPN_put_transformed@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, donor_id) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data
+Put_SPN_summary_expr_data = summarized_expr_data
+Put_SPN_summary_expr_data
+```
+
+#put nonSPN
+```{r}
+final = subset(newmarker, subset= cluster =="SPN")
+
+significant_genes = unique(final$gene)
+
+exp = FetchData(nonSPN_put_transformed, vars = significant_genes)
+exp
+
+final
+
+rownames(final) = final$gene
+final$gene = NULL
+exp
+
+# Assuming final and exp are your dataframes
+logfc_df <- final
+counts_df <- exp
+
+logfc_df
+counts_df
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc_ordered$avg_log2FC))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc_ordered$avg_log2FC)
+logfc_vector
+ #THIS IS FOR LOG TRANSFORMATINO BUT I DONT LIKE IT
+#  custom_log_transform <- function(x, logFC_value) {
+#       x * 2^logFC_value
+#   }
+#   
+# # Multiply each column in counts_df by the corresponding logFC value
+#  result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+
+
+#THE ACTUAL
+ result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+
+# Print the result
+print(result_df)
+
+metadata <- nonSPN_put_transformed@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, donor_id) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data
+Put_nonSPN_summary_expr_data = summarized_expr_data
+Put_nonSPN_summary_expr_data
+```
+
+
+```{r}
+Put_SPN_summary_expr_data$cell_type = "SPN"
+Put_nonSPN_summary_expr_data$cell_type = "non-SPN" 
+
+head(Put_SPN_summary_expr_data)
+head(Put_nonSPN_summary_expr_data)
+```
+
+```{r}
+Put_Transcriptional_DE = rbind(Put_SPN_summary_expr_data, Put_nonSPN_summary_expr_data)
+Put_Transcriptional_DE
+```
+
+```{r}
+donors = unique(Put_Transcriptional_DE$donor_id)
+
+for (donor in donors) {
+test = Put_Transcriptional_DE[Put_Transcriptional_DE$donor_id == donor,]
+a = plot_overlapping_density_histogram(df = test, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,1000,10),
+    title= paste("Put SPNs vs non-SPNs: ", donor),
+    xlab = "Put SPN score",
+    fig_filename = NULL)
+
+print(a)
+}
+```
+
+
+```{r}
+expr_data_long
+```
+
+```{r}
+Put_Transcriptional_DE$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", Put_Transcriptional_DE$donor_id), "Control", "XDP")
+Put_Transcriptional_DE
+```
+
+
+```{r}
+XDP = Put_Transcriptional_DE[Put_Transcriptional_DE$Condition == "XDP",]
+plot_overlapping_density_histogram(df = XDP, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,1000,10),
+    title= paste("Put SPNs vs non-SPNs (log transformed): XDP"),
+    xlab = "Put SPN score",
+    fig_filename = NULL)
+
+Control = Put_Transcriptional_DE[Put_Transcriptional_DE$Condition == "Control",]
+plot_overlapping_density_histogram(df = Control, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,1000,10),
+    title= paste("Put SPNs vs non-SPNs (log transformed): Control "),
+    xlab = "Put SPN score",
+    fig_filename = NULL)
+```
+
+
+
+
+
+
+
+
+
+```{r}
+CaH_Transcriptional_DE
+```
+
+
+
+
+
+#plotting pct change on x axis, plotting logfc on y
+
+```{r}
+Cah_markers = final
+Cah_markers$pct.1_divided_pct.2 = Cah_markers$pct.1/Cah_markers$pct.2
+Cah_markers
+```
+
+```{r}
+significant_genes = unique(rownames(Cah_markers))
+
+CaH_SPN_exp = FetchData(SPN_cah_transformed, vars = significant_genes)
+CaH_SPN_exp
+
+metadata <- SPN_cah_transformed@meta.data
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+CaH_SPN_expr_data <- CaH_SPN_exp %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+CaH_SPN_expr_data_long <- CaH_SPN_expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+CaH_SPN_expr_data_long
+
+
+
+CaH_nonSPN_exp = FetchData(nonSPN_cah_transformed, vars = significant_genes)
+CaH_nonSPN_exp
+
+
+metadata <- nonSPN_cah_transformed@meta.data
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+CaH_nonSPN_expr_data <- CaH_nonSPN_exp %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+CaH_nonSPN_expr_data_long <- CaH_nonSPN_expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+CaH_nonSPN_expr_data_long
+```
+
+```{r}
+Cah_markers$gene = rownames(Cah_markers)
+CaH_SPNs = merge(CaH_SPN_expr_data_long, Cah_markers, by = "gene")
+CaH_SPNs$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", CaH_SPNs$donor_id), "Control", "XDP")
+CaH_SPNs
+```
+
+```{r}
+summarized_expr_data_TEST <- CaH_SPNs %>%
+  group_by(donor_id, gene) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data_TEST
+
+summarized_expr_data_TEST = merge(summarized_expr_data_TEST, Cah_markers, by = "gene")
+summarized_expr_data_TEST$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", summarized_expr_data_TEST$donor_id), "Control", "XDP")
+summarized_expr_data_TEST
+```
+
+```{r}
+TEST = subset(summarized_expr_data_TEST, summarized_expr_data_TEST)
+
+ggplot(data=summarized_expr_data_TEST, aes(x= pct.1_divided_pct.2, y= avg_log2FC, color = donor_id)) + geom_point() +  geom_text(aes(label = gene), vjust = -0.5, hjust = 0.5)
+```
+
+
+
+```{r}
+CaH_SPNs_test = subset(CaH_SPNs, CaH_SPNs$donor_id == "SCF-22-054CM")
+
+ggplot(data= CaH_SPNs, aes(x=gene , y=expression, fill = gene)) + geom_boxplot()
+```
+
+
+
+```{r}
+CaH_Transcriptional_DE
+```
+
+
+
+
+
+
+

@@ -1,0 +1,2785 @@
+---
+title: "compiled code for snrnaseq qc"
+output: html_notebook
+---
+
+#Merging seurat object
+#This is from Seurat.Rmd
+#qsaved: filtered_seurat_object_list 
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+
+```{r}
+seurat_object_list <- qread("Cellbender_seurat/seurat_object_list.qs")
+head(seurat_object_list)
+```
+
+
+```{r}
+filtered_seurat_object_list = list()
+
+library_list = list("CaH_rxn1",
+                    "CaH_rxn2", 
+                    "CaH_rxn3", 
+                    "CaH_rxn4", 
+                    "Put_rxn1", 
+                    "Put_rxn2", 
+                    "Put_rxn3", 
+                    "Put_rxn4")
+#qc_df_list = list()
+
+#qc_df = dataframe()
+#qc_df$library_name = library_list
+
+for (name in library_list){
+
+sobj = seurat_object_list[[name]] 
+
+#filter your seurat objects so that all of the unassigned / doublet cells are removed
+sobj = sobj[, !sobj$donor_id %in% c("doublet", "unassigned")]
+
+
+filtered_seurat_object_list[[name]] = sobj
+qsfilepath <- paste0("Cellbender_seurat/filtered_", name, ".qs") #output folder
+qsave(sobj, file = qsfilepath) 
+
+qsave(filtered_seurat_object_list, "Cellbender_seurat/filtered_seurat_object_list.qs")
+
+
+
+#histogram for pct_intronic
+median_pct_intronic = median(sobj$pct_intronic)
+title = paste0(name, ": pct intronic, " , "Median: ", sprintf("%0.3f", median_pct_intronic))
+pct_intronic_hist = hist(sobj$pct_intronic, main = title, xlab = "pct intronic", col="grey")
+
+#print graph
+#pct_intronic_hist_filename = paste0("graphs_to_export/", name, "_pct_intronic_hist.png")
+#png(pct_intronic_hist_filename, width = 800, height = 600,  bg = "white")
+#plot(pct_intronic_hist)
+#dev.off()
+
+
+
+#histogram for nUMI --> take log10 of nUMI tonormalize
+log_nUMI = log10(sobj$nUmi)
+title = paste0(name, ": log10(nUMI)")
+log_nUMI_hist = hist(log_nUMI, main= title, xlab = "log10(nUMI)", col="grey")
+
+#print graph
+#log_nUMI_hist_filename = paste0("graphs_to_export/", name, "_log_nUMI_hist.png")
+#png(log_nUMI_hist_filename, width = 800, height = 600,  bg = "white")
+#plot(log_nUMI_hist)
+#dev.off()
+
+
+
+#calculate pct_mito per each librery. Take the colSums of the seurat object countsfor genes starting with MT-, and divide that by the total colSums
+
+sobj$pct_mito = 100*colSums(sobj@assays$RNA@counts[grepl("^MT-", rownames(sobj)),]) / colSums(sobj@assays$RNA@counts)
+
+#Eventually we'll want to get rid of  cells with too high pct_mito and/or too low pct_intronic
+
+
+saturation <- sobj$nRead/sobj$nUmi
+median_umi_per_read = median(saturation)
+title = paste0(name, ": nReads/nUMI, " , "Median: ", sprintf("%0.3f", median_umi_per_read))  
+saturation_hist = hist(saturation, main= title, xlab = "nRead/nUMI", col="grey")
+
+#print graph
+#saturation_hist_filename = paste0("graphs_to_export/", name, "_saturation_hist.png")
+#png(saturation_hist_filename, width = 800, height = 600,  bg = "white")
+#plot(saturation_hist)
+#dev.off()
+
+
+}
+
+```
+
+
+```{r}
+ for (val in data) {
+  median_val <- median(data)
+  
+  # Append the value and its median to the dataframe
+  empty_df <- rbind(empty_df, data.frame(value = val, median_value = median_val))
+} 
+    
+```
+
+
+#This is from Final_filtered_merged.Rmd
+#qsaved: Cellbender_seurat/merged_caudate.qs, Cellbender_seurat/merged_putamen.qs, Cellbender_seurat/redo2_merged_caudate.qs, Cellbender_seurat/redo2_merged_putamen.qs
+```{r}
+filtered_seurat_object_list <- qread("Cellbender_seurat/filtered_seurat_object_list.qs")
+filtered_seurat_object_list
+```
+
+```{r}
+mergeSeuratListWithMetadata = function(seurat_obj_list, cell_ids=NULL, project=NULL){
+
+    # Harmonize metadata columns
+    all_colnames = unique(unlist(lapply(seurat_obj_list, function(x) colnames(x@meta.data))))
+    seurat_obj_list = lapply(seurat_obj_list, function(x) {
+        missing_cols = setdiff(all_colnames, colnames(x@meta.data))
+        if(length(missing_cols) > 0){
+            x@meta.data[missing_cols] = NA
+        }
+        return(x)
+    })
+
+    if (is.null(project)){
+        project = "merged"
+    }
+    
+    if (is.null(cell_ids)){
+        seurat_merged = Reduce(function(x, y) merge(x, y, project=project), 
+            seurat_obj_list)
+    } else {
+        seurat_merged = Reduce(function(x, y) merge(x, y, project=project, add.cell.ids=cell_ids), 
+            seurat_obj_list)
+    }
+    
+    md = lapply(seurat_obj_list, function(x){
+        x@meta.data$orig.row.names = rownames(x@meta.data)
+        x@meta.data
+    })
+    
+    md = do.call(rbind, md)
+    rownames(md) = md$orig.row.names
+    md$orig.row.names = NULL
+    seurat_merged@meta.data = md
+    return(seurat_merged)
+}
+```
+
+
+#merge caudate libraries 
+```{r}
+CaH_list = list(CaH_1 = filtered_seurat_object_list[["CaH_rxn1"]], CaH_2 = filtered_seurat_object_list[["CaH_rxn2"]], CaH_3 = filtered_seurat_object_list[["CaH_rxn3"]], CaH_4 = filtered_seurat_object_list[["CaH_rxn4"]])
+
+for(name in names(CaH_list)){
+     sobj =CaH_list[[name]]
+     sobj$library = name
+     sobj = RenameCells(sobj, new.name = paste(sobj$library, colnames(sobj), sep="__"))
+     CaH_list[[name]] = sobj
+     
+}
+merged_caudate = mergeSeuratListWithMetadata(CaH_list)
+
+head(merged_caudate)
+```
+
+
+#merge putamen libraries
+```{r}
+Put_list = list(Put_1 = filtered_seurat_object_list[["Put_rxn1"]], Put_2 = filtered_seurat_object_list[["Put_rxn2"]], Put_3 = filtered_seurat_object_list[["Put_rxn3"]], Put_4 = filtered_seurat_object_list[["Put_rxn4"]])
+
+for(name in names(Put_list)){
+     sobj =Put_list[[name]]
+     sobj$library = name
+     sobj = RenameCells(sobj, new.name= paste(sobj$library, colnames(sobj), sep="__"))
+     Put_list[[name]] = sobj
+     
+}
+
+merged_putamen = mergeSeuratListWithMetadata(Put_list)
+
+head(merged_putamen)
+```
+
+```{r}
+what = qread("Cellbender_seurat/redo2_merged_caudate.qs")
+what
+head(what)
+```
+
+
+#save merged
+```{r}
+qsave(CaH_list, "Cellbender_seurat/merged_caudate.qs")
+qsave(Put_list, "Cellbender_seurat/merged_putamen.qs")
+```
+
+
+```{r}
+donor_metadata = read.csv("Cellbender_seurat/Donor_metadata.csv", header = T)
+donor_metadata = donor_metadata[, c("Donor.ID","Sex", "Brain_bank", "Year_collected", "Condition", "Age.of.Onset", "Age.of.Death", "Disease_duration", "RQS", "DV200", "pH", "MQS_numerical", "MQS")]
+donor_metadata
+```
+
+
+#merge metadata
+```{r}
+merged_caudate@meta.data = merge(merged_caudate@meta.data, donor_metadata, by.x = "donor_id", by.y = "Donor.ID")
+
+merged_putamen@meta.data = merge(merged_putamen@meta.data, donor_metadata, by.x = "donor_id", by.y = "Donor.ID")
+
+head(merged_caudate)
+head(merged_caudate@meta.data)
+```
+
+```{r}
+rownames(merged_caudate@meta.data) = paste(merged_caudate@meta.data$library, merged_caudate@meta.data$cell, sep = "__")
+head(merged_caudate)
+
+rownames(merged_putamen@meta.data) = paste(merged_putamen@meta.data$library, merged_putamen@meta.data$cell, sep ="__")
+head(merged_putamen)
+
+```
+
+
+```{r}
+merged_caudate$pct_mito = (100*colSums(merged_caudate@assays$RNA@counts[grepl("^MT-", rownames(merged_caudate)),]) /
+   colSums(merged_caudate@assays$RNA@counts))
+merged_caudate@meta.data
+```
+
+```{r}
+merged_putamen$pct_mito = (100*colSums(merged_putamen@assays$RNA@counts[grepl("^MT-", rownames(merged_putamen)),]) /
+   colSums(merged_putamen@assays$RNA@counts))
+merged_putamen@meta.data
+```
+
+```{r}
+qsave(merged_caudate, "Cellbender_seurat/redo2_merged_caudate.qs")
+qsave(merged_putamen, "Cellbender_seurat/redo2_merged_putamen.qs")
+```
+
+```{r}
+head(merged_caudate@meta.data)
+```
+
+```{r}
+median_pct_intronic = median(merged_caudate$pct_intronic)
+title = paste0("Caudate pct intronic, Median: ", sprintf("%0.3f", median_pct_intronic))
+pct_intronic_hist = hist(merged_caudate$pct_intronic, main = title, xlab = "pct intronic", col="grey")
+
+#pct_intronic_hist_filename = paste0("graphs_to_export/caudate_pct_intronic_hist.png")
+#png(pct_intronic_hist_filename, width = 800, height = 600,  bg = "white")
+#plot(pct_intronic_hist)
+#dev.off()
+```
+
+```{r}
+median_pct_mito = median(merged_caudate$pct_mito)
+title = paste0("Caudate pct mitochondrial, Median: ", sprintf("%0.3f", median_pct_mito))
+pct_mito_hist = hist(merged_caudate$pct_mito, main = title, xlab = "pct mito", col="grey")
+```
+
+
+```{r}
+median_pct_intronic = median(merged_putamen$pct_intronic)
+title = paste0("Putamen pct intronic, Median: ", sprintf("%0.3f", median_pct_intronic))
+pct_intronic_hist = hist(merged_putamen$pct_intronic, main = title, xlab = "pct intronic", col="grey")
+
+
+median_pct_mito = median(merged_putamen$pct_mito)
+title = paste0("Putamen pct mitochondrial, Median: ", sprintf("%0.3f", median_pct_mito))
+pct_mito_hist = hist(merged_putamen$pct_mito, main = title, xlab = "pct mito", col="grey")
+```
+
+```{r}
+merged_caudate = qread("Cellbender_seurat/redo2_merged_caudate.qs")
+merged_putamen = qread("Cellbender_seurat/redo2_merged_putamen.qs")
+
+merged_caudate
+merged_putamen
+```
+
+
+
+#filtering step: pct_mitochondrial <10, pct intronic >= 0.25 #should be & not either
+```{r}
+filtered_merged_caudate <- subset(merged_caudate, subset = pct_mito < 10 & pct_intronic >= 0.25)
+filtered_merged_putamen <- subset(merged_putamen, subset = pct_mito < 10 & pct_intronic >= 0.25)
+```
+
+```{r}
+merged_caudate
+merged_putamen
+```
+
+
+```{r}
+filtered_merged_caudate
+filtered_merged_putamen
+```
+Number of cells by brain region
+Number of number of donors’ cell numbers
+Histogram of donors age
+Count of donors: sex
+Count of donors: case-control status
+
+
+```{r}
+library(ggplot2)
+```
+
+
+```{r}
+cells_per_brain_region = data.frame(brain_regions = c("Caudate", "Putamen"),
+                        cell_numbers = c(ncol(filtered_merged_caudate), ncol(filtered_merged_putamen)))
+#cells_per_brain_region
+
+ggplot(cells_per_brain_region, aes(x=cells_per_brain_region$brain_regions, y = cells_per_brain_region$cell_numbers, fill = brain_regions)) + geom_bar(stat = "identity")+ geom_text(aes(label = cells_per_brain_region$cell_numbers), vjust = -0.3, color = "black", size = 4) + xlab("Brain region") + ylab("Number of Cells")
+
+```
+
+```{r}
+cells_per_donor_per_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library))
+cells_per_donor_per_rxn
+
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+```
+
+```{r}
+cells_per_donor_per_rxn = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id, filtered_merged_putamen@meta.data$library))
+cells_per_donor_per_rxn
+
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+```
+
+
+
+```{r}
+median_genes_per_donor <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor
+```
+
+```{r}
+median_genes_per_donor <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor
+```
+
+```{r}
+ggplot(median_genes_per_donor, aes(x=donor_id, y = median_genes, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median number of genes") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,4000) 
+```
+
+```{r}
+median_genes_per_donor <-filtered_merged_putamen@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor
+
+ggplot(median_genes_per_donor, aes(x=donor_id, y = median_genes, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median number of genes") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,4000)
+```
+
+```{r}
+median_umis_per_donor <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+
+ggplot(median_umis_per_donor, aes(x=donor_id, y = mUMI, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median UMIs") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+```{r}
+median_umis_per_donor <-filtered_merged_putamen@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+
+ggplot(median_umis_per_donor, aes(x=donor_id, y = mUMI, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median UMIs") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+filtered_merged_caudate@meta.data
+```
+
+
+
+
+```{r}
+donor_by_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library))
+donor_by_rxn$median_genes = median(filtered_merged_caudate$nCount_RNA["donor_id"])
+donor_by_rxn
+```
+
+
+
+```{r}
+median_genes= median(filtered_merged_caudate$nFeature_RNA)
+
+genes_per_cell_per_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library))
+cells_per_donor_per_rxn
+
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+title = "Histogram of Age at Death"
+hist(donor_metadata$Age.of.Death, main=title, xlab= "Age at Death", col = "grey", breaks = 20)
+
+title = "Histogram of Age of Onset"
+hist(donor_metadata$Age.of.Onset, main=title, xlab= "Age of Onset", col = "grey", breaks = 15)
+
+title = "Histogram of Disease Duration"
+hist(donor_metadata$Disease_duration, main=title, xlab= "Disease Duration", col = "grey", breaks = 5)
+```
+
+```{r}
+total_donors_cells_caudate = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_caudate$Var1 <- factor(total_donors_cells_caudate$Var1, levels = total_donors_cells_caudate$Var1[order(total_donors_cells_caudate$Freq, decreasing = TRUE)])
+
+
+ggplot(total_donors_cells_caudate, aes(x=total_donors_cells_caudate$Var1, y = total_donors_cells_caudate$Freq)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_caudate$Freq), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+```{r}
+total_donors_cells_putamen = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_putamen$Var1 <- factor(total_donors_cells_putamen$Var1, levels = total_donors_cells_putamen$Var1[order(total_donors_cells_putamen$Freq, decreasing = TRUE)])
+
+
+ggplot(total_donors_cells_putamen, aes(x=total_donors_cells_putamen$Var1, y = total_donors_cells_putamen$Freq)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_putamen$Freq), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Putamen Village") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+#calculate how many cells are being filtered out from EACH donor
+
+```{r}
+#prefilter
+prefilter_total_donors_cells_caudate = as.data.frame(table(merged_caudate@meta.data$donor_id, merged_caudate@meta.data$library))
+prefilter_total_donors_cells_caudate
+```
+
+
+```{r}
+total_donors_cells_caudate 
+
+```
+
+
+
+
+
+
+
+```{r}
+barplot <- ggplot(df, aes(x = conditions, y = values)) +
+  geom_bar(stat = "identity")
+```
+
+
+```{r}
+df = table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library)
+df= as.data.frame(df)
+df
+```
+
+
+
+
+
+#This is from Untitled1
+```{r}
+merged_caudate = qread("Cellbender_seurat/redo2_merged_caudate.qs")
+merged_putamen = qread("Cellbender_seurat/redo2_merged_putamen.qs")
+
+merged_caudate
+merged_putamen
+```
+
+
+#filtering step: pct_mitochondrial <10, pct intronic >= 0.25 #should be & not either
+```{r}
+filtered_merged_caudate <- subset(merged_caudate, subset = pct_mito < 10 & pct_intronic >= 0.25)
+filtered_merged_putamen <- subset(merged_putamen, subset = pct_mito < 10 & pct_intronic >= 0.25)
+```
+
+
+
+```{r}
+cells_per_donor_per_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library))
+cells_per_donor_per_rxn
+
+
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+
+```
+
+```{r}
+filtered_merged_caudate@meta.data
+```
+
+
+
+
+```{r}
+cells_per_donor_per_rxn = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id, filtered_merged_putamen@meta.data$library))
+cells_per_donor_per_rxn
+
+ggplot(cells_per_donor_per_rxn, aes(x=Var1, y = Freq, fill=Var2)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+
+```
+
+
+```{r}
+median_umis_per_donor <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+
+ggplot(median_umis_per_donor, aes(x=donor_id, y = mUMI, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median UMIs") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,12500) 
+```
+
+```{r}
+median_umis_per_donor <-filtered_merged_putamen@meta.data %>%
+  group_by(donor_id, library) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+
+ggplot(median_umis_per_donor, aes(x=donor_id, y = mUMI, fill=library)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Median UMIs") + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ ylim(0,12500)
+```
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+total_donors_cells_caudate = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_caudate$Var1 <- factor(total_donors_cells_caudate$Var1, levels = total_donors_cells_caudate$Var1[order(total_donors_cells_caudate$Freq, decreasing = TRUE)])
+
+
+ggplot(total_donors_cells_caudate, aes(x=total_donors_cells_caudate$Var1, y = total_donors_cells_caudate$Freq)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_caudate$Freq), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+```{r}
+total_donors_cells_putamen = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_putamen$Var1 <- factor(total_donors_cells_putamen$Var1, levels = total_donors_cells_putamen$Var1[order(total_donors_cells_putamen$Freq, decreasing = TRUE)])
+
+
+ggplot(total_donors_cells_putamen, aes(x=total_donors_cells_putamen$Var1, y = total_donors_cells_putamen$Freq)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_putamen$Freq), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Putamen Village") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+#calculate how many cells are being filtered out from EACH donor
+
+```{r}
+#prefilter
+prefilter_total_donors_cells_caudate = as.data.frame(table(merged_caudate@meta.data$donor_id)) #merged_caudate@meta.data$library))
+prefilter_total_donors_cells_caudate
+
+prefilter_total_donors_cells_putamen = as.data.frame(table(merged_putamen@meta.data$donor_id)) #merged_putamen@meta.data$library))
+prefilter_total_donors_cells_putamen
+```
+
+```{r}
+total_donors_cells_caudate$filtered_cells =  prefilter_total_donors_cells_caudate$Freq - total_donors_cells_caudate$Freq
+total_donors_cells_caudate
+
+total_donors_cells_putamen$filtered_cells =  prefilter_total_donors_cells_putamen$Freq - total_donors_cells_putamen$Freq
+total_donors_cells_putamen
+
+```
+```{r}
+
+ggplot(total_donors_cells_caudate, aes(x=total_donors_cells_caudate$Var1, y = total_donors_cells_caudate$filtered_cells)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_caudate$filtered_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Filterd Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,90)
+
+ggplot(total_donors_cells_putamen, aes(x=total_donors_cells_putamen$Var1, y = total_donors_cells_putamen$filtered_cells)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_putamen$filtered_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Putamen Village") + ylab("Number of Filtered Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,90)
+```
+```{r}
+total_donors_cells_caudate_per_rxn
+```
+
+
+```{r}
+total_donors_cells_caudate_per_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate$library))
+
+#install.packages("forcats")
+#library(forcats)
+
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_per_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_Freq = sum(Freq))
+
+# Reorder Var1 based on total_Freq
+total_donors_cells_caudate_per_rxn <- total_donors_cells_caudate_per_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_Freq[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>%
+  mutate(Var1 = fct_reorder(Var1, -total_Freq))
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_caudate_per_rxn, aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_Freq, label = total_Freq), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Number of Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+total_donors_cells_putamen_per_rxn = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id, filtered_merged_putamen$library))
+total_donors_cells_putamen_per_rxn
+```
+
+
+```{r}
+#install.packages("forcats")
+#library(forcats)
+
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_per_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_Freq = sum(Freq))
+
+# Reorder Var1 based on total_Freq
+total_donors_cells_putamen_per_rxn <- total_donors_cells_putamen_per_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_Freq[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>%
+  mutate(Var1 = fct_reorder(Var1, -total_Freq))
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_per_rxn, aes(x = Var1, y = Freq, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_Freq, label = total_Freq), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Number of Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r}
+total_donors_cells_caudate_by_rxn = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id, filtered_merged_caudate@meta.data$library))
+total_donors_cells_caudate_by_rxn
+
+total_donors_cells_putamen_by_rxn = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id, filtered_merged_putamen@meta.data$library))
+total_donors_cells_putamen_by_rxn
+```
+
+
+```{r}
+#prefilter
+prefilter_caudate_by_rxn = as.data.frame(table(merged_caudate@meta.data$donor_id, merged_caudate@meta.data$library))
+prefilter_caudate_by_rxn
+
+prefilter_putamen_by_rxn = as.data.frame(table(merged_putamen@meta.data$donor_id, merged_putamen@meta.data$library))
+prefilter_putamen_by_rxn
+```
+
+
+
+
+```{r}
+total_donors_cells_caudate_by_rxn$filtered_cells = prefilter_caudate_by_rxn$Freq - total_donors_cells_caudate_by_rxn$Freq
+total_donors_cells_caudate_by_rxn
+
+total_donors_cells_putamen_by_rxn$filtered_cells =  prefilter_putamen_by_rxn$Freq - total_donors_cells_putamen_by_rxn$Freq
+total_donors_cells_putamen_by_rxn
+
+```
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+summary_data
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_caudate_by_rxn <- total_donors_cells_caudate_by_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_caudate_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+total_donors_cells_putamen
+```
+
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+
+# Reorder Var1 based on total_filtered_cells
+#total_donors_cells_putamen_by_rxn <- total_donors_cells_putamen_by_rxn %>%
+ # mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+#summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+#summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+as.data.frame(table(filtered_merged_caudate$Condition))
+cells_per_condition_per_regions = as.data.frame(table(filtered_merged_caudate$Condition))
+as.data.frame(table(filtered_merged_putamen$Condition))
+Put = as.data.frame(table(filtered_merged_putamen$Condition))
+```
+
+```{r}
+cells_per_condition_per_regions$Conditions = cells_per_condition_per_regions$Var1
+cells_per_condition_per_regions$Caudate = cells_per_condition_per_regions$Freq
+cells_per_condition_per_regions$Var1 = NULL
+cells_per_condition_per_regions$Freq = NULL
+cells_per_condition_per_regions$Brain_Region = "Caudate"
+cells_per_condition_per_regions
+
+```
+```{r}
+Put$Conditions = Put$Var1
+Put$Caudate = Put$Freq
+Put$Var1 = NULL
+Put$Freq = NULL
+Put$Brain_Region = "Putamen"
+Put
+```
+
+
+```{r}
+cells_per_condition_per_regions = rbind(cells_per_condition_per_regions, Put)
+cells_per_condition_per_regions$Num_Cells = cells_per_condition_per_regions$Caudate
+cells_per_condition_per_regions$Caudate = NULL
+cells_per_condition_per_regions
+```
+
+
+
+```{r}
+ggplot(cells_per_condition_per_regions, aes(x = Brain_Region, y = Num_Cells, fill = Conditions)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = Num_Cells), vjust = -0.3, color = "black", size = 4, position = position_stack(vjust = 0.5)) + xlab("Brain Region") + ylab("Number of Cells") 
+```
+
+
+
+
+
+
+
+
+```{r}
+median_genes_per_donor_caudate <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor_caudate
+
+median_genes_per_donor_putamen <-filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(median_genes = median(nFeature_RNA, na.rm = TRUE))
+
+median_genes_per_donor_putamen
+```
+
+
+
+
+```{r}
+median_umis_per_donor_caudate <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor_caudate
+
+median_umis_per_donor_putamen <-filtered_merged_putamen@meta.data %>%
+  group_by(donor_id) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor_putamen
+```
+
+```{r}
+donor_data= read.csv("Cellbender_seurat/Donor_metadata.csv")
+donor_data
+```
+
+```{r}
+total_donors_cells_caudate
+```
+
+
+```{r}
+total_donors_cells_caudate = merge(donor_data, total_donors_cells_caudate, by.x= "Donor.ID", by.y = "Var1")
+total_donors_cells_caudate
+
+total_donors_cells_putamen = merge(donor_data, total_donors_cells_putamen, by.x= "Donor.ID", by.y = "Var1")
+total_donors_cells_putamen
+```
+
+
+```{r}
+total_donors_cells_caudate$median_genes_per_cell = median_genes_per_donor_caudate$median_genes
+total_donors_cells_putamen$median_genes_per_cell = median_genes_per_donor_putamen$median_genes
+
+total_donors_cells_caudate$mUMIs = median_umis_per_donor_caudate$mUMI
+total_donors_cells_putamen$mUMIs = median_umis_per_donor_putamen$mUMI
+
+total_donors_cells_caudate
+total_donors_cells_putamen
+```
+
+
+```{r}
+cor.test(total_donors_cells_caudate$Freq, total_donors_cells_caudate$MQS_numerical, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$Freq, total_donors_cells_putamen$MQS_numerical, method = "spearman", exact =FALSE)
+
+cor.test(total_donors_cells_caudate$mUMIs, total_donors_cells_caudate$MQS_numerical, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$mUMIs, total_donors_cells_putamen$MQS_numerical, method = "spearman", exact =FALSE)
+
+cor.test(total_donors_cells_caudate$median_genes_per_cell, total_donors_cells_caudate$MQS_numerical, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$median_genes_per_cell, total_donors_cells_putamen$MQS_numerical, method = "spearman", exact =FALSE)
+```
+
+
+```{r}
+cor.test(total_donors_cells_caudate$RQS, total_donors_cells_caudate$mUMIs, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$RQS, total_donors_cells_putamen$mUMIs, method = "spearman", exact =FALSE)
+
+cor.test(total_donors_cells_caudate$DV200, total_donors_cells_caudate$mUMIs, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_putamen$DV200, total_donors_cells_putamen$mUMIs, method = "spearman", exact =FALSE)
+```
+
+
+```{r}
+cor.test(total_donors_cells_caudate$Freq, total_donors_cells_putamen$Freq, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_caudate$median_genes_per_cell, total_donors_cells_putamen$median_genes_per_cell, method = "spearman", exact =FALSE)
+cor.test(total_donors_cells_caudate$mUMIs, total_donors_cells_putamen$mUMIs, method = "spearman", exact =FALSE)
+
+```
+
+
+
+```{r}
+cortest <- cor.test(total_donors_cells_caudate$Freq, total_donors_cells_putamen$Freq, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_caudate, aes(x =total_donors_cells_caudate$Freq, y = total_donors_cells_putamen$Freq,  color = total_donors_cells_caudate$Donor.ID)) + 
+  geom_point() +  labs(x="Nuclei from CaH" , y= "Nuclei from Put") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate vs Putamen: number of nuclei", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+```
+
+
+```{r}
+cortest <- cor.test(total_donors_cells_caudate$RQS, total_donors_cells_caudate$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_caudate, aes(x =total_donors_cells_caudate$RQS, y = total_donors_cells_caudate$mUMIs,  color = total_donors_cells_caudate$Donor.ID)) + 
+  geom_point() +  labs(x="CaH RQS" , y= "CaH mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate: RQS vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+
+
+
+cortest <- cor.test(total_donors_cells_caudate$DV200, total_donors_cells_caudate$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_caudate, aes(x =total_donors_cells_caudate$DV200, y = total_donors_cells_caudate$mUMIs,  color = total_donors_cells_caudate$Donor.ID)) + 
+  geom_point() +  labs(x="CaH DV200" , y= "CaH mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate: DV200 vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+
+
+
+
+cortest <- cor.test(total_donors_cells_caudate$MQS_numerical, total_donors_cells_caudate$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_caudate, aes(x =total_donors_cells_caudate$MQS_numerical, y = total_donors_cells_caudate$mUMIs,  color = total_donors_cells_caudate$Donor.ID)) + 
+  geom_point() +  labs(x="CaH Purkinje MQS" , y= "CaH mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate: Purkinje MQS vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+```
+
+
+
+```{r}
+cortest <- cor.test(total_donors_cells_putamen$RQS, total_donors_cells_putamen$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_putamen, aes(x =total_donors_cells_putamen$RQS, y = total_donors_cells_putamen$mUMIs,  color = total_donors_cells_putamen$Donor.ID)) + 
+  geom_point() +  labs(x="Put RQS" , y= "Put mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Putamen: RQS vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+
+
+
+cortest <- cor.test(total_donors_cells_putamen$DV200, total_donors_cells_putamen$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_putamen, aes(x =total_donors_cells_putamen$DV200, y = total_donors_cells_putamen$mUMIs,  color = total_donors_cells_putamen$Donor.ID)) + 
+  geom_point() +  labs(x="Put DV200" , y= "Put mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Putamen: DV200 vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+
+
+
+
+cortest <- cor.test(total_donors_cells_putamen$MQS_numerical, total_donors_cells_putamen$mUMIs, method = "spearman", exact = FALSE )
+cortest
+
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = total_donors_cells_putamen, aes(x =total_donors_cells_putamen$MQS_numerical, y = total_donors_cells_putamen$mUMIs,  color = total_donors_cells_putamen$Donor.ID)) + 
+  geom_point() +  labs(x="Put Purkinje MQS" , y= "Put mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Putamen: Purkinje MQS vs mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+```
+```{r}
+total_donors_cells_putamen
+```
+
+
+
+
+
+
+
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+merged_caudate = qread("Cellbender_seurat/redo2_merged_caudate.qs")
+merged_putamen = qread("Cellbender_seurat/redo2_merged_putamen.qs")
+
+merged_caudate
+merged_putamen
+```
+
+```{r}
+filtered_merged_caudate <- subset(merged_caudate, subset = pct_mito < 10 & pct_intronic >= 0.25)
+filtered_merged_putamen <- subset(merged_putamen, subset = pct_mito < 10 & pct_intronic >= 0.25)
+```
+
+```{r}
+filtered_merged_caudate
+filtered_merged_putamen
+```
+
+#HVG calculation helper function
+```{r}
+getSeuratVarFeatureIntersectByCol = function(
+   seurat_obj,
+   subset_col,
+   original_nfeatures,
+   n_subsets_to_cover=NULL
+){
+  
+   hvgs = list()
+
+
+   unique_ids = unique(seurat_obj@meta.data[[subset_col]])
+
+
+   if (is.null(n_subsets_to_cover)){
+       n_subsets_to_cover = floor(length(unique_ids)/2)
+   }
+
+
+   i=1
+   for (id in unique_ids) {
+       print(paste("Subset", id, "--", i, "of", length(unique_ids)))
+       i = i + 1
+      
+       seurat_subset = seurat_obj[, seurat_obj[[subset_col]] == id]
+      
+       if (ncol(seurat_subset) < 2){next}
+      
+       suppressWarnings({
+           seurat_subset = FindVariableFeatures(
+               seurat_subset, nfeatures=original_nfeatures, verbose = FALSE)
+       })
+      
+       hvgs[[id]] = getSeuratVarFeatures(seurat_subset)
+      
+   }
+
+
+   common_hvgs = getCommonStrings(hvgs, n_subsets_to_cover)
+   print(paste("Number of HVGs in common across", n_subsets_to_cover, "--", length(common_hvgs)))
+
+
+   return(common_hvgs)
+}
+
+```
+
+
+```{r}
+getSeuratVarFeatures = function(sobj){
+    # the magical incantation that returns the slot of the attribute of the slot that actually holds the list of variable feature -_-
+    return(sobj@assays$RNA@var.features)
+}
+```
+
+```{r}
+getCommonStrings <- function(list_of_lists, n) {
+  # Create an empty list to store string occurrences
+  string_occurrences <- list()
+
+  # Iterate over each sublist
+  for (sublist in list_of_lists) {
+    # For each string in the sublist, increment its count in string_occurrences
+    for (string in unique(sublist)) {
+      if (!is.null(string_occurrences[[string]])) {
+        string_occurrences[[string]] <- string_occurrences[[string]] + 1
+      } else {
+        string_occurrences[[string]] <- 1
+      }
+    }
+  }
+
+  # Filter the strings that occur at least n times
+  common_strings <- names(string_occurrences)[string_occurrences >= n]
+
+  return(common_strings)
+}
+```
+
+
+```{r}
+filtered_merged_caudate@meta.data
+```
+
+
+#Actual Clustering Code- caudate
+```{r}
+# Counts of super lowly expressed genes are essentially random
+# Also, we don't really care about housekeeping genes that have almost the same expression in every cell
+# Before clustering, we want to find "highly variable genes" (hvgs) that tend to be both highly expressed and vary a lot from cell to cell.
+# we do this by finding hvgs in each participant individually, and collating the genes
+# that are highly variable in at least half of donors.
+
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(filtered_merged_caudate, subset_col="donor_id", original_nfeatures=2500)
+
+
+n_dims_use=20
+
+
+# now cluster
+# the "%>%" lines are a little piece of syntax from the dyplr library,
+# short for "apply the following transformation to the object"
+# doing this line-by-line allows us to apply a sequence of transformations
+filtered_merged_caudate = (filtered_merged_caudate
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_caudate$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_caudate$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+
+# Now we can plot the data and just see what it looks like
+
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+
+
+
+DimPlot(filtered_merged_caudate, group.by = "library", label=T) # are there library batch effects?
+DimPlot(filtered_merged_caudate, group.by = "donor_id", label=T) # are there donor batch effects?
+DimPlot(filtered_merged_caudate, group.by = "Condition") # change col name to whatever your case control metadata column is
+DimPlot(filtered_merged_caudate, group.by = "RNA_snn_res.0.5", label=T) # make a few of these for different resolutions
+
+
+#qsave(filtered_merged_caudate, "somewhere/cozy")
+
+```
+
+```{r}
+DimPlot(filtered_merged_caudate, group.by = "library") # are there library batch effects?
+DimPlot(filtered_merged_caudate, group.by = "donor_id") # are there donor batch effects?
+DimPlot(filtered_merged_caudate, group.by = "Condition") # change col name to whatever your case control metadata column is
+DimPlot(filtered_merged_caudate, group.by = "RNA_snn_res.0.5", label=T) # make a few of these for different resolutions
+
+
+qsave(filtered_merged_caudate, "Cellbender_seurat/filtered_merged_caudate_clustered.qs")
+```
+#clustering for putamen
+```{r}
+# Counts of super lowly expressed genes are essentially random
+# Also, we don't really care about housekeeping genes that have almost the same expression in every cell
+# Before clustering, we want to find "highly variable genes" (hvgs) that tend to be both highly expressed and vary a lot from cell to cell.
+# we do this by finding hvgs in each participant individually, and collating the genes
+# that are highly variable in at least half of donors.
+
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(filtered_merged_putamen, subset_col="donor_id", original_nfeatures=2500)
+
+
+n_dims_use=20
+
+
+# now cluster
+# the "%>%" lines are a little piece of syntax from the dyplr library,
+# short for "apply the following transformation to the object"
+# doing this line-by-line allows us to apply a sequence of transformations
+filtered_merged_putamen = (filtered_merged_putamen
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via filtered_merged_putamen$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: filtered_merged_putamen$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+
+# Now we can plot the data and just see what it looks like
+
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+
+
+
+
+DimPlot(filtered_merged_putamen, group.by = "library", label=T) # are there library batch effects?
+DimPlot(filtered_merged_putamen, group.by = "donor_id", label=T) # are there donor batch effects?
+DimPlot(filtered_merged_putamen, group.by = "Condition") # change col name to whatever your case control metadata column is
+DimPlot(filtered_merged_putamen, group.by = "RNA_snn_res.0.3", label=T) # make a few of these for different resolutions
+
+DimPlot(filtered_merged_putamen, group.by = "library") # are there library batch effects?
+DimPlot(filtered_merged_putamen, group.by = "donor_id") # are there donor batch effects?
+
+qsave(filtered_merged_putamen, "Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+```
+
+
+
+```{r}
+DimPlot(filtered_merged_caudate, group.by = "RNA_snn_res.0.2", label=T)
+DimPlot(filtered_merged_putamen, group.by = "RNA_snn_res.0.2", label=T)
+```
+
+```{r}
+FeaturePlot(filtered_merged_caudate, features = c("TAF1"))
+FeaturePlot(filtered_merged_putamen, features = c("TAF1"))
+```
+
+```{r}
+feature_caudate_plots = FeaturePlot(filtered_merged_caudate, features = c("SYT1", "AQP4", "C1QA", "FLT1", "OLIG1", "OLIG2", "CD96", "ADGB"))
+
+ggsave(filename = "graphs_to_export/featureplot_caudate.png", plot= feature_caudate_plots)
+```
+
+
+```{r}
+Idents(filtered_merged_caudate) = filtered_merged_caudate$RNA_snn_res.0.2
+markers = FindAllMarkers(filtered_merged_caudate, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1)
+```
+
+
+```{r}
+normalizeScalePcaClusterUmap = function(
+   sobj,
+   subset_col="DONOR",
+   n_hvgs_orig=2500,
+   n_dims_use=20,
+   resolutions=c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1)){
+   # this function takes a Seurat object, normalizes the data, scales the data, runs PCA, finds neighbors,
+   # clusters at a variety of resolutions, and runs UMAP
+   # it then returns the Seurat object
+  
+   hvgs = getSeuratVarFeatureIntersectByCol(sobj, subset_col=subset_col, original_nfeatures=n_hvgs_orig)
+   sobj = (sobj
+       %>% NormalizeData()
+       %>% ScaleData(features=hvgs, split.by=subset_col)
+       %>% RunPCA(features=hvgs, npcs=n_dims_use)
+       %>% FindNeighbors(dims = 1:n_dims_use)
+   )
+   for(res in resolutions){
+       sobj = sobj %>% FindClusters(resolution = res)
+   }
+    sobj = sobj %>% RunUMAP(dims = 1:n_dims_use)
+   return(sobj)
+}
+```
+
+
+```{r}
+printMarkersByCluster = function(marker_df, marker_tsv="Cellbender_seurat/all_markers.tsv", cluster=NULL){
+   broad_markers = read.table(marker_tsv, header = TRUE, sep = "\t")
+   broad_markers$Gene = toupper(broad_markers$Gene)
+
+
+   broad_markers['broad_class'] = NA
+   broad_markers$broad_class[grepl('microglia', tolower(broad_markers$pattern))] = 'microglia'
+   broad_markers$broad_class[grepl('neuron', tolower(broad_markers$pattern))] = 'neuron'
+   broad_markers$broad_class[grepl('astrocyte', tolower(broad_markers$pattern))] = 'astrocyte'
+   broad_markers$broad_class[grepl('oligodendrocyte', tolower(broad_markers$pattern))] = 'oligo'
+   broad_markers$broad_class[grepl('endothelial', tolower(broad_markers$pattern))] = 'endo'
+   broad_markers$broad_class[grepl('mural', tolower(broad_markers$pattern))] = 'endo'
+   broad_markers$broad_class[grepl('fibro', tolower(broad_markers$pattern))] = 'fibroblast'
+   broad_markers$broad_class[grepl('ependymal', tolower(broad_markers$pattern))] = 'ependymal' 
+   broad_markers$broad_class[grepl('opc', tolower(broad_markers$pattern))] = 'opc'
+   broad_markers$broad_class[grepl('polydendro', tolower(broad_markers$pattern))] = 'opc'
+   broad_markers$broad_class[grepl('b_cell', tolower(broad_markers$pattern))] = 'immune'
+   broad_markers$broad_class[grepl('t_cell', tolower(broad_markers$pattern))] = 'immune'
+   broad_markers$broad_class[grepl('neutro', tolower(broad_markers$pattern))] = 'immune'
+   broad_markers$broad_class[grepl('nk_cell', tolower(broad_markers$pattern))] = 'immune'
+   broad_markers = broad_markers[!is.na(broad_markers$broad_class), c('Gene', 'broad_class')]
+
+
+   broad_markers_ordered = broad_markers[order(broad_markers$broad_class),]
+
+
+   # Merge broad_markers_ordered with markers
+   broad_markers_ordered = merge(
+       broad_markers_ordered, marker_df, by.x = "Gene", by.y="gene", all.x = TRUE)
+
+
+   # Order by broad_class and cluster
+   broad_markers_ordered = broad_markers_ordered[
+       order(broad_markers_ordered$broad_class,
+       broad_markers_ordered$Gene, broad_markers_ordered$cluster),]
+
+
+   if (!is.null(cluster)){
+       broad_markers_ordered = broad_markers_ordered[broad_markers_ordered$cluster == cluster,]
+       broad_markers_ordered = broad_markers_ordered[complete.cases(broad_markers_ordered),]
+   }
+   broad_markers_ordered$pct.1 = round(broad_markers_ordered$pct.1, 2)
+   broad_markers_ordered$pct.2 = round(broad_markers_ordered$pct.2, 2)
+   broad_markers_ordered$avg_log2FC = round(broad_markers_ordered$avg_log2FC, 2)
+   print(broad_markers_ordered[,
+       c("Gene", "broad_class", "cluster", "avg_log2FC", "pct.1", "pct.2")], row.names=FALSE)
+}
+```
+
+
+```{r}
+#doublecheck ******
+num_clusters = length(unique(Idents(filtered_merged_caudate))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+
+
+```
+
+```{r}
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+```
+
+```{r}
+#classes = c("Neuron/oligo", "Neuron/oligo", "astrocyte", "unknown", "microglia", "oligo", "astrocyte", "neuron", "neuron", "astrocyte", "opc", "neuron", "oligo", "endo", "microglia/oligo", "ependymal", "neuron", "neuron", "neuron", "immune")
+
+classes = c("oligo", "oligo", "astrocyte", "oligo", "microglia", "oligo", "astrocyte", "neuron", "neuron", "astrocyte", "opc", "neuron", "oligo", "endo", "oligo", "ependymal", "oligo", "neuron", "neuron", "immune")
+
+
+filtered_merged_caudate = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+```
+
+```{r}
+normalizeScalePcaClusterUmap(filtered_merged_caudate) # what is this
+```
+
+
+```{r}
+Idents(filtered_merged_caudate) <- "cell_class"
+DimPlot(filtered_merged_caudate, label = TRUE)
+```
+
+
+
+
+
+```{r}
+Idents(filtered_merged_putamen) = filtered_merged_putamen$RNA_snn_res.0.2
+markers = FindAllMarkers(filtered_merged_putamen, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1)
+```
+
+```{r}
+#doublecheck ******
+num_clusters = length(unique(Idents(filtered_merged_putamen))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+
+```
+
+```{r}
+#classes = c("oligo?", "neuron", "astrocyte", "neuron", "neuron/oligo", "microglia", "neuron", "oligo", "opc", "oligo", "neuron", "neuron", "astrocyte", "neuron", "neuron", "neuron/oligo", "endo", "neuron", "neuron", "neuron", "oligo", "neuron")
+
+#second one is neuron but looks like it would cluster as an oligo?
+classes = c("oligo", "oligo", "astrocyte", "neuron", "oligo", "microglia", "neuron", "oligo", "opc", "oligo", "neuron", "neuron", "astrocyte", "neuron", "neuron", "oligo", "endo", "neuron", "neuron", "neuron", "oligo", "neuron")
+
+filtered_merged_putamen = assignCellClasses(filtered_merged_putamen, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(filtered_merged_putamen) <- "cell_class"
+DimPlot(filtered_merged_putamen, label = TRUE)
+```
+
+
+```{r}
+Idents(filtered_merged_caudate) = filtered_merged_caudate$RNA_snn_res.0.5
+markers = FindAllMarkers(filtered_merged_caudate, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+```
+
+```{r}
+num_clusters = length(unique(Idents(filtered_merged_caudate))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+
+
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/filtered_merged_caudate_clustered.qs")
+filtered_merged_putamen = qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+
+Idents(filtered_merged_putamen) = filtered_merged_putamen$RNA_snn_res.0.5
+markers = FindAllMarkers(filtered_merged_putamen, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+```
+```{r}
+#doublecheck ******
+num_clusters = length(unique(Idents(filtered_merged_putamen))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+
+```
+```{r}
+classes = c("0", "astrocyte", "2", "3", "neuron", "neuron", "microglia", "NO", "9", "opc", "neuron", "neuron", "astrocyte", "14", "neuron", "16", "astrocyte", "neuron", "oligo", "endo", "neuron", "neuron", "23", "neuron", "neuron", "neuron", "oligo", "28", "neuron", "neuron")
+  
+
+filtered_merged_putamen = assignCellClasses(filtered_merged_putamen, classes=classes, cluster_col="RNA_snn_res.0.5", class_col = "cell_class")
+
+Idents(filtered_merged_putamen) <- "cell_class"
+DimPlot(filtered_merged_putamen, label = TRUE)
+```
+
+```{r}
+Idents(filtered_merged_putamen) = filtered_merged_putamen$RNA_snn_res.0.3
+markers = FindAllMarkers(filtered_merged_putamen, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+```
+
+
+
+
+```{r}
+feature_putamen_plots = FeaturePlot(filtered_merged_putamen, features = c("SYT1", "AQP4", "C1QA", "FLT1", "OLIG1", "OLIG2", "CD96", "ADGB"))
+
+ggsave(filename = "graphs_to_export/featureplot_putamen.png", plot= feature_putamen_plots)
+```
+
+
+```{r}
+#data(filtered_merged_caudate)
+classes = c("oligo", "oligo", "astrocyte", "oligo", "microglia", "oligo", "astrocyte", "neuron", "neuron", "astrocyte", "opc", "neuron", "oligo", "endo", "oligo", "ependymal", "neuron", "neuron", "neuron", "immune")
+
+filtered_merged_caudate = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(filtered_merged_caudate) <- "cell_class"
+cd_genes <- c("TAF1")
+Dotplot_caudate = DotPlot(object = filtered_merged_caudate, features = cd_genes)
+Dotplot_caudate  <- Dotplot_caudate  + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the plot
+print(Dotplot_caudate)
+
+#ggsave(filename = "graphs_to_export/dotplot_caudate.png", plot= Dotplot_caudate )
+```
+
+```{r}
+filtered_merged_caudate= qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+filtered_merged_putamen =qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+```
+
+
+```{r}
+classes = c("oligo", "oligo", "astrocyte", "neuron", "oligo", "microglia", "neuron", "oligo", "opc", "oligo", "neuron", "neuron", "astrocyte", "neuron", "neuron", "oligo", "endo", "neuron", "neuron", "neuron", "oligo", "neuron")
+
+filtered_merged_putamen = assignCellClasses(filtered_merged_putamen, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(filtered_merged_putamen) <- "cell_class"
+cd_genes <- c("SYT1", "AQP4", "C1QA", "FLT1", "OLIG1", "OLIG2", "CD96", "ADGB")
+Dotplot_putamen = DotPlot(object = filtered_merged_putamen, features = cd_genes)
+Dotplot_putamen  <- Dotplot_putamen  + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the plot
+print(Dotplot_putamen)
+```
+
+
+```{r}
+classes = c("oligo", "oligo", "astrocyte", "neuron", "oligo", "microglia", "neuron", "oligo", "opc", "oligo", "neuron", "neuron", "astrocyte", "neuron", "neuron", "oligo", "endo", "neuron", "neuron", "neuron", "oligo", "neuron")
+
+filtered_merged_putamen = assignCellClasses(filtered_merged_putamen, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(filtered_merged_putamen) <- "cell_class"
+cd_genes <- c("TAF1")
+Dotplot_putamen = DotPlot(object = filtered_merged_putamen, features = cd_genes)
+Dotplot_putamen  <- Dotplot_putamen  + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the plot
+print(Dotplot_putamen)
+
+```
+```{r}
+classes = c("oligo", "oligo", "astrocyte", "oligo", "microglia", "oligo", "astrocyte", "neuron", "neuron", "astrocyte", "opc", "neuron", "oligo", "endo", "oligo", "ependymal", "oligo", "neuron", "neuron", "immune")
+
+filtered_merged_caudate = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(filtered_merged_caudate) <- "cell_class"
+cd_genes <- c("TAF1")
+Dotplot_caudate = DotPlot(object = filtered_merged_caudate, features = cd_genes)
+Dotplot_caudate  <- Dotplot_caudate  + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the plot
+print(Dotplot_caudate)
+```
+
+```{r}
+
+```
+
+
+
+```{r}
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+merged_caudate = qread("Cellbender_seurat/redo2_merged_caudate.qs")
+merged_putamen = qread("Cellbender_seurat/redo2_merged_putamen.qs")
+
+merged_caudate
+merged_putamen
+```
+
+```{r}
+filtered_merged_caudate <- subset(merged_caudate, subset = pct_mito < 10 & pct_intronic >= 0.25)
+filtered_merged_putamen <- subset(merged_putamen, subset = pct_mito < 10 & pct_intronic >= 0.25)
+```
+
+```{r}
+total_donors_cells_caudate = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_caudate$Var1 <- factor(total_donors_cells_caudate$Var1, levels = total_donors_cells_caudate$Var1[order(total_donors_cells_caudate$Freq, decreasing = TRUE)])
+```
+
+```{r}
+total_donors_cells_putamen = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+#total_donors_cells
+
+total_donors_cells_putamen$Var1 <- factor(total_donors_cells_putamen$Var1, levels = total_donors_cells_putamen$Var1[order(total_donors_cells_putamen$Freq, decreasing = TRUE)])
+```
+
+```{r}
+#prefilter
+prefilter_total_donors_cells_caudate = as.data.frame(table(merged_caudate@meta.data$donor_id)) #merged_caudate@meta.data$library))
+prefilter_total_donors_cells_caudate
+
+prefilter_total_donors_cells_putamen = as.data.frame(table(merged_putamen@meta.data$donor_id)) #merged_putamen@meta.data$library))
+prefilter_total_donors_cells_putamen
+```
+
+```{r}
+total_donors_cells_caudate$filtered_cells =  prefilter_total_donors_cells_caudate$Freq - total_donors_cells_caudate$Freq
+total_donors_cells_caudate
+
+total_donors_cells_putamen$filtered_cells =  prefilter_total_donors_cells_putamen$Freq - total_donors_cells_putamen$Freq
+total_donors_cells_putamen
+```
+
+```{r}
+ggplot(total_donors_cells_caudate, aes(x=total_donors_cells_caudate$Var1, y = total_donors_cells_caudate$filtered_cells)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_caudate$filtered_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Filterd Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,90)
+
+ggplot(total_donors_cells_putamen, aes(x=total_donors_cells_putamen$Var1, y = total_donors_cells_putamen$filtered_cells)) + geom_bar(stat = "identity")+ geom_text(aes(label = total_donors_cells_putamen$filtered_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Putamen Village") + ylab("Number of Filtered Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0,90)
+```
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_caudate_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+summary_data
+
+# Reorder Var1 based on total_filtered_cells
+total_donors_cells_caudate_by_rxn <- total_donors_cells_caudate_by_rxn %>%
+  mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_caudate_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Caudate Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Summarize the data to get the sum of frequencies for each Var1
+summary_data <- total_donors_cells_putamen_by_rxn %>%
+  group_by(Var1) %>%
+  summarize(total_filtered_cells = sum(filtered_cells))
+
+
+# Reorder Var1 based on total_filtered_cells
+#total_donors_cells_putamen_by_rxn <- total_donors_cells_putamen_by_rxn %>%
+ # mutate(Var1 = fct_reorder(Var1, -summary_data$total_filtered_cells[match(Var1, summary_data$Var1)]))
+
+# Update summary_data to use the same reordered Var1
+#summary_data <- summary_data %>% mutate(Var1 = fct_reorder(Var1, -total_filtered_cells))
+#summary_data
+
+# Create the stacked bar plot
+ggplot(total_donors_cells_putamen_by_rxn, aes(x = Var1, y = filtered_cells, fill = Var2)) +
+  geom_bar(stat = "identity") +
+  geom_text(data = summary_data, aes(x = Var1, y = total_filtered_cells, label = total_filtered_cells), 
+            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+  xlab("Donors from Putamen Village") +
+  ylab("Number of Filtered Cells") + labs(fill = "Rxn")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+```{r}
+Idents(filtered_merged_caudate) = filtered_merged_caudate$RNA_snn_res.0.5
+markers = FindAllMarkers(filtered_merged_caudate, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.25)
+
+num_clusters = length(unique(Idents(filtered_merged_caudate))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+```{r}
+
+num_clusters = length(unique(Idents(filtered_merged_caudate))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+
+```{r}
+
+filtered_merged_putamen = qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+
+filtered_merged_putamen
+```
+
+
+
+
+```{r}
+Idents(filtered_merged_putamen) = filtered_merged_putamen$RNA_snn_res.0.5
+markers = FindAllMarkers(filtered_merged_putamen, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 0.5)
+
+num_clusters = length(unique(Idents(filtered_merged_putamen))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/filtered_merged_caudate_clustered.qs")
+filtered_merged_putamen = qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+
+filtered_merged_caudate
+filtered_merged_putamen
+```
+
+```{r}
+table(filtered_merged_caudate@meta.data$RNA_snn_res.0.5)
+```
+
+```{r}
+DimPlot(filtered_merged_caudate, group.by = "RNA_snn_res.0.5")
+DimPlot(filtered_merged_putamen, group.by = "RNA_snn_res.0.5")
+```
+
+```{r}
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+
+```
+
+```{r}
+
+#classes = c("oligo?", "oligo?", "oligo?", "microglia", "oligo?", "oligo?", "astrocyte", "astrocyte", "astrocyte", "astrocyte", "neuron1", "opc", "oligo", "neuron2", "Fneuron3", "neuron4", "oligo?", "oligo?", "endothelial", "ependymal", "oligo", "neuronGAD5", "neuronGAD6", "astrocyte", "immune", "oligo?")
+
+classes = c("oligo", "oligo", "oligo", "microglia", "oligo", "oligo", "astrocyte", "astrocyte", "astrocyte", "astrocyte", "SPN", "opc", "oligo", "SPN", "SPN", "interneuron", "oligo", "oligo", "endothelial", "ependymal", "oligo", "interneuron", "interneuron", "astrocyte", "immune", "oligo")
+
+#neuron6-interneuorn?
+#neuorn1-3- SPN?
+#4-5- interneuorn?
+
+filtered_merged_caudate = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.5", class_col = "cell_class")
+
+Idents(filtered_merged_caudate) <- "cell_class"
+DimPlot(filtered_merged_caudate, label = TRUE)
+```
+
+```{r}
+FeaturePlot(filtered_merged_caudate, features = c("LAMP5", "PVALB"))
+FeaturePlot(filtered_merged_caudate, features = c("VIP", "LAMP5"))
+FeaturePlot(filtered_merged_caudate, features = c("GAD1", "GAD2"))
+FeaturePlot(filtered_merged_caudate, features = c("DRD1", "DRD2"))
+FeaturePlot(filtered_merged_caudate, features = c("SST", "CALB2"))
+
+FeaturePlot(filtered_merged_caudate, features = c("CUX2", "SATB2"))
+FeaturePlot(filtered_merged_caudate, features = c("SLC17A7", "SLC17A6"))
+```
+
+
+
+
+```{r}
+#FeaturePlot(filtered_merged_caudate, features = c("SYT1", "AQP4", "C1QA", "FLT1", "OLIG1", "OLIG2", "CD96", "ADGB", "GAD1", "GAD2", "MOBP", "DRD1", "DRD2"))
+
+FeaturePlot(filtered_merged_caudate, features = c("GAD1", "GAD2", "MOBP", "DRD1", "DRD2"))
+```
+
+```{r}
+table(Idents(filtered_merged_caudate))
+```
+
+
+```{r}
+unsure_clusters = c("oligo")
+unsure_subset = subset(filtered_merged_caudate, idents = unsure_clusters)
+
+oligo_poly_opc_markers = c("MBP", "MOG", "PLP", "CSPG4", "OLIG2")
+
+VlnPlot(unsure_subset, features = oligo_poly_opc_markers, group.by = idents)
+
+
+```
+
+
+```{r}
+table(filtered_merged_caudate$cell_class, filtered_merged_caudate$donor_id)
+```
+
+#resolution too high?
+```{r}
+#classes = c("m/n/o1", "astrocyte", "neuron1", "m/n/o2", "m/n/o3", "neuron2", "neuron3", "microglia", "oligo", "oligo", "opc", "neuron4", "neuron5", "astrocyte", "m/n/o4", "neuron6", "m/n/o5", "astrocyte", "neuron7", "oligo", "endo", "neuron8", "m/n/o6", "m/n/o7", "neuron9", "neuron10", "neuron11","oligo", "neuron12", "immune","neuron13")
+
+classes = c("oligo", "astrocyte", "SPN", "oligo", "oligo", "oligo", "SPN", "microglia", "oligo", "oligo", "opc", "SPN", "SPN", "astrocyte", "oligo", "SPN", "oligo", "astrocyte", "SPN", "oligo", "endo", "glutamatergic", "oligo", "oligo", "interneuron", "SPN", "cortical","oligo", "SPN", "immune","SPN")
+  
+
+#neuron 1/5/10/12/13? = SPN/DRD2
+#neuron 3/4/6/7 = SPN/DRD1
+#neuron 9 - Interneuron/GAD1
+#neuron 8 - glut
+#neuron11- cortical projection
+filtered_merged_putamen = assignCellClasses(filtered_merged_putamen, classes=classes, cluster_col="RNA_snn_res.0.5", class_col = "cell_class")
+
+Idents(filtered_merged_putamen) <- "cell_class"
+DimPlot(filtered_merged_putamen, label = TRUE)
+```
+```{r}
+FeaturePlot(filtered_merged_putamen, features = c("SYT1", "RBFOX3", "GAD2", "SLC17A6")) #neuron
+FeaturePlot(filtered_merged_putamen, features = c("AQP4", "GINS3", "GFAP")) #astrocytes
+FeaturePlot(filtered_merged_putamen, features = c("C1Q4", "C1QB", "CX3CR1", "P2RY12")) #microglia
+FeaturePlot(filtered_merged_putamen, features = c("FLT1", "DCN", "RGS5")) #endo
+FeaturePlot(filtered_merged_putamen, features = c("OLIG1", "MOG", "MOBP")) #oligo
+FeaturePlot(filtered_merged_putamen, features = c("OLIG2", "VCAN")) #opc
+```
+
+```{r}
+FeaturePlot(filtered_merged_putamen, features = c("LAMP5", "PVALB"))
+FeaturePlot(filtered_merged_putamen, features = c("VIP", "LAMP5"))
+FeaturePlot(filtered_merged_putamen, features = c("GAD1", "GAD2"))
+FeaturePlot(filtered_merged_putamen, features = c("DRD1", "DRD2"))
+FeaturePlot(filtered_merged_putamen, features = c("SST", "CALB2"))
+
+FeaturePlot(filtered_merged_putamen, features = c("CUX2", "SATB2"))
+FeaturePlot(filtered_merged_putamen, features = c("SLC17A7", "SLC17A6"))
+```
+
+```{r}
+DimPlot(filtered_merged_putamen,group.by = "RNA_snn_res.0.2")
+DimPlot(filtered_merged_putamen,group.by = "RNA_snn_res.0.3")
+DimPlot(filtered_merged_putamen,group.by = "RNA_snn_res.0.4")
+DimPlot(filtered_merged_putamen,group.by = "RNA_snn_res.0.5")
+```
+
+
+
+```{r}
+Idents(filtered_merged_putamen) = filtered_merged_putamen$RNA_snn_res.0.3
+markers = FindAllMarkers(filtered_merged_putamen, only.pos = TRUE, min.pct = 0.2, logfc.threshold = 1.25)
+
+num_clusters = length(unique(Idents(filtered_merged_putamen))) - 1
+
+for (i in 0:num_clusters){
+   printMarkersByCluster(markers, cluster=i)
+}
+```
+
+
+```{r}
+#classes = c("oligo", "oligo", "astrocyte", "neuron1", "neuron2","neuron3", "microglia", "neuron4", "oligo", "opc", "neuron5", "neuron6", "astrocyte", "neuron7", "oligo", "oligo", "oligo", "astrocyte", "neuron8", "endo", "neuron9", "oligo", "neuron10", "neuron11", "neuron12", "oligo", "neuron13", "astrocyte")
+
+classes = c("oligo", "oligo", "astrocyte", "SPN", "oligo","oligo", "microglia", "SPN", "oligo", "opc", "SPN", "SPN", "astrocyte", "SPN", "oligo", "oligo", "oligo", "astrocyte", "interneuron", "endo", "glutamatergic", "oligo", "interneuron", "SPN", "interneuron", "oligo", "SPN", "astrocyte")
+
+#neuron2-3: actually oligo?
+#neuron10: interneuon
+#neuron9: glutamtergic
+#neuron1/6/11: SPN/DRD2
+#neuorn4/5/13/7- SPN/DRD1
+#neuron8/12- interneuron?
+
+filtered_merged_putamen = assignCellClasses(filtered_merged_putamen, classes=classes, cluster_col="RNA_snn_res.0.3", class_col = "cell_class")
+
+Idents(filtered_merged_putamen) <- "cell_class"
+DimPlot(filtered_merged_putamen, label = TRUE)
+```
+```{r}
+FeaturePlot(filtered_merged_putamen, features = c("DRD1", "TAC1", "PDYN"))
+FeaturePlot(filtered_merged_putamen, features = c("DRD2", "PENK", "ADCY5"))
+FeaturePlot(filtered_merged_putamen, features = c("GAD1", "GAD2"))
+FeaturePlot(filtered_merged_putamen, features = c("PVALB", "VIP"))
+FeaturePlot(filtered_merged_putamen, features = c("SST", "CALB2"))
+FeaturePlot(filtered_merged_putamen, features = c("SLC17A7", "SLC17A6", "CAMK2A"))
+
+```
+```{r}
+table(Idents(filtered_merged_putamen))
+```
+```{r}
+qsave(filtered_merged_caudate, "Cellbender_seurat/clustered_caudate.qs")
+qsave(filtered_merged_putamen, "Cellbender_seurat/clustered_putamen.qs")
+```
+
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/clustered_caudate.qs")
+filtered_merged_putamen = qread("Cellbender_seurat/clustered_putamen.qs")
+
+filtered_merged_putamen
+filtered_merged_caudate
+```
+
+
+```{r}
+table(filtered_merged_caudate@meta.data$cell_class, filtered_merged_caudate@meta.data$donor_id)
+```
+
+```{r}
+filtered_merged_caudate@meta.data
+```
+
+
+```{r}
+median_umis_per_celltype = filtered_merged_caudate@meta.data %>%
+  group_by(donor_id, cell_class) %>%
+  summarize(median_umi = median(nUmi, na.rm = TRUE), .groups = 'drop')
+
+median_umis_per_celltype 
+
+
+median_umis_per_celltype = as.data.frame(median_umis_per_celltype)
+median_umis_per_celltype
+
+caudate_SPN_mumi = median_umis_per_celltype %>% filter(median_umis_per_celltype$cell_class == "SPN")
+caudate_SPN_mumi
+```
+
+
+
+```{r}
+median_umis_per_celltype2 = filtered_merged_putamen@meta.data %>%
+  group_by(donor_id, cell_class) %>%
+  summarize(median_umi = median(nUmi, na.rm = TRUE), .groups = 'drop')
+
+median_umis_per_celltype2 = as.data.frame(median_umis_per_celltype2)
+median_umis_per_celltype2 
+
+putamen_SPN_mumi = median_umis_per_celltype2 %>% filter(median_umis_per_celltype2$cell_class == "SPN")
+putamen_SPN_mumi
+
+```
+
+```{r}
+SPN_mUMIs = merge(caudate_SPN_mumi, putamen_SPN_mumi, by = "donor_id")
+SPN_mUMIs
+                  
+```
+```{r}
+SPN_mUMIs$caudate_mumis = SPN_mUMIs$median_umi.x
+SPN_mUMIs$median_umi.x = NULL
+SPN_mUMIs$putamen_mumis = SPN_mUMIs$median_umi.y
+SPN_mUMIs$median_umi.y = NULL
+
+SPN_mUMIs
+```
+
+```{r}
+SPN_mUMIs$cell_class.y = NULL
+SPN_mUMIs
+```
+
+```{r}
+donor_metadata = read.csv("Cellbender_seurat/Donor_metadata.csv")
+donor_metadata
+```
+
+```{r}
+newmetadata = merge(SPN_mUMIs, donor_metadata, by.x = "donor_id", by.y = "Donor.ID")
+newmetadata
+```
+
+
+
+```{r}
+cortest <- cor.test(SPN_mUMIs$caudate_mumis, SPN_mUMIs$putamen_mumis, method = "spearman", exact = FALSE )
+cortest
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = SPN_mUMIs, aes(x =SPN_mUMIs$caudate_mumis, y = SPN_mUMIs$putamen_mumis,  color = SPN_mUMIs$donor_id)) + 
+  geom_point() +  labs(x="CaH mUMIs" , y= "Put mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle("Caudate vs Putamen mUMIs", subtitle = subtitle) + scale_color_discrete(name = "Donor ID")
+```
+
+
+```{r}
+spearman_plot = function(data,x,y,id,xlabel, ylabel, title, legendname){
+  
+
+cortest <- cor.test(x, y, method = "spearman", exact = FALSE )
+cortest
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = data, aes(x =x, y = y,  color = id)) + 
+  geom_point() +  labs(x=xlabel , y= ylabel) + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle(title, subtitle = subtitle) + scale_color_discrete(name = legendname)
+
+}
+```
+
+
+```{r}
+spearman_plot(SPN_mUMIs, SPN_mUMIs$caudate_mumis, SPN_mUMIs$putamen_mumis, SPN_mUMIs$donor_id, "CaH SPN mUMIs", "Put SPN mUMIs", "CaH vs Put SPN mUMIS", "Donors")
+```
+
+
+```{r}
+spearman_plot(newmetadata, newmetadata$RQS, newmetadata$caudate_mumis, newmetadata$donor_id, "RQS", "CaH SPN mUMIs", "CaH SPN mUMIS vs RQS", "Donors")
+spearman_plot(newmetadata, newmetadata$DV200,newmetadata$caudate_mumis,  newmetadata$donor_id, "DV200",  "CaH SPN mUMIs", "CaH SPN mUMIS vs DV200", "Donors")
+spearman_plot(newmetadata,  newmetadata$MQS_numerical, newmetadata$caudate_mumis,  newmetadata$donor_id, "Purkinje MQS", "CaH SPN mUMIs", "CaH SPN mUMIS vs MQS", "Donors")
+
+spearman_plot(newmetadata,  newmetadata$RQS,newmetadata$putamen_mumis, newmetadata$donor_id, "RQS","Put SPN mUMIs", "Put SPN mUMIS vs RQS", "Donors")
+spearman_plot(newmetadata, newmetadata$DV200,newmetadata$putamen_mumis, newmetadata$donor_id,  "DV200","Put SPN mUMIs", "Put SPN mUMIS vs DV200", "Donors")
+spearman_plot(newmetadata, newmetadata$MQS_numerical,newmetadata$putamen_mumis, newmetadata$donor_id, "Purkinje MQS", "Put SPN mUMIs", "Put SPN mUMIS vs MQS", "Donors")
+```
+
+```{r}
+
+```
+
+
+
+
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/filtered_merged_caudate_clustered.qs")
+filtered_merged_putamen = qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+
+filtered_merged_caudate
+filtered_merged_putamen
+```
+
+```{r}
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+```
+
+
+```{r}
+classes = c("oligo", "oligo", "astrocyte", "oligo", "microglia", "oligo", "astrocyte", "neuron", "neuron", "astrocyte", "opc", "neuron", "oligo", "endo", "oligo", "ependymal", "oligo", "neuron", "neuron", "immune")
+
+
+filtered_merged_caudate = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(filtered_merged_caudate) <- "cell_class"
+DimPlot(filtered_merged_caudate, label = TRUE)
+```
+```{r}
+cells_per_donor = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(filtered_merged_caudate@meta.data$cell_class, filtered_merged_caudate@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+```
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+cell_class_df
+```
+
+
+```{r}
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+```
+
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = Freq, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#+
+ # geom_text(data = cell_class_df, aes(x = Var1, y = cell_class_df, label = cell_class_df), 
+#            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+ 
+```
+
+
+
+
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-23-068CM","SCF-22-054CM", "SCF-22-058CF", "SCF-20-025", "SCF-18-003",  "SCF_22-043", "SCF_20-024", "SCF-18-004", "SCF-18-006", "SCF-20-023", "SCF-21-030", "PCMC-16-012", "SCF-19-009", "SCF-19-014", "PCMC-16-011", "SCF-19-018")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r}
+cells_per_donor = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(filtered_merged_putamen@meta.data$cell_class, filtered_merged_putamen@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+```
+
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-23-068CM","SCF-22-054CM", "SCF-22-058CF",  "SCF-20-025","SCF_22-043","SCF-20-023","SCF-18-003",   "SCF_20-024", "SCF-18-006", "SCF-19-009","SCF-21-030","SCF-19-014", "SCF-18-004", "SCF-19-018","PCMC-16-011","PCMC-16-012")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Putamen Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+
+```{r}
+head(filtered_merged_caudate@meta.data)
+```
+
+```{r}
+table_for_correlation = as.data.frame(table(filtered_merged_caudate$donor_id))
+table_for_correlation$total_cells = table_for_correlation$Freq
+table_for_correlation$Freq = NULL
+table_for_correlation
+
+```
+
+```{r}
+table_for_correlation = merge(table_for_correlation, median_umis_per_donor$mUMI)
+```
+
+```{r}
+table_for_correlation
+```
+
+
+
+```{r}
+median_umis_per_donor <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id, cell_class) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+```
+
+
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+head(filtered_merged_caudate@meta.data)
+```
+
+
+```{r}
+table(filtered_merged_caudate$donor_id, filtered_merged_caudate$cell_class)
+```
+
+
+```{r}
+caudate_cell_types = as.data.frame(table(filtered_merged_caudate$donor_id, filtered_merged_caudate$cell_class))
+caudate_cell_types
+```
+
+```{r}
+cell_types = c("astrocyte", "endothelial", "ependymal" , "immune", "interneuron", "microglia", "oligo", "opc", "SPN")
+caudate_cells_df= caudate_cell_types %>% filter(caudate_cell_types$Var2 == "astrocyte")
+caudate_cells_df[["temp"]] = caudate_cells_df$Freq
+caudate_cells_df$Var2 =NULL
+caudate_cells_df$Freq = NULL
+caudate_cells_df$temp = NULL
+
+for(cells in cell_types){
+  temp_df= caudate_cell_types %>% filter(caudate_cell_types$Var2 == cells)
+  temp_df[[paste(cells, "cells", sep = "_")]] = temp_df$Freq
+  temp_df$Var2 =NULL
+  temp_df$Freq = NULL
+  caudate_cells_df = merge(caudate_cells_df, temp_df, by.x = "Var1", by.y = "Var1")
+}
+
+
+#caudate_cells_df$neuron_cells = rowSums(caudate_cells_df[, c("interneuron_cells", "SPN_cells")]) 
+caudate_cells_df$total_cells = rowSums(caudate_cells_df[, c("astrocyte_cells", "endothelial_cells", "ependymal_cells", "immune_cells", "interneuron_cells", "microglia_cells", "oligo_cells", "opc_cells", "SPN_cells")]) 
+caudate_cells_df
+```
+```{r}
+names(caudate_cells_df)[names(caudate_cells_df) == "Var1"] ="Donor"
+caudate_cells_df
+
+table_grob = tableGrob(caudate_cells_df)
+ggsave("outputs/caudate_cells.png", table_grob, width = 18, height = 6, dpi = 300)
+```
+
+```{r}
+caudate_cells_df
+```
+
+
+```{r}
+ggplot(caudate_cells_df, aes(x=Donor, y = cells,fill=Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = astrocyte_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Astrocyte Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+```{r}
+cell_type_barplot = function(data, x, y, label, xlab, ylab,title){
+
+median_cells = median(y)
+
+ggplot(data, aes(x=x, y = y,fill=caudate_cells_df$Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = label), vjust = -0.3, color = "black", size = 3) + xlab(xlab) + ylab(ylab) + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_hline(yintercept = median_cells, linetype = "dashed", color = "black") + ggtitle(label = title, subtitle = paste("Median: ", median_cells))
+
+}
+```
+
+
+
+
+```{r}
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor, caudate_cells_df$astrocyte_cells, caudate_cells_df$astrocyte_cells, "Donors from Caudate Village", "Number of Astrocytes Cells","Astrocytes")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$endothelial_cells, caudate_cells_df$endothelial_cells, "Donors from Caudate Village", "Number of Endothelial Cells", "Endothelial")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$ependymal_cells, caudate_cells_df$ependymal_cells, "Donors from Caudate Village", "Number of Ependymal Cells", "Ependymal")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$immune_cells, caudate_cells_df$immune_cells, "Donors from Caudate Village", "Number of Immune Cells", "Immune")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$interneuron_cells, caudate_cells_df$interneuron_cells, "Donors from Caudate Village", "Number of Interneuron Cells", "Interneuron")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$microglia_cells, caudate_cells_df$microglia_cells, "Donors from Caudate Village", "Number of Microglia Cells", "Microglia")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$oligo_cells, caudate_cells_df$oligo_cells, "Donors from Caudate Village", "Number of Oligo Cells", "Oligo")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$opc_cells, caudate_cells_df$opc_cells, "Donors from Caudate Village", "Number of OPC Cells", "OPC")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$SPN_cells, caudate_cells_df$SPN_cells, "Donors from Caudate Village", "Number of SPN Cells", "SPN")
+```
+
+```{r}
+putamen_cells_df
+```
+
+
+```{r}
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor, putamen_cells_df$astrocyte_cells, putamen_cells_df$astrocyte_cells, "Donors from Putamen Village", "Number of Astrocytes Cells","Astrocytes")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$endo_cells, putamen_cells_df$endo_cells, "Donors from Putamen Village", "Number of Endothelial Cells", "Endothelial")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$glutamatergic_cells, putamen_cells_df$glutamatergic_cells, "Donors from Putamen Village", "Number of Glutamatergic Cells", "Glutamatergic")
+
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$interneuron_cells, putamen_cells_df$interneuron_cells, "Donors from Putamen Village", "Number of Interneuron Cells", "Interneuron")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$microglia_cells, putamen_cells_df$microglia_cells, "Donors from Putamen Village", "Number of Microglia Cells", "Microglia")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$oligo_cells, putamen_cells_df$oligo_cells, "Donors from Putamen Village", "Number of Oligo Cells", "Oligo")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$opc_cells, putamen_cells_df$opc_cells, "Donors from Putamen Village", "Number of OPC Cells", "OPC")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$SPN_cells, putamen_cells_df$SPN_cells, "Donors from Putamen Village", "Number of SPN Cells", "SPN")
+```
+
+
+
+
+
+
+
+```{r}
+
+#total_donors_cells_caudate$Var1 <- factor(total_donors_cells_caudate$Var1, levels = #total_donors_cells_caudate$Var1[order(total_donors_cells_caudate$Freq, decreasing = TRUE)])
+
+#ggplot(caudate_cells_df, aes(x=caudate_cells_df$Donor, y = caudate_cells_df$astrocyte_cells, fill=caudate_cells_df$Donor)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+```
+
+
+
+#putamen
+```{r}
+table(filtered_merged_putamen$donor_id, filtered_merged_putamen$cell_class)
+```
+
+```{r}
+putamen_cell_types = as.data.frame(table(filtered_merged_putamen$donor_id, filtered_merged_putamen$cell_class))
+putamen_cell_types
+
+cell_types = c("astrocyte", "endo", "glutamatergic" , "interneuron", "microglia", "oligo", "opc", "SPN")
+putamen_cells_df= putamen_cell_types %>% filter(putamen_cell_types$Var2 == "astrocyte")
+putamen_cells_df[["temp"]] = putamen_cells_df$Freq
+putamen_cells_df$Var2 =NULL
+putamen_cells_df$Freq = NULL
+putamen_cells_df$temp = NULL
+
+for(cells in cell_types){
+  temp_df= putamen_cell_types %>% filter(putamen_cell_types$Var2 == cells)
+  temp_df[[paste(cells, "cells", sep = "_")]] = temp_df$Freq
+  temp_df$Var2 =NULL
+  temp_df$Freq = NULL
+  putamen_cells_df = merge(putamen_cells_df, temp_df, by.x = "Var1", by.y = "Var1")
+}
+
+
+#putamen_cells_df$neuron_cells = rowSums(putamen_cells_df[, c("interneuron_cells", "SPN_cells")]) 
+putamen_cells_df$total_cells = rowSums(putamen_cells_df[, c("astrocyte_cells", "endo_cells", "glutamatergic_cells", "interneuron_cells", "microglia_cells", "oligo_cells", "opc_cells", "SPN_cells")]) 
+putamen_cells_df
+
+names(putamen_cells_df)[names(putamen_cells_df) == "Var1"] ="Donor"
+putamen_cells_df
+
+table_grob = tableGrob(putamen_cells_df)
+ggsave("outputs/putamen_cells.png", table_grob, width = 18, height = 6, dpi = 300)
+```
+```{r}
+head(filtered_merged_caudate@meta.data)
+```
+
+
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(filtered_merged_caudate@meta.data$library))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+mean_nUmi = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_UMI = mean(nUmi, na.rm = TRUE))
+mean_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+mean_nGenes = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_nGenes = mean(nFeature_RNA, na.rm = TRUE))
+mean_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+mean_reads_per_umi = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_reads_per_umi = mean((nRead/nUmi), na.rm = TRUE))
+mean_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+mean_pct_intronic = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_pct_intronic = mean(pct_intronic, na.rm = TRUE))
+mean_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+mean_pct_mito = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_pct_mito = mean(pct_mito, na.rm = TRUE))
+mean_pct_mito
+```
+
+
+```{r}
+#library(purrr)
+caudate_library_qc_df_list = list(cells_per_library, median_nUmi, mean_nUmi, median_nGenes, mean_nGenes, median_reads_per_umi, mean_reads_per_umi,median_pct_intronic, mean_pct_intronic, median_pct_mito, mean_pct_mito)
+caudate_library_qc_df = reduce(caudate_library_qc_df_list, left_join, by = "library")
+caudate_library_qc_df
+```
+
+```{r}
+table_grob = tableGrob(caudate_library_qc_df)
+ggsave("outputs/caudate_library_qc_df.png", table_grob, width = 20, height = 4, dpi = 300)
+```
+
+
+#putamen
+```{r}
+head(filtered_merged_putamen@meta.data)
+#totalcells
+cells_per_library = as.data.frame(table(filtered_merged_putamen@meta.data$library))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+mean_nUmi = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_UMI = mean(nUmi, na.rm = TRUE))
+mean_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+mean_nGenes = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_nGenes = mean(nFeature_RNA, na.rm = TRUE))
+mean_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+mean_reads_per_umi = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_reads_per_umi = mean((nRead/nUmi), na.rm = TRUE))
+mean_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+mean_pct_intronic = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_pct_intronic = mean(pct_intronic, na.rm = TRUE))
+mean_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+mean_pct_mito = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_pct_mito = mean(pct_mito, na.rm = TRUE))
+mean_pct_mito
+
+putamen_library_qc_df_list = list(cells_per_library, median_nUmi, mean_nUmi, median_nGenes, mean_nGenes, median_reads_per_umi, mean_reads_per_umi,median_pct_intronic, mean_pct_intronic, median_pct_mito, mean_pct_mito)
+putamen_library_qc_df = reduce(putamen_library_qc_df_list, left_join, by = "library")
+putamen_library_qc_df
+
+table_grob = tableGrob(putamen_library_qc_df)
+ggsave("outputs/putamen_library_qc_df.png", table_grob, width = 20, height = 4, dpi = 300)
+```
+
+```{r}
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = data, aes(x =x, y = y,  color = id)) + 
+  geom_point() +  labs(x=xlabel , y= ylabel) + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle(title, subtitle = subtitle) + scale_color_discrete(name = legendname)
+```
+
+
+```{r}
+histogram_library = function(data, metric, title, xlab, ylab, binwidth){
+
+ggplot(data, aes(x = metric)) +
+  geom_histogram(binwidth = binwidth, fill = "blue", alpha = 0.7) +
+  facet_wrap(~library) +
+  labs(title = title,
+       x = xlab,
+       y = ylab) + 
+  theme_minimal()
+}
+```
+
+
+```{r}
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$nUmi, "Histogram of nUMIs per Library", "Number of UMIs", "Frequency", 500)
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$nFeature_RNA, "Histogram of nGenes per Library", "Number of Genes", "Frequency",100)
+histogram_library(filtered_merged_caudate@meta.data, (filtered_merged_caudate@meta.data$nRead/filtered_merged_caudate@meta.data$nUmi), "Histogram of reads/UMI per Library", "Reads/UMI", "Frequency",0.05)
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$pct_intronic, "Histogram of pct intronic per Library", "pct intronic", "Frequency",0.05)
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$pct_mito, "Histogram of pct mito per Library", "pct mitochondrial", "Frequency",0.5)
+
+
+```
+```{r}
+histogram_library(filtered_merged_putamen@meta.data, filtered_merged_putamen@meta.data$nUmi, "Histogram of nUMIs per Library", "Number of UMIs", "Frequency", 500)
+histogram_library(filtered_merged_putamen@meta.data, filtered_merged_putamen@meta.data$nFeature_RNA, "Histogram of nGenes per Library", "Number of Genes", "Frequency",100)
+histogram_library(filtered_merged_putamen@meta.data, (filtered_merged_putamen@meta.data$nRead/filtered_merged_putamen@meta.data$nUmi), "Histogram of reads/UMI per Library", "Reads/UMI", "Frequency",0.05)
+histogram_library(filtered_merged_putamen@meta.data, filtered_merged_putamen@meta.data$pct_intronic, "Histogram of pct intronic per Library", "pct intronic", "Frequency",0.05)
+histogram_library(filtered_merged_putamen@meta.data, filtered_merged_putamen@meta.data$pct_mito, "Histogram of pct mito per Library", "pct mitochondrial", "Frequency",0.5)
+
+```
+
+```{r}
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$nUmi, "Histogram of nUMIs per Library", "Number of UMIs", "Frequency", 500)
+```
+
+```{r}
+head(filtered_merged_caudate@meta.data)
+```
+
+#plot donor histograms
+
+```{r}
+histogram_donors = function(data, metric, title, xlab, ylab, binwidth){
+
+ggplot(data, aes(x = metric)) +
+  geom_histogram(binwidth = binwidth, fill = "blue", alpha = 0.7) +
+  facet_wrap(~donor_id) +
+  labs(title = title,
+       x = xlab,
+       y = ylab) + 
+  theme_minimal()
+}
+```
+
+
+```{r}
+histogram_donors(filtered_merged_caudate@meta.data, log10(filtered_merged_caudate@meta.data$nUmi), "Histogram of log10(nUMIs) per Donor", "Log10(UMIs)", "Frequency", 0.1)
+
+histogram_donors(filtered_merged_caudate@meta.data, log10(filtered_merged_caudate@meta.data$pct_intronic), "Histogram of log10(pct intronic) per Donor", "Log10(pct_intronic)", "Frequency", 0.03)
+
+histogram_donors(filtered_merged_caudate@meta.data, log10(filtered_merged_caudate@meta.data$pct_mito), "Histogram of log10(pct mitochondrial) per Donor", "Log10(pct_mito)", "Frequency", 0.3)
+
+```
+
+```{r}
+histogram_donors(filtered_merged_putamen@meta.data, log10(filtered_merged_putamen@meta.data$nUmi), "Histogram of log10(nUMIs) per Donor", "Log10(UMIs)", "Frequency", 0.1)
+
+histogram_donors(filtered_merged_putamen@meta.data, log10(filtered_merged_putamen@meta.data$pct_intronic), "Histogram of log10(pct intronic) per Donor", "Log10(pct_intronic)", "Frequency", 0.03)
+
+histogram_donors(filtered_merged_putamen@meta.data, log10(filtered_merged_putamen@meta.data$pct_mito), "Histogram of log10(pct mitochondrial) per Donor", "Log10(pct_mito)", "Frequency", 0.3)
+```
+
+
+
+#pct intronic vs log10 numis
+```{r}
+ggplot(filtered_merged_caudate@meta.data, aes(x = filtered_merged_caudate@meta.data$pct_intronic, y = log10(filtered_merged_caudate@meta.data$nUmi), color = donor_id)) +
+  facet_wrap(~library)+
+  geom_point(alpha = 0.7) + 
+  labs(title = "CaH: Pct intronic vs log10(nUMIs)",
+       x = "Pct intronic",
+       y = "log10(nUMIs)") +
+  theme_minimal()
+
+ggplot(filtered_merged_putamen@meta.data, aes(x = filtered_merged_putamen@meta.data$pct_intronic, y = log10(filtered_merged_putamen@meta.data$nUmi), color = donor_id)) +
+  facet_wrap(~library)+
+  geom_point(alpha = 0.7) + 
+  labs(title = "Put: Pct intronic vs log10(nUMIs)",
+       x = "Pct intronic",
+       y = "log10(nUMIs)") +
+  theme_minimal()
+```
+
+```{r}
+table(filtered_merged_caudate$Condition, filtered_merged_caudate$cell_class)
+```
+
+
+```{r}
+caudate_cells_df 
+```
+
+```{r}
+caudate_cells_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", caudate_cells_df$Donor), "control", "XDP")
+caudate_cells_df
+```
+
+```{r}
+caudate_cells_df$SPN_proportion = caudate_cells_df$SPN_cells/caudate_cells_df$total_cells
+caudate_cells_df
+```
+
+
+
+
+```{r}
+ggplot(caudate_cells_df, aes(x=caudate_cells_df$condition, y = caudate_cells_df$SPN_proportion))
+                             #, fill = caudate_cells_df$Donor))
+
+#+ geom_bar(stat = "identity")+ geom_text(aes(label = caudate_cells_df$Donor), vjust = -0.3, color = "black", size = 4) + xlab("Brain region") + ylab("Number of Cells")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+FeaturePlot(filtered_merged_caudate, features = c("DRD1", "DRD2"))
+FeaturePlot(filtered_merged_caudate, features = c("EPHA4", "SEMA3E"))
+```
+
+
+
+```{r}
+classes = c("oligo", "oligo", "oligo", "microglia", "oligo", "oligo", "astrocyte", "astrocyte", "astrocyte", "astrocyte", "SPN-D2", "opc", "oligo", "SPN-D1", "SPN-D2", "interneuron", "oligo", "oligo", "endothelial", "ependymal", "oligo", "interneuron", "interneuron", "astrocyte", "immune", "oligo")
+
+#neuron6-interneuorn?
+#neuorn1-3- SPN?
+#4-5- interneuorn?
+
+filtered_merged_caudate_sub = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.5", class_col = "cell_class")
+
+Idents(filtered_merged_caudate_sub) <- "cell_class"
+DimPlot(filtered_merged_caudate_sub, label = TRUE)
+```
+#subset just neurons by creating separate seurat object, redo finding variable genes and scaling 
+# remove doublets -- look for clusters with high Oligo / MG / Astro genes
+# feature plots of genes evan mentioned, as well as drd1 and 2, and of pct mito, log10_nUMI, GAPDH, UBB, TUBB2A
+#plot umaps of every donor using for loop
+#MASC analysis?
+#after subclustering - what are the marker genes for these subclusters? run Findallmarkers, look for genes that are highly enriched (high log) and low pct2 (expressing outside the cluster)
+# Stretch goal: make pseudocells, run differential expression, GSEA (gene set enrichment analysis)
+
+
+# Bennett will attempt to perform label transfer on non-neuronal cells to labels from Sten Lennarson dataset
+# Bennett will remove doublets from caudate and putamen and share objects on GS
+# Bennett will share MASC code 
+# Bennett will share pseudocell code (if necessary)
+# Bennett will share DE code (if necessary)
+# Bennett will share GSEA code (if necessary)
+
+
+```{r}
+table(Idents(filtered_merged_caudate_sub), filtered_merged_caudate_sub@meta.data$donor_id)
+```
+
+
+```{r}
+table(filtered_merged_caudate_sub@meta.data$cell_class, filtered_merged_caudate_sub@meta.data$donor_id)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+

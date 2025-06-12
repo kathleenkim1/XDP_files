@@ -1,0 +1,897 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+Normalized_SPN_counts_score = function(seurat_obj, genes_of_interest ){
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+#sum up the 5 genes
+print(expr_data)
+
+ gene_averages <- colMeans(expr_data)
+ gene_averages
+
+print("Printing gene averages")
+print(gene_averages)
+
+# Divide each gene's expression by its average expression
+ result_df <- sweep(expr_data, 2, gene_averages, FUN = "/")
+ result_df
+ 
+metadata <- seurat_obj@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+result_df_new <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- result_df_new %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id, Condition, cell_class, reclustered_cell_class, reclustered_neuron_type, reclustered_patch_matrix, reclustered_subcluster, reclustered_patch_matrix_exotic, reclustered_neuron_type_joint_cluster, pct_mito, nUmi, region), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+print(expr_data_long)
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(cell_id, donor_id, Condition, cell_class, reclustered_cell_class, reclustered_neuron_type, reclustered_patch_matrix, reclustered_subcluster, reclustered_patch_matrix_exotic, reclustered_neuron_type_joint_cluster, pct_mito, nUmi,region) %>%
+  summarize(sum_of_normalized_counts = sum(expression), .groups = 'drop')
+print(summarized_expr_data)
+
+return(summarized_expr_data)
+}
+```
+
+```{r}
+Intersected_BICAN_matrix_markers_final_filtered
+```
+```{r}
+BICAN_genes = rownames(Intersected_BICAN_matrix_markers_final_filtered)
+BICAN_genes
+```
+
+```{r}
+XDP_matrix_COUNT_scores = Normalized_SPN_counts_score(final_merged_xdp_transformed, genes_of_interest = BICAN_genes)
+XDP_matrix_COUNT_scores 
+XDP_matrix_scores
+```
+
+```{r}
+color4 = c("SPN_matrix" = "red", "non-SPN" = "blue", "SPN_patch" = "orange", "SPN_exotic" = "yellow", "eSPN" = "green")
+SPN_score_graphs(XDP_matrix_COUNT_scores, donor_order = donors, 
+                             total_expression = "sum_of_normalized_counts", 
+                             fillcol = "reclustered_patch_matrix_exotic", 
+                             color = color4, 
+                             donor_graph_title = "CaH SPNs vs non-SPNs", 
+                             SCtransformcounts = final_merged_xdp_transformed, 
+                             SPN_score_col_name ="test")
+```
+
+```{r}
+min(XDP_matrix_scores$total_expression)
+max(XDP_matrix_scores$total_expression)
+min(XDP_matrix_COUNT_scores$sum_of_normalized_counts)
+max(XDP_matrix_COUNT_scores$sum_of_normalized_counts)
+```
+
+
+```{r}
+matrix <- XDP_matrix_COUNT_scores[XDP_matrix_COUNT_scores$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$sum_of_normalized_counts,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(200, 1200, 20),
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  patch <- XDP_matrix_COUNT_scores[XDP_matrix_COUNT_scores$reclustered_patch_matrix_exotic == "SPN_patch", ]
+  plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch$sum_of_normalized_counts,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(200, 1200, 20),
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  nonSPN <- XDP_matrix_COUNT_scores[XDP_matrix_COUNT_scores$reclustered_patch_matrix_exotic == "non-SPN", ]
+  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN$sum_of_normalized_counts,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(200, 1200, 20),
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+    exotic <- XDP_matrix_COUNT_scores[XDP_matrix_COUNT_scores$reclustered_patch_matrix_exotic == "SPN_exotic", ]
+  plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic$sum_of_normalized_counts,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(200, 1200, 20),
+                                          title = "XDP vs Control: Exotic SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+    eSPN <- XDP_matrix_COUNT_scores[XDP_matrix_COUNT_scores$reclustered_patch_matrix_exotic == "eSPN", ]
+  plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN$sum_of_normalized_counts,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue"),
+                                          breaks = seq(200, 1200, 20),
+                                          title = "XDP vs Control: eSPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+COUNT_scores = XDP_matrix_COUNT_scores %>% select(cell_id, sum_of_normalized_counts)
+COUNT_scores
+```
+
+```{r}
+merged_XDP_scores_compare = merge(XDP_matrix_scores, COUNT_scores, by = "cell_id")
+merged_XDP_scores_compare
+```
+
+```{r}
+min(merged_XDP_scores_compare[["total_expression"]][merged_XDP_scores_compare[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"])
+max(merged_XDP_scores_compare[["total_expression"]][merged_XDP_scores_compare[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"])
+
+min(merged_XDP_scores_compare[["sum_of_normalized_counts"]][merged_XDP_scores_compare[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"])
+max(merged_XDP_scores_compare[["sum_of_normalized_counts"]][merged_XDP_scores_compare[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"])
+```
+
+
+```{r}
+
+options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+
+for (donor in donors) {
+  test = subset(merged_XDP_scores_compare, subset = donor_id == donor)
+  test = subset(test, subset = reclustered_patch_matrix_exotic == "SPN_matrix" )
+  cells = nrow(test)
+   original_threhold = quantile(test[["total_expression"]][test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.1, na.rm = TRUE)
+   new_threhold = quantile(test[["sum_of_normalized_counts"]][test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.1, na.rm = TRUE)
+  print(original_threhold)
+  print(new_threhold)
+   
+  plots[[donor]] = ggplot(test, aes(x = total_expression, y = sum_of_normalized_counts)) + geom_point(alpha = 0.4, color = "red") + xlab("Original SPN Matrix Score") + ylab("New SPN Matrix Score") + ggtitle(paste(donor, "- ", cells, "SPN Matrix")) + xlim(30, 140) + ylim(400,1110) + geom_hline(yintercept = new_threhold, color = "black", linetype = "dashed")+ geom_vline(xintercept = original_threhold, color = "black", linetype = "dashed")
+
+}
+
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, NA, NA),
+    c(14, 15, 16, 17, NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "~/SPN_SCORE_Output/tenten.png", plot = grid_plots, width = 28, height = 16)
+
+```
+
+
+```{r}
+ggplot(merged_XDP_scores_compare, aes(x = total_expression, y = sum_of_normalized_counts, color = donor_id)) + geom_point() + xlab("Original SPN Matrix Score") + ylab("New SPN Matrix Score")
+```
+
+```{r}
+  combined_df_list <- list()
+  for (donor in donors) {
+   test <- XDP_matrix_scores[XDP_matrix_scores$donor_id == donor, ]
+   threshold <- quantile(test[["total_expression"]][test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.1, na.rm = TRUE)
+  print(threshold)
+    
+  SPN_score_output_identity_loss_SPN <- test[test[["total_expression"]] < threshold & test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix", ]
+   
+  print(SPN_score_output_identity_loss_SPN)
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  
+  SCtransformcounts = subset(final_merged_xdp_transformed, subset = donor_id == donor)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Bottom 10% of Matrix SPNs"
+  SCtransformcounts@meta.data
+
+  filtered_df <- SCtransformcounts@meta.data[SCtransformcounts@meta.data$SPN_identity == "Bottom 10% of Matrix SPNs", ]
+
+combined_df_list[[donor]] <- filtered_df
+}
+XDP_original <- do.call(rbind, combined_df_list)
+XDP_original
+```
+
+```{r}
+combined_df_list <- list()
+  for (donor in donors) {
+   test <- XDP_matrix_COUNT_scores[XDP_matrix_COUNT_scores$donor_id == donor, ]
+   threshold <- quantile(test[["sum_of_normalized_counts"]][test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.1, na.rm = TRUE)
+  print(threshold)
+    
+  SPN_score_output_identity_loss_SPN <- test[test[["sum_of_normalized_counts"]] < threshold & test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix", ]
+   
+  print(SPN_score_output_identity_loss_SPN)
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  
+  SCtransformcounts = subset(final_merged_xdp_transformed, subset = donor_id == donor)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Bottom 10% of Matrix SPNs"
+  SCtransformcounts@meta.data
+
+  filtered_df <- SCtransformcounts@meta.data[SCtransformcounts@meta.data$SPN_identity == "Bottom 10% of Matrix SPNs", ]
+
+combined_df_list[[donor]] <- filtered_df
+}
+XDP_new <- do.call(rbind, combined_df_list)
+XDP_new
+```
+```{r}
+XDP_original
+XDP_new
+```
+
+```{r}
+intersect(rownames(XDP_original), rownames(XDP_new))
+```
+
+
+
+
+```{r}
+options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+  combined_df_list <- list()
+  for (donor in donors) {
+   test <- XDP_matrix_scores[XDP_matrix_scores$donor_id == donor, ]
+   threshold <- quantile(test[["new_distribution"]][test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.1, na.rm = TRUE)
+  print(threshold)
+    
+  SPN_score_output_identity_loss_SPN <- test[test[["new_distribution"]] < threshold & test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix", ]
+   
+  print(SPN_score_output_identity_loss_SPN)
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  
+  SCtransformcounts = subset(final_merged_xdp_transformed, subset = donor_id == donor)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Bottom 10% of Matrix SPNs"
+  SCtransformcounts@meta.data
+
+  filtered_df <- SCtransformcounts@meta.data[SCtransformcounts@meta.data$SPN_identity == "Bottom 10% of Matrix SPNs", ]
+
+combined_df_list[[donor]] <- filtered_df
+
+  # Visualize on UMAP
+  plots[[donor]] <- DimPlot(SCtransformcounts, reduction = "umap", group.by = "SPN_identity", cols = c("red", "grey")) +ggtitle(paste(donor, ", 10% threshold:", sprintf("%.2f", threshold)))
+}
+  
+combined_df <- do.call(rbind, combined_df_list)
+
+  
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, NA, NA),
+    c(14, 15, 16, 17, NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "~/SPN_SCORE_Output/tenten.png", plot = grid_plots, width = 36, height = 16)
+combined_df
+```
+
+
+
+#something funky
+```{r}
+qsave(BICAN_matrix_scores, "~/BICAN_matrix_scores.qs")
+qsave(XDP_matrix_scores, "~/XDP_matrix_scores.qs")
+
+BICAN_matrix_scores
+XDP_matrix_scores
+```
+
+
+```{r}
+library(dplyr)
+XDP_matrix_scores_df = XDP_matrix_scores %>% select(cell_id, donor_id, Condition, reclustered_patch_matrix_exotic, reclustered_patch_matrix, reclustered_neuron_type_joint_cluster,  pct_mito, nUmi, total_expression, Village,new_distribution, region)
+
+BICAN_matrix_scores_df = BICAN_matrix_scores %>% select(cell_id, DONOR, reclustered_patch_matrix, reclustered_neuron_joint_type,  pct_mt, NUM_TRANSCRIPTS, total_expression, Village,new_distribution) 
+
+BICAN_matrix_scores_df$Condition = "BICAN Control"
+BICAN_matrix_scores_df$reclustered_patch_matrix_exotic = BICAN_matrix_scores_df$reclustered_neuron_joint_type
+BICAN_matrix_scores_df$reclustered_neuron_type_joint_cluster = BICAN_matrix_scores_df$reclustered_neuron_joint_type
+BICAN_matrix_scores_df$reclustered_neuron_joint_type = NULL
+BICAN_matrix_scores_df$pct_mito = BICAN_matrix_scores_df$pct_mt 
+BICAN_matrix_scores_df$pct_mt  = NULL
+BICAN_matrix_scores_df$nUmi = BICAN_matrix_scores_df$NUM_TRANSCRIPTS 
+BICAN_matrix_scores_df$NUM_TRANSCRIPTS  = NULL
+BICAN_matrix_scores_df$donor_id = BICAN_matrix_scores_df$DONOR 
+BICAN_matrix_scores_df$DONOR  = NULL
+BICAN_matrix_scores_df$region = "caudate"
+
+XDP_matrix_scores_df
+BICAN_matrix_scores_df
+```
+```{r}
+min(XDP_matrix_scores_df$new_distribution)
+max(XDP_matrix_scores_df$new_distribution)
+min(BICAN_matrix_scores_df$new_distribution)
+max(BICAN_matrix_scores_df$new_distribution)
+```
+```{r}
+Combined_scores_df = rbind(XDP_matrix_scores_df, BICAN_matrix_scores_df)
+table(Combined_scores_df$Condition, Combined_scores_df$reclustered_patch_matrix_exotic)
+Combined_scores_df
+```
+
+```{r}
+matrix <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue", "BICAN Control" = "green"),
+                                          breaks = seq(0, 140, 2),
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  patch <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_patch", ]
+  plot_overlapping_density_histogram(df = patch, 
+                                          hist_col = patch$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control" = "green"),
+                                          breaks = seq(0, 140, 2),
+                                          title = "XDP vs Control: SPN patch",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+  nonSPN <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "non-SPN", ]
+  plot_overlapping_density_histogram(df = nonSPN, 
+                                          hist_col = nonSPN$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control" = "green"),
+                                          breaks = seq(0, 140, 2),
+                                          title = "XDP vs Control: non-SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+    exotic <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_exotic", ]
+  plot_overlapping_density_histogram(df = exotic, 
+                                          hist_col = exotic$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control" = "green"),
+                                          breaks = seq(0, 140, 2),
+                                          title = "XDP vs Control: Exotic SPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+    eSPN <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "eSPN", ]
+  plot_overlapping_density_histogram(df = eSPN, 
+                                          hist_col = eSPN$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue","BICAN Control" = "green"),
+                                          breaks = seq(0, 140, 2),
+                                          title = "XDP vs Control: eSPN",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL)
+```
+
+```{r}
+Combined_scores_df
+threshold = subset(Combined_scores_df, subset = total_expression < 81 & reclustered_patch_matrix_exotic == "SPN_matrix")
+threshold
+table(threshold$Condition, threshold$region)
+table(threshold$donor_id)
+
+threshold = subset(Combined_scores_df, subset = total_expression < 83 & reclustered_patch_matrix_exotic == "SPN_matrix")
+threshold
+table(threshold$Condition, threshold$region)
+table(threshold$donor_id)
+```
+```{r}
+Combined_scores_df_controls = subset(Combined_scores_df, subset = Condition != "XDP")
+Combined_scores_df_controls
+
+XDP_control = subset(Combined_scores_df, subset = Condition == "Control")
+XDP_control
+```
+
+
+```{r}
+quantile(Combined_scores_df_controls[["total_expression"]][Combined_scores_df_controls[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.01, na.rm = TRUE)
+
+quantile(XDP_control[["total_expression"]][XDP_control[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.01, na.rm = TRUE)
+```
+```{r}
+matrix <- Combined_scores_df[Combined_scores_df$reclustered_patch_matrix_exotic == "SPN_matrix", ]
+  plot_overlapping_density_histogram(df = matrix, 
+                                          hist_col = matrix$total_expression,
+                                          fill_col = "Condition",
+                                          colors = c("XDP" = "red", "Control" = "blue", "BICAN Control" = "green"),
+                                          breaks = seq(0, 140, 2),
+                                          title = "XDP vs Control: SPN matrix",
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL) + geom_vline(xintercept=83.82986, color = "black", linetype = "dashed") + geom_vline(xintercept=82.40841, color = "black", linetype = "dashed")
+```
+```{r}
+
+options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+
+for (donor in BICANdonors) {
+  test = subset(Combined_scores_df, subset = donor_id == donor)
+  test = subset(test, subset = reclustered_patch_matrix_exotic == "SPN_matrix" )
+  total_cells = nrow(test)
+  cells = sum(test$total_expression < 83.82986) 
+   plots[[donor]] = plot_overlapping_density_histogram(df = test, 
+                                          hist_col = test$total_expression,
+                                          fill_col = "region",
+                                          colors = c("red", "blue"),
+                                          breaks = seq(0, 140, 2),
+                                          title = paste(donor, "-", cells, "/", total_cells, "cells"),
+                                          xlab = "SPN Matrix score",
+                                          fig_filename = NULL) + geom_vline(xintercept=83.82986, color = "black", linetype = "dashed")
+    
+}
+
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, 14, 15),
+    c(16, 17, 18, 19, NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "~/SPN_SCORE_Output/tenten.png", plot = grid_plots, width = 28, height = 16)
+
+```
+
+#plot xdp
+```{r}
+ options(repr.plot.width = 24, repr.plot.height = 16)
+  plots <- list()
+  combined_df_list <- list()
+  top_df_list = list()
+  for (donor in donors) {
+   test <- XDP_matrix_scores[XDP_matrix_scores$donor_id == donor, ]
+   threshold <- 83.82986
+   mid_threshold <- quantile(test[["total_expression"]][test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.25, na.rm = TRUE)
+    top_threshold <- quantile(test[["total_expression"]][test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix"], 0.75, na.rm = TRUE)
+
+    total_cells = sum(test$reclustered_patch_matrix_exotic == "SPN_matrix")
+  cells = sum(test$total_expression < 83.82986 & test$reclustered_patch_matrix_exotic == "SPN_matrix") 
+  
+  SPN_score_output_identity_loss_SPN <- test[test[["total_expression"]] < threshold & test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix", ]
+  
+    SPN_score_mid <- test[test[["total_expression"]] > mid_threshold & test[["total_expression"]] < top_threshold & test[["reclustered_patch_matrix_exotic"]] == "SPN_matrix", ]
+   
+  print(SPN_score_output_identity_loss_SPN)
+  identity_loss_cells <- unique(SPN_score_output_identity_loss_SPN$cell_id)
+  top_cells = unique(SPN_score_mid$cell_id)
+  
+  SCtransformcounts = subset(final_merged_xdp_transformed, subset = donor_id == donor)
+  
+  SCtransformcounts@meta.data$SPN_identity <- "Other"
+  SCtransformcounts$SPN_identity[identity_loss_cells] <- "Low Matrix SPNs"
+  SCtransformcounts$SPN_identity[top_cells] <- "Mid 25-75% of Matrix SPNs"
+  SCtransformcounts@meta.data
+
+  filtered_df <- SCtransformcounts@meta.data[SCtransformcounts@meta.data$SPN_identity == "Low Matrix SPNs", ]
+  top_df = SCtransformcounts@meta.data[SCtransformcounts@meta.data$SPN_identity == "Mid 25-75% of Matrix SPNs", ]
+combined_df_list[[donor]] <- filtered_df
+
+top_df_list[[donor]] <- top_df
+
+  # Visualize on UMAP
+  plots[[donor]] <- DimPlot(SCtransformcounts, reduction = "umap", group.by = "SPN_identity", cols = c("Low Matrix SPNs"="red","Mid 25-75% of Matrix SPNs" ="blue","Other" ="grey")) +ggtitle(paste(donor, "-", cells, "/", total_cells, "cells"))
+}
+  
+combined_df <- do.call(rbind, combined_df_list)
+top_df <- do.call(rbind, top_df_list)
+  
+  layout_matrix <- rbind(
+    c(1, 2, 3, 4, 5),
+    c(6, 7, 8, 9, 10),
+    c(11, 12, 13, NA, NA),
+    c(14, 15, 16, 17, NA)
+  )
+  
+  # Arrange the plots according to the custom layout
+  grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+  
+  # Save the arranged plots to a PNG file
+  ggsave(filename = "~/SPN_SCORE_Output/tenten.png", plot = grid_plots, width = 36, height = 16)
+combined_df
+```
+
+```{r}
+combined_df
+top_df
+```
+
+
+```{r}
+sctransform_all = final_merged_xdp_transformed
+sctransform_all@meta.data$SPN_identity = "Other"
+sctransform_all$SPN_identity[sctransform_all$cell %in% combined_df$cell] = "Lowest Matrix SPNs"
+sctransform_all$SPN_identity[sctransform_all$cell %in% top_df$cell] = "Mid 25-75% of Matrix SPNs"
+sctransform_all@meta.data
+```
+
+```{r}
+DimPlot(sctransform_all, reduction = "umap", group.by = "SPN_identity", cols = c("Lowest Matrix SPNs"="red","Mid 25-75% of Matrix SPNs" ="blue","Other" ="grey"), split.by = "Condition")
+```
+
+```{r}
+sctransform_all@meta.data$top_bottom = sctransform_all$SPN_identity
+sctransform_all$top_bottom[sctransform_all$top_bottom == "Lowest Matrix SPNs"] = "Lowest"
+sctransform_all$top_bottom[sctransform_all$top_bottom == "Mid 25-75% of Matrix SPNs"] = "Mid_25_75"
+
+sctransform_all@meta.data$donor_bottom_percentile = paste(sctransform_all$donor_id, "_", sctransform_all$top_bottom) 
+sctransform_all@meta.data
+```
+
+```{r}
+donor_markers_list = list()
+
+for (donor in donors) {
+  donor_sobj = subset(sctransform_all, subset = donor_id == donor)
+  Idents(donor_sobj) = "top_bottom"
+  df = FindMarkers(donor_sobj, ident.1 = "Lowest", ident.2 = "Mid_25_75")
+  df$donor_id = donor
+  df$gene = rownames(df)
+  print(df)
+  write.csv(df, paste0("~/Matrix_SPN_GSEA_mid/donor_markers_", donor, ".csv"), row.names = FALSE)
+  donor_markers_list[[donor]] = df
+}
+donor_marker_df <- do.call(rbind, donor_markers_list)
+```
+
+
+#GSEA
+
+#change around the logfc and stuff
+```{r}
+library(Seurat)
+library(dplyr)
+library(qs)
+
+library(Matrix)
+library(fgsea)
+
+
+# when concatenated together, these should be the paths to your DE csv files
+BASE_PATH="~/"
+DE_SUBDIR= "Matrix_SPN_GSEA_mid/"
+
+
+.extraHumanGeneAnnoAdderFn=function(inputGeneNames=NULL){
+  #require(EnsDb.Hsapiens.v75)
+  require(EnsDb.Hsapiens.v86)
+  
+  if(!dir.exists("~/serverFiles")){
+    dir.create("~/serverFiles",recursive = T)
+  }
+  
+  gns <- as.data.frame(genes(EnsDb.Hsapiens.v86))
+  gns$gene_short_name=gns$gene_name
+  gns$symbol=toupper(gns$symbol)
+  gns$ensembl_gene_id=row.names(gns)
+  
+  if(!is.null(inputGeneNames)){
+    rwNames=toupper(inputGeneNames)
+    psCols=c("gene_short_name","ensembl_gene_id")
+    slCounts=0
+    slCol=""
+    if(sum(grepl("\\.",rwNames)&grepl("^ENS",rwNames))>0){
+      rwNames=strsplit(rwNames,"\\.")
+      rwNames=unlist(lapply(rwNames,function(x)x[1]))
+    }
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_map_to_ensembl.rda ."))
+    load("human_map_to_ensembl.rda")
+    
+    
+    map_to_ensmbl$source=toupper(map_to_ensmbl$source)
+    
+    system(paste0("gsutil -m cp gs://fc-71ac3b81-2441-4171-8038-baf653634620/serverFiles/human_mapping_hg19.rda ."))
+      
+    
+    load("human_mapping_hg19.rda")
+    human_hg19$source=toupper(human_hg19$source)
+    
+    if(sum(toupper(rwNames) %in% human_hg19$source) > sum(toupper(rwNames) %in% map_to_ensmbl$source)){
+      map_to_ensmbl=merge(human_hg19,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    } else {
+      map_to_ensmbl=merge(map_to_ensmbl,data.frame(source=toupper(rwNames),stringsAsFactors = F),by="source",all.y=T)
+    }
+    
+    gns=merge(gns,map_to_ensmbl,by.x="ensembl_gene_id",by.y="target",all.y=T)
+    gns=gns[match(rwNames,gns$source),]
+    row.names(gns)=inputGeneNames
+    gns$gene_id=inputGeneNames
+    gns=gns[,-which(colnames(gns) %in% c("source","target"))]
+  }
+  
+  return(gns)
+}
+
+.sconline.GSEA.readGMT=function (file,bkg_genes=NULL,min.gs.size=NULL,max.gs.size=NULL) {
+  if (!grepl("\\.gmt$", file)[1]&F) {
+    stop("Pathway information must be in a .gmt file format")
+  }
+  geneSetDB = readLines(file)
+  geneSetDB = strsplit(geneSetDB, "\t")
+  names(geneSetDB) = sapply(geneSetDB, "[", 1)
+  geneSetDB = lapply(geneSetDB, "[", -1:-2)
+  geneSetDB = lapply(geneSetDB, function(x) {
+    x[which(x != "")]
+  })
+  
+  if(!is.null(bkg_genes)){
+    for(i in 1:length(geneSetDB)){
+      tmp=geneSetDB[[i]]
+      tmp=bkg_genes[which(toupper(bkg_genes) %in% toupper(tmp))]
+      geneSetDB[[i]]=tmp
+    }
+  }
+  
+  if(!is.null(min.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist>=min.gs.size]
+  }
+  
+  if(!is.null(max.gs.size)){
+    size.dist=unlist(lapply(geneSetDB,length))
+    geneSetDB=geneSetDB[size.dist<=max.gs.size]
+  }
+  
+  return(geneSetDB)
+}
+
+.myfGSEAfn=function(rankedVec,gs,minSize  = 15,maxSize  = 250, scoreType='std'){
+  require(fgsea)
+  fgseaRes <- fgsea(pathways = gs, 
+                    stats    = rankedVec,
+                    minSize  = minSize,
+                    maxSize  = maxSize,
+                    scoreType= scoreType)
+  fgseaRes=fgseaRes[order(fgseaRes$pval,decreasing = F),]
+  fgseaRes=as.data.frame(fgseaRes)
+  fgseaRes$leadingEdge=unlist(lapply(fgseaRes$leadingEdge,function(x) paste(x,collapse = ",")))
+  
+  return(fgseaRes)
+}
+
+runGSEA = function(
+    de_df,
+    gs_list_of_char,
+    rank_col='avg_log2FC',
+    gene_id_col='gene_short_name',
+    desc=FALSE,
+    abs=TRUE,
+    scoreType='std'){
+
+    de_df=de_df[!duplicated(de_df[[gene_id_col]]),]
+    
+    order_vector = de_df[[rank_col]]
+    if(abs){
+        order_vector = abs(order_vector)
+    }
+    
+    ranked_vec=de_df[,rank_col]
+    names(ranked_vec)=de_df[[gene_id_col]]
+    ranked_vec=ranked_vec[order(order_vector,decreasing = desc)]
+    
+    print(head(ranked_vec))
+
+    res_fGSEA=.myfGSEAfn(rankedVec=ranked_vec,gs=gs_list_of_char, scoreType=scoreType)
+    res_fGSEA=res_fGSEA[order(res_fGSEA$padj,decreasing=F),]
+    return(res_fGSEA)
+}
+```
+
+```{r}
+outpath = file.path(BASE_PATH, DE_SUBDIR, "gsea")
+# if you're running into permission errors may need to delete directory and remake with mkdir on command line
+dir.create(outpath, recursive=TRUE, showWarnings=FALSE)
+de_files = list.files(file.path(BASE_PATH, DE_SUBDIR))
+de_files = de_files[grep(".csv$", de_files)]
+
+gene_sets = list(
+    # add the paths to the gene sets you want to use here
+    kegg_2021_human = "GSEA/genesets/KEGG_2021_Human.txt",
+    go_process = "GSEA/genesets/GO_Biological_Process_2021.txt",
+    go_function = "GSEA/genesets/GO_Molecular_Function_2021.txt",
+    disgenet = "GSEA/genesets/DisGeNET.txt",
+    msigdb_hallmark = "GSEA/genesets/MSigDB_Hallmark_2020.txt",
+    #neural_activity = "GSEA/genesets/neural_activity_arranged.txt",
+    wikipathways = "GSEA/genesets/WikiPathways_2019_Human.txt",
+    #tf_perturbations = "GSEA/genesets/TF_Perturbations_Followed_by_Expression.txt",
+    jensen_diseases = "GSEA/genesets/Jensen_DISEASES.txt",
+    X_chromsome_positional= "GSEA/genesets/allchrome.txt",  
+    Xlinked_recessive = "GSEA/genesets/Xlinked_RESS.txt",
+    Xlinked_dominant = "GSEA/genesets/Xlinked_DOM.txt",
+    similar_diseases = "GSEA/genesets/similardiseases.txt"
+)
+
+for (de_file in de_files) {
+    de_slogan = sub(".txt$", "", de_file)
+
+    dataDE = read.csv(file.path(BASE_PATH, DE_SUBDIR, de_file))
+    anno = .extraHumanGeneAnnoAdderFn(inputGeneNames = dataDE$gene)
+    anno = anno[match(dataDE$gene, anno$gene_id), ]
+    dataDE = cbind(dataDE, anno)
+    dataDE = dataDE[which(dataDE$gene_biotype == "protein_coding"), ]
+
+    gsea_list = list()
+
+    for (gene_set in names(gene_sets)) {
+        path = gene_sets[[gene_set]]
+
+        gs = .sconline.GSEA.readGMT(file = path, bkg_genes = dataDE$gene_short_name, min.gs.size = 15, max.gs.size = 500)
+        gsea = runGSEA(dataDE, gs, rank_col = "avg_log2FC", abs = FALSE, desc = TRUE)
+        gsea = gsea[which(gsea$padj < 0.05), ]
+
+        if (nrow(gsea) > 0) {  # Check if gsea is not empty
+            gsea$gene_set = gene_set
+            gsea_list[[gene_set]] = gsea
+        }
+    }
+
+    if (length(gsea_list) > 0) {  # Ensure gsea_list is not empty before combining and saving
+        gsea_df = do.call(rbind, gsea_list)
+        write.table(gsea_df, file.path(outpath, paste0(de_slogan, "__gsea.tsv")), sep = "\t", quote = FALSE, row.names = FALSE)
+    } else {
+        message(paste("No significant GSEA results for:", de_slogan))
+    }
+}
+
+```
+
+```{r}
+Matrix_SPN_gsea_list = list()
+
+# Loop through each cell type and read the corresponding file into a dataframe
+for (donor in donors) {
+  # Construct the file name
+  gsea_file_name <- paste("~/Matrix_SPN_GSEA_mid/gsea/donor_markers_", donor, ".csv__gsea.tsv", sep = "")
+  
+  # Print the file name to verify the path
+  print(paste("Trying to read file:", gsea_file_name))
+  
+  # Check if the file exists
+  if (file.exists(gsea_file_name)) {
+    # Read the file into a dataframe
+    gsea_file <- read.delim(gsea_file_name, header = TRUE)
+    
+    gsea_file$donor_id = donor
+    # Store the dataframe in the list with the cell type as the name
+    Matrix_SPN_gsea_list[[donor]] <- gsea_file
+  } else {
+    print(paste("File does not exist:", gsea_file_name))
+  }
+}
+Matrix_SPN_gsea_list
+gsea_donor_marker_df <- do.call(rbind, Matrix_SPN_gsea_list)
+gsea_donor_marker_df
+```
+
+```{r}
+Matrix_SPN_gsea_list
+```
+
+```{r}
+for (donor_df in names(Matrix_SPN_gsea_list)) {
+  df = Matrix_SPN_gsea_list[[donor_df]]
+  a= plot_gsea_result_hdot(df, title = paste("Lowest SPNS vs Mid 25-75% SPN Matrix Scores:", donor_df), leading_edge_n=5)
+  print(a)
+  ggsave(filename = paste("~/Matrix_SPN_GSEA_mid/gsea/graphs", donor_df, ".png"), plot = a, width = 15, height = 10)
+}
+
+```
+
+
+#compare with old
+```{r}
+combined_df
+old_combined_df
+```
+
+```{r}
+write.csv(combined_df, "~/lowest_spns.csv")
+write.csv(old_combined_df, "~/original_lowest_spns.csv")
+      
+combined_df = read.csv("~/lowest_spns.csv")
+old_combined_df = read.csv("~/original_lowest_spns.csv")
+```
+
+```{r}
+combined_df
+```
+```{r}
+a = as.data.frame(table(final_merged_xdp_transformed$donor_id, final_merged_xdp_transformed$reclustered_patch_matrix_exotic))
+a = subset(a, subset = Var2 == "SPN_matrix")
+a
+```
+```{r}
+b = as.data.frame(table(combined_df$donor_id))
+b
+```
+```{r}
+c = merge(a,b, by = "Var1")
+c
+```
+```{r}
+c$prop = c$Freq.y/ c$Freq.x
+c
+c$Var2 = NULL
+c
+```
+
+```{r}
+metadata= read.csv("~/Important_csv/Donor_metadata_updated.csv")
+repeats = read.csv("~/Important_csv/repeat_lengths.csv")
+
+merged_metadata = merge(metadata, repeats, by.x = "Donor.ID", by.y = "donor_id")
+merged_metadata
+```
+
+```{r}
+new = merge(merged_metadata, c, by.x = "Donor.ID",  by.y = "Var1")
+new
+```
+
+
+```{r}
+ggplot(data = new, aes(x = Repeat_Length, y = prop, color = donor_id)) +geom_point()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "donor_id") +
+  stat_summary(fun = mean, geom = "errorbar", aes(ymin = ..y.., ymax = ..y..), width = 1, color = "black") + xlab("Repeat Length") + ylab("MMR Score") + ggtitle(label = "Repeat Length") + labs(color = "Donor")
+
+ggplot(data = new, aes(x = Age.of.Onset, y = prop, color = donor_id)) +geom_point()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "donor_id")+
+  stat_summary(fun = mean, geom = "errorbar", aes(ymin = ..y.., ymax = ..y..), width = 1, color = "black") + xlab("Age of Onset") + ylab("MMR Score")+ ggtitle(label = "Age of Onset") + labs(color = "Donor")
+  
+
+ggplot(data = new, aes(x = Age.of.Death, y = prop, color = donor_id)) +geom_point()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "donor_id")+
+  stat_summary(fun = mean, geom = "errorbar", aes(ymin = ..y.., ymax = ..y..), width = 1, color = "black") + xlab("Age of Death") + ylab("MMR Score")+ ggtitle(label = "Age of Death") + labs(color = "Donor")
+  
+
+ggplot(data = new, aes(x = Disease_duration, y = prop, color = donor_id)) +geom_point()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "donor_id")+
+  stat_summary(fun = mean, geom = "errorbar", aes(ymin = ..y.., ymax = ..y..), width = 0.5, color = "black")  + xlab("Disease Duration") + ylab("MMR Score")+ ggtitle(label = "Disease Duration") + labs(color = "Donor")
+ 
+ggplot(data = new, aes(x = CAP, y = prop, color = donor_id)) +geom_point()+ theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "donor_id") + stat_summary(fun = mean, geom = "errorbar", aes(ymin = ..y.., ymax = ..y..), width = 40, color = "black")  + xlab("CAP Score") + ylab("MMR Score")+ ggtitle(label = "CAP Score") + labs(color = "Donor")
+
+```
+
+

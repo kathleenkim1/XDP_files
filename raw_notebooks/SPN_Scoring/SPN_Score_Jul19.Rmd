@@ -1,0 +1,1206 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(qs)
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered =  qread("SPN_Scores/BICAN_3P_V8_CaH_neurons_filtered.qs")
+```
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered@meta.data
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "subcluster"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "sub_class"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "SPN_class"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "D1_D2"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+
+Idents(BICAN_3P_V8_CaH_neurons_filtered) <- "patch_matrix"
+DimPlot(BICAN_3P_V8_CaH_neurons_filtered, label = TRUE)
+```
+
+```{r}
+BICAN_D1_D2_vs_non_markers =  qread("SPN_Scores/BICAN_D1_D2_vs_non_markers")
+BICAN_patch_matrix_vs_non_markers =  qread("SPN_Scores/BICAN_patch_matrix_vs_non_markers")
+BICAN_SPN_vs_non_markers= qread("SPN_Scores/BICAN_SPN_vs_non_markers.qs")
+BICAN_SPN_classes_vs_non_markers =  qread("SPN_Scores/BICAN_SPN_classes_vs_non_markers.qs")
+
+
+BICAN_SPN_vs_non_markers #SPN vs nonSPN
+BICAN_SPN_classes_vs_non_markers #D1 matrix, D1 patch, D2 matrix, D2 patch vs nonSPN
+BICAN_D1_D2_vs_non_markers #D1, D2 vs non SPNS
+BICAN_patch_matrix_vs_non_markers# patch, matrix vs nonSPNs
+```
+
+```{r}
+BICAN_SPN_vs_non_markers_filtered = subset(BICAN_SPN_vs_non_markers, subset = pct.1 >0.7 & pct.2 <0.2 & cluster != "non-SPN")
+BICAN_SPN_classes_vs_non_markers_filtered= subset(BICAN_SPN_classes_vs_non_markers, subset = pct.1 >0.7 & pct.2 <0.2 & cluster != "non-SPN")
+BICAN_D1_D2_vs_non_markers_filtered = subset(BICAN_D1_D2_vs_non_markers, subset = pct.1 >0.7 & pct.2 <0.2 & cluster != "non-SPN")
+BICAN_patch_matrix_vs_non_markers_filtered= subset(BICAN_patch_matrix_vs_non_markers, subset = pct.1 >0.7 & pct.2 <0.2 & cluster != "non-SPN")
+
+BICAN_SPN_vs_non_markers_filtered
+BICAN_SPN_classes_vs_non_markers_filtered
+BICAN_D1_D2_vs_non_markers_filtered
+BICAN_patch_matrix_vs_non_markers_filtered
+```
+
+```{r}
+D1_matrix_markers= qread("SPN_Scores/D1_matrix_markers.qs")
+D1_patch_markers= qread("SPN_Scores/D1_patch_markers.qs")
+D2_matrix_markers= qread("SPN_Scores/D2_matrix_markers.qs")
+D2_patch_markers= qread("SPN_Scores/D2_patch_markers.qs") 
+
+D1_markers= qread("SPN_Scores/D1_markers.qs")
+D2_markers =qread("SPN_Scores/D2_markers.qs")
+patch_markers= qread("SPN_Scores/patch_markers.qs")
+matrix_markers= qread("SPN_Scores/matrix_markers.qs")
+
+D1_matrix_markers
+D1_patch_markers
+D2_matrix_markers
+D2_patch_markers
+
+D1_markers
+D2_markers
+patch_markers
+matrix_markers
+```
+
+```{r}
+D1_matrix_markers_filtered = subset(D1_matrix_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+D1_patch_markers_filtered= subset(D1_patch_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+D2_matrix_markers_filtered= subset(D2_matrix_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+D2_patch_markers_filtered= subset(D2_patch_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+
+D1_markers_filtered= subset(D1_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+D2_markers_filtered= subset(D2_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+patch_markers_filtered= subset(patch_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+matrix_markers_filtered= subset(matrix_markers, subset = pct.1 >0.7 & pct.2 <0.2)
+
+D1_matrix_markers_filtered
+D1_patch_markers_filtered
+D2_matrix_markers_filtered
+D2_patch_markers_filtered
+
+D1_markers_filtered
+D2_markers_filtered
+patch_markers_filtered
+matrix_markers_filtered
+```
+
+
+#SPN SCORING
+
+```{r}
+caudate_neurons = qread("Current_subclusters/caudate_neuron.qs")
+putamen_neurons= qread("Current_subclusters/putamen_neuron.qs")
+
+caudate_neurons
+putamen_neurons
+```
+
+
+```{r}
+caudate_neurons@meta.data$sub_class = caudate_neurons@meta.data$cell_class
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_2"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_matrix_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "SPN"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_2"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_1"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_3"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_2"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_patch"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_1"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "eSPN"] = "eSPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_5"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "cholinergic"] = "cholinergic"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_4"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+caudate_neurons@meta.data
+
+putamen_neurons@meta.data$sub_class = putamen_neurons@meta.data$cell_class
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_matrix"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_2"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_4"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_matrix_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "glutamatergic"] = "glutamatergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_5"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_patch"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_1"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "eSPN"] = "eSPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_3"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_1"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_2"] = "SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "cholinergic"] = "cholinergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_7"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+putamen_neurons@meta.data
+```
+
+
+
+#SC Transform SPNs and other neurons- did SCtransform on all neurons first before I subsetted
+```{r}
+library(sctransform)
+caudate_neurons_transformed = SCTransform(caudate_neurons, vars.to.regress = "pct_mito", verbose = FALSE)
+DefaultAssay(caudate_neurons_transformed) = "SCT"
+
+
+putamen_neurons_transformed = SCTransform(putamen_neurons, vars.to.regress = "pct_mito", verbose = FALSE)
+DefaultAssay(putamen_neurons_transformed) = "SCT"
+
+SPN_put_transformed= subset(putamen_neurons_transformed, subset = sub_class == "SPN")
+non_SPN_put_transformed= subset(putamen_neurons_transformed, subset = sub_class != "SPN")
+
+SPN_put_transformed
+non_SPN_put_transformed
+```
+
+#SPN-ness score
+#BICAN- SPN vs nonSPNs
+```{r}
+caudate_neurons_transformed@meta.data$subcluster = caudate_neurons_transformed@meta.data$sub_class
+caudate_neurons_transformed$subcluster[caudate_neurons_transformed$subcluster == "interneuron"] = "non-SPN"
+caudate_neurons_transformed$subcluster[caudate_neurons_transformed$subcluster == "eSPN"] = "non-SPN"
+caudate_neurons_transformed$subcluster[caudate_neurons_transformed$subcluster == "cholinergic"] = "non-SPN"
+
+caudate_neurons_transformed@meta.data
+
+SPN_cah_transformed= subset(caudate_neurons_transformed, subset = sub_class == "SPN")
+non_SPN_cah_transformed= subset(caudate_neurons_transformed, subset = sub_class != "SPN")
+SPN_cah_transformed
+non_SPN_cah_transformed
+
+```
+
+```{r}
+qsave(caudate_neurons_transformed, "SPN_Scores/caudate_neurons_transformed.qs")
+qsave(putamen_neurons_transformed, "SPN_Scores/putamen_neurons_transformed.qs")
+```
+
+
+```{r}
+BICAN_SPN_vs_non_markers_filtered
+```
+
+
+```{r}
+features = BICAN_SPN_vs_non_markers_filtered$gene
+Idents(caudate_neurons_transformed) = "subcluster"
+DotPlot(caudate_neurons_transformed, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+CaH_SPN_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, SPN_cah_transformed)
+
+CaH_non_SPN_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, non_SPN_cah_transformed)
+```
+
+```{r}
+CaH_SPN_summary_expr_data
+CaH_non_SPN_summary_expr_data
+```
+
+```{r}
+CaH_SPN_summary_expr_data$cell_type = "SPN"
+CaH_non_SPN_summary_expr_data$cell_type = "non-SPN" 
+
+head(CaH_SPN_summary_expr_data)
+head(CaH_non_SPN_summary_expr_data)
+
+CaH_Transcriptional_DE = rbind(CaH_SPN_summary_expr_data, CaH_non_SPN_summary_expr_data)
+CaH_Transcriptional_DE
+```
+
+```{r}
+min(CaH_Transcriptional_DE$total_expression)
+max(CaH_Transcriptional_DE$total_expression)
+median(CaH_Transcriptional_DE$total_expression)
+
+```
+
+```{r}
+library(gridExtra)
+options(repr.plot.width=24, repr.plot.height=16)
+plots = list()
+donors = c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006","SCF-19-009", "SCF-19-014", "SCF-19-018",  "SCF-20-023",  "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM")
+for (donor in donors) {
+test = CaH_Transcriptional_DE[CaH_Transcriptional_DE$donor_id == donor,]
+plots[[donor]] = plot_overlapping_density_histogram(df = test,
+hist_col = "total_expression",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(0,100,2),
+title= paste("CaH SPNs vs non-SPNs: ", donor),
+xlab = "CaH SPN Score",
+fig_filename = NULL)
+}
+layout_matrix <- rbind(
+c(1, 2, 3, 4, 5),
+c(6, 7, 8, 9, 10),
+c(11, 12, 13, NA, NA),
+c(14, 15, 16, 17, NA)
+)
+# Arrange the plots according to the custom layout
+grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+# Save the arranged plots to a PNG file
+ggsave(filename = "SPN_SCORE_Output/CaH_BICAN_SPNvnonSPN_donors.png", plot = grid_plots, width = 30, height = 16)
+
+```
+
+
+
+```{r}
+CaH_Transcriptional_DE$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", CaH_Transcriptional_DE$donor_id), "Control", "XDP")
+CaH_Transcriptional_DE
+
+XDP = CaH_Transcriptional_DE[CaH_Transcriptional_DE$Condition == "XDP",]
+plot_overlapping_density_histogram(df = XDP, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,100,2),
+    title= paste("CaH SPNs vs non-SPNs: XDP"),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)
+
+Control = CaH_Transcriptional_DE[CaH_Transcriptional_DE$Condition == "Control",]
+plot_overlapping_density_histogram(df = Control, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,100,2),
+    title= paste("CaH SPNs vs non-SPNs: Control "),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)
+```
+
+```{r}
+metadata = caudate_neurons_transformed@meta.data
+metadata$cell_id = rownames(metadata)
+SPN_Score = CaH_Transcriptional_DE %>% select(cell_id, total_expression)
+metadata = metadata %>% left_join(SPN_Score, by = "cell_id")
+caudate_neurons_transformed@meta.data = metadata
+caudate_neurons_transformed@meta.data
+```
+
+#GO BACK TO THIS- showing total expression on a umap
+```{r}
+FeaturePlot(caudate_neurons_transformed, features = c("total_expression"))
+```
+
+
+```{r}
+# Check if the feature exists and what values it contains
+summary(caudate_neurons_transformed@assays$SCT@data["total_expression", ])
+```
+
+
+
+
+
+
+
+`
+
+
+
+
+#SPN-ness score
+#BICAN- SPN vs nonSPNs
+```{r}
+putamen_neurons_transformed@meta.data$subcluster = putamen_neurons_transformed@meta.data$sub_class
+putamen_neurons_transformed$subcluster[putamen_neurons_transformed$subcluster == "interneuron"] = "non-SPN"
+putamen_neurons_transformed$subcluster[putamen_neurons_transformed$subcluster == "eSPN"] = "non-SPN"
+putamen_neurons_transformed$subcluster[putamen_neurons_transformed$subcluster == "cholinergic"] = "non-SPN"
+putamen_neurons_transformed$subcluster[putamen_neurons_transformed$subcluster == "glutamatergic"] = "non-SPN"
+
+putamen_neurons_transformed@meta.data
+
+SPN_put_transformed= subset(putamen_neurons_transformed, subset = sub_class == "SPN")
+non_SPN_put_transformed= subset(putamen_neurons_transformed, subset = sub_class != "SPN")
+SPN_put_transformed
+non_SPN_put_transformed
+
+```
+
+```{r}
+BICAN_SPN_vs_non_markers_filtered
+```
+
+
+```{r}
+features = BICAN_SPN_vs_non_markers_filtered$gene
+Idents(putamen_neurons_transformed) = "subcluster"
+DotPlot(putamen_neurons_transformed, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+Put_SPN_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, SPN_put_transformed)
+
+Put_non_SPN_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, non_SPN_put_transformed)
+```
+
+```{r}
+Put_SPN_summary_expr_data
+Put_non_SPN_summary_expr_data
+```
+
+```{r}
+Put_SPN_summary_expr_data$cell_type = "SPN"
+Put_non_SPN_summary_expr_data$cell_type = "non-SPN" 
+
+head(Put_SPN_summary_expr_data)
+head(Put_non_SPN_summary_expr_data)
+
+Put_Transcriptional_DE = rbind(Put_SPN_summary_expr_data, Put_non_SPN_summary_expr_data)
+Put_Transcriptional_DE
+```
+
+```{r}
+min(Put_Transcriptional_DE$total_expression)
+max(Put_Transcriptional_DE$total_expression)
+median(Put_Transcriptional_DE$total_expression)
+
+```
+
+```{r}
+library(gridExtra)
+options(repr.plot.width=24, repr.plot.height=16)
+plots = list()
+donors = c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006","SCF-19-009", "SCF-19-014", "SCF-19-018",  "SCF-20-023",  "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM")
+for (donor in donors) {
+test = Put_Transcriptional_DE[Put_Transcriptional_DE$donor_id == donor,]
+plots[[donor]] = plot_overlapping_density_histogram(df = test,
+hist_col = "total_expression",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(0,100,2),
+title= paste("Put SPNs vs non-SPNs: ", donor),
+xlab = "Put SPN Score",
+fig_filename = NULL)
+}
+layout_matrix <- rbind(
+c(1, 2, 3, 4, 5),
+c(6, 7, 8, 9, 10),
+c(11, 12, 13, NA, NA),
+c(14, 15, 16, 17, NA)
+)
+# Arrange the plots according to the custom layout
+grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+# Save the arranged plots to a PNG file
+ggsave(filename = "SPN_SCORE_Output/Put_BICAN_SPNvnonSPN_donors.png", plot = grid_plots, width = 30, height = 16)
+
+```
+
+
+
+```{r}
+Put_Transcriptional_DE$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", Put_Transcriptional_DE$donor_id), "Control", "XDP")
+Put_Transcriptional_DE
+
+XDP = Put_Transcriptional_DE[Put_Transcriptional_DE$Condition == "XDP",]
+plot_overlapping_density_histogram(df = XDP, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,100,2),
+    title= paste("Put SPNs vs non-SPNs: XDP"),
+    xlab = "Put SPN score",
+    fig_filename = NULL)
+
+Control = Put_Transcriptional_DE[Put_Transcriptional_DE$Condition == "Control",]
+plot_overlapping_density_histogram(df = Control, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,100,2),
+    title= paste("Put SPNs vs non-SPNs: Control "),
+    xlab = "Put SPN score",
+    fig_filename = NULL)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered@meta.data
+```
+
+
+#SC Transform SPNs and other neurons- did SCtransform on all neurons first before I subsetted
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered_transformed = SCTransform(BICAN_3P_V8_CaH_neurons_filtered, vars.to.regress = "pct_mt", verbose = FALSE)
+DefaultAssay(BICAN_3P_V8_CaH_neurons_filtered_transformed) = "SCT"
+
+BICAN_SPN_cah_transformed= subset(BICAN_3P_V8_CaH_neurons_filtered_transformed, subset = SPN_class == "SPN")
+BICAN_non_SPN_cah_transformed= subset(BICAN_3P_V8_CaH_neurons_filtered_transformed, subset = SPN_class != "SPN")
+BICAN_SPN_cah_transformed
+BICAN_non_SPN_cah_transformed
+
+BICAN_SPN_cah_transformed$donor_id = BICAN_SPN_cah_transformed$DONOR
+BICAN_non_SPN_cah_transformed$donor_id = BICAN_non_SPN_cah_transformed$DONOR
+```
+
+
+
+```{r}
+BICAN_CaH_SPN_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, BICAN_SPN_cah_transformed)
+
+BICAN_CaH_non_SPN_summary_expr_data = SPN_score(BICAN_SPN_vs_non_markers_filtered, BICAN_non_SPN_cah_transformed)
+```
+
+```{r}
+BICAN_CaH_SPN_summary_expr_data
+BICAN_CaH_non_SPN_summary_expr_data
+```
+
+```{r}
+BICAN_CaH_SPN_summary_expr_data$cell_type = "SPN"
+BICAN_CaH_non_SPN_summary_expr_data$cell_type = "non-SPN" 
+
+head(BICAN_CaH_SPN_summary_expr_data)
+head(BICAN_CaH_non_SPN_summary_expr_data)
+
+CaH_Transcriptional_DE = rbind(BICAN_CaH_SPN_summary_expr_data, BICAN_CaH_non_SPN_summary_expr_data)
+CaH_Transcriptional_DE
+```
+
+```{r}
+min(CaH_Transcriptional_DE$total_expression)
+max(CaH_Transcriptional_DE$total_expression)
+median(CaH_Transcriptional_DE$total_expression)
+```
+
+
+```{r}
+library(gridExtra)
+options(repr.plot.width=24, repr.plot.height=16)
+plots = list()
+donors = unique(CaH_Transcriptional_DE$donor_id)
+for (donor in donors) {
+test = CaH_Transcriptional_DE[CaH_Transcriptional_DE$donor_id == donor,]
+plots[[donor]] = plot_overlapping_density_histogram(df = test,
+hist_col = "total_expression",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(0,180,2),
+title= paste("BICAN CaH SPNs vs non-SPNs: ", donor),
+xlab = "CaH SPN Score",
+fig_filename = NULL)
+}
+layout_matrix <- rbind(
+c(1, 2, 3, 4, 5),
+c(6, 7, 8, 9, 10),
+c(11, 12, 13, 14, 15),
+c(16, 17, 18, 19, NA)
+)
+# Arrange the plots according to the custom layout
+grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+# Save the arranged plots to a PNG file
+ggsave(filename = "SPN_SCORE_Output/BICAN_CONTROLS_CaH_BICAN_SPNvnonSPN_donors.png", plot = grid_plots, width = 30, height = 16)
+
+```
+
+
+
+```{r}
+plot_overlapping_density_histogram(df = CaH_Transcriptional_DE, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,180,2),
+    title= paste("CaH SPNs vs non-SPNs: BICAN Controls "),
+    xlab = "CaH SPN score",
+    fig_filename = NULL)
+```
+
+
+
+
+```{r}
+BICAN_3P_V8_CaH_neurons_filtered
+```
+
+
+
+
+
+
+
+#PUTAMEN SPN-ness score
+#Findallmarkers on controls: SPN vs non-SPNs 
+```{r}
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "eSPN"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "cholinergic"] = "non-SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "glutamatergic"] = "non-SPN"
+
+Idents(putamen_neurons) = "sub_class"
+DimPlot(putamen_neurons, label = TRUE)
+```
+
+```{r}
+putamen_controls = subset(putamen_neurons, subset = Condition == "Control")
+putamen_controls
+Idents(putamen_controls) = "sub_class"
+DimPlot(putamen_controls, label = TRUE)
+```
+```{r}
+Idents(putamen_controls) = putamen_controls$sub_class
+putamen_controls_markers = FindAllMarkers(putamen_controls)
+                                          #, only.pos = TRUE,  min.pct = 0.2, logfc.threshold = 1.25)
+putamen_controls_markers
+```
+
+
+```{r}
+subsetmarkers= subset(putamen_controls_markers, subset = pct.2 < 0.3)
+subsetmarkers
+
+newmarker = subset(subsetmarkers, subset = pct.1> 0.7)
+newmarker
+
+final = subset(newmarker, subset= cluster =="SPN")
+final
+```
+
+```{r}
+features <- final$gene
+DotPlot(putamen_controls, features = features, dot.scale = 8) + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+nonSPN_put_transformed= subset(putamen_neurons, subset = sub_class != "SPN")
+
+```
+
+```{r}
+SPN_put_transformed
+nonSPN_put_transformed
+```
+
+
+#put SPN
+```{r}
+final = subset(newmarker, subset= cluster =="SPN")
+
+significant_genes = unique(final$gene)
+
+exp = FetchData(SPN_put_transformed, vars = significant_genes)
+exp
+
+final
+
+rownames(final) = final$gene
+final$gene = NULL
+exp
+
+# Assuming final and exp are your dataframes
+logfc_df <- final
+counts_df <- exp
+
+logfc_df
+counts_df
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc_ordered$avg_log2FC))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc_ordered$avg_log2FC)
+logfc_vector
+ #THIS IS FOR LOG TRANSFORMATINO BUT I DONT LIKE IT
+#  custom_log_transform <- function(x, logFC_value) {
+#       x * 2^logFC_value
+#   }
+#   
+# # Multiply each column in counts_df by the corresponding logFC value
+#  result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+
+
+#THE ACTUAL
+ result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+
+# Print the result
+print(result_df)
+
+metadata <- SPN_put_transformed@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data
+Put_SPN_summary_expr_data = summarized_expr_data
+Put_SPN_summary_expr_data
+```
+
+#put nonSPN
+```{r}
+final = subset(newmarker, subset= cluster =="SPN")
+
+significant_genes = unique(final$gene)
+
+exp = FetchData(nonSPN_put_transformed, vars = significant_genes)
+exp
+
+final
+
+rownames(final) = final$gene
+final$gene = NULL
+exp
+
+# Assuming final and exp are your dataframes
+logfc_df <- final
+counts_df <- exp
+
+logfc_df
+counts_df
+
+# Check if all column names in counts_df are in the row names of logfc_df
+if (!all(colnames(counts_df) %in% rownames(logfc_df))) {
+  stop("Not all genes in counts_df are present in logfc_df")
+}
+
+# Reorder logfc_df to match the columns in counts_df
+logfc_ordered <- logfc_df[colnames(counts_df), , drop = FALSE]
+logfc_ordered
+
+# Check for NA values in logfc_ordered
+if (any(is.na(logfc_ordered$avg_log2FC))) {
+  stop("There are NA values in the logFC values for the genes")
+}
+
+# Ensure logfc_ordered$logfc is a numeric vector
+logfc_vector <- as.numeric(logfc_ordered$avg_log2FC)
+logfc_vector
+ #THIS IS FOR LOG TRANSFORMATINO BUT I DONT LIKE IT
+#  custom_log_transform <- function(x, logFC_value) {
+#       x * 2^logFC_value
+#   }
+#   
+# # Multiply each column in counts_df by the corresponding logFC value
+#  result_df <- sweep(counts_df, 2, logfc_vector, FUN = custom_log_transform)
+
+
+#THE ACTUAL
+ result_df <- sweep(counts_df, 2, logfc_vector, FUN = "*")
+
+# Print the result
+print(result_df)
+
+metadata <- nonSPN_put_transformed@meta.data
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- result_df %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data
+Put_nonSPN_summary_expr_data = summarized_expr_data
+Put_nonSPN_summary_expr_data
+```
+
+
+```{r}
+Put_SPN_summary_expr_data$cell_type = "SPN"
+Put_nonSPN_summary_expr_data$cell_type = "non-SPN" 
+
+head(Put_SPN_summary_expr_data)
+head(Put_nonSPN_summary_expr_data)
+```
+
+```{r}
+Put_Transcriptional_DE = rbind(Put_SPN_summary_expr_data, Put_nonSPN_summary_expr_data)
+Put_Transcriptional_DE
+```
+
+```{r}
+donors = unique(Put_Transcriptional_DE$donor_id)
+
+for (donor in donors) {
+test = Put_Transcriptional_DE[Put_Transcriptional_DE$donor_id == donor,]
+a = plot_overlapping_density_histogram(df = test, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,1000,10),
+    title= paste("Put SPNs vs non-SPNs: ", donor),
+    xlab = "Put SPN score",
+    fig_filename = NULL)
+
+print(a)
+}
+```
+
+
+```{r}
+expr_data_long
+```
+
+```{r}
+Put_Transcriptional_DE$Condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", Put_Transcriptional_DE$donor_id), "Control", "XDP")
+Put_Transcriptional_DE
+```
+
+
+```{r}
+XDP = Put_Transcriptional_DE[Put_Transcriptional_DE$Condition == "XDP",]
+plot_overlapping_density_histogram(df = XDP, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,1000,10),
+    title= paste("Put SPNs vs non-SPNs (log transformed): XDP"),
+    xlab = "Put SPN score",
+    fig_filename = NULL)
+
+Control = Put_Transcriptional_DE[Put_Transcriptional_DE$Condition == "Control",]
+plot_overlapping_density_histogram(df = Control, 
+    hist_col = "total_expression",
+    fill_col = "cell_type",
+    colors = c("blue", "red"),
+    #alpha=0.5,
+    breaks=seq(0,1000,10),
+    title= paste("Put SPNs vs non-SPNs (log transformed): Control "),
+    xlab = "Put SPN score",
+    fig_filename = NULL)
+```
+
+
+
+
+
+
+
+
+
+```{r}
+metadata
+metadata_subset = metadata[, c("donor_id", "Condition", "rowname")]
+metadata_subset
+SPN_df_new = merge(SPN_df, metadata_subset, by.x = "rowname", by.y = "rowname")
+SPN_df_new
+sct_counts_nonSPN <- FetchData(non_SPN_put_transformed, vars = significant_genes)
+sct_counts_nonSPN
+# Calculate z-scores for the main dataset using control statistics
+z_scores <- sweep(sct_counts_nonSPN, 2, means, "-")
+z_scores <- sweep(z_scores, 2, sds, "/")
+# Sum z-scores across genes for each cell
+sum_z_scores <- rowSums(z_scores)
+sum_z_scores
+Idents(non_SPN_put_transformed) = "sub_class"
+# Create a dataframe with summed z-scores and sample identities
+nonSPNdf <- data.frame(Sample = Idents(non_SPN_put_transformed), ZScoreSum = sum_z_scores)
+nonSPNdf$rowname <- rownames(nonSPNdf)
+nonSPNdf
+metadata <- non_SPN_put_transformed@meta.data
+metadata$rowname <- rownames(metadata)
+metadata
+metadata_subset = metadata[, c("donor_id", "Condition", "rowname")]
+metadata_subset
+nonSPN_df_new = merge(nonSPNdf, metadata_subset, by.x = "rowname", by.y = "rowname")
+nonSPN_df_new
+nonSPN_df_new$Sample = "non-SPN"
+nonSPN_df_new
+final_df = rbind(SPN_df_new, nonSPN_df_new)
+final_df
+final_df$cell_type = final_df$Sample
+final_df$Sample = NULL
+final_df
+library(gridExtra)
+options(repr.plot.width=24, repr.plot.height=16)
+plots = list()
+donors = c("PCMC-16-011", "PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006","SCF-19-009", "SCF-19-014", "SCF-19-018",  "SCF-20-023",  "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043", "SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM")
+for (donor in donors) {
+test = final_df[final_df$donor_id == donor,]
+plots[[donor]] = plot_overlapping_density_histogram(df = test,
+hist_col = "ZScoreSum",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("Put SPNs vs non-SPNs: ", donor),
+xlab = "Put SPN Z-Score",
+fig_filename = NULL)
+}
+layout_matrix <- rbind(
+c(1, 2, 3, 4, 5),
+c(6, 7, 8, 9, 10),
+c(11, 12, 13, NA, NA),
+c(14, 15, 16, 17, NA)
+)
+# Arrange the plots according to the custom layout
+grid_plots <- grid.arrange(grobs = plots, layout_matrix = layout_matrix)
+# Save the arranged plots to a PNG file
+ggsave(filename = "output/Put_ZSCORE_donors.png", plot = grid_plots, width = 30, height = 16)
+
+XDP = final_df[final_df$Condition == "XDP",]
+plot_overlapping_density_histogram(df = XDP,
+hist_col = "ZScoreSum",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("Put SPNs vs non-SPNs: XDP Combined"),
+xlab = "Put SPN Z-Score",
+fig_filename = NULL)
+Control = final_df[final_df$Condition == "Control",]
+plot_overlapping_density_histogram(df = Control,
+hist_col = "ZScoreSum",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("Put SPNs vs non-SPNs: Control Combined"),
+xlab = "Put SPN Z-Score",
+fig_filename = NULL)
+SPNs = final_df[final_df$cell_type == "SPN",]
+plot_overlapping_density_histogram(df = SPNs,
+hist_col = "ZScoreSum",
+fill_col = "Condition",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("Put SPNs: XDP vs Control"),
+xlab = "Put SPN Z-Score",
+fig_filename = NULL)
+nonSPNs = final_df[final_df$cell_type == "non-SPN",]
+plot_overlapping_density_histogram(df = nonSPNs,
+hist_col = "ZScoreSum",
+fill_col = "Condition",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("Put non-SPNs: XDP vs Control"),
+xlab = "Put SPN Z-Score",
+fig_filename = NULL)
+SPNs = final_df[final_df$cell_type == "SPN",]
+plot_overlapping_density_histogram(df = SPNs,
+hist_col = "ZScoreSum",
+fill_col = "Condition",
+colors = c("blue", "red"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("Put SPNs: XDP vs Control"),
+xlab = "Put SPN Z-Score",
+fig_filename = NULL)
+nonSPNs = final_df[final_df$cell_type == "non-SPN",]
+plot_overlapping_density_histogram(df = nonSPNs,
+hist_col = "ZScoreSum",
+fill_col = "Condition",
+colors = c("blue", "red"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("Put non-SPNs: XDP vs Control"),
+xlab = "Put SPN Z-Score",
+fig_filename = NULL)
+# Extract SCT counts for C-minus genes from the control dataset
+CaH_SPN_sct_counts_control <- FetchData(SPN_cah_transformed_controls, vars = significant_genes)
+CaH_SPN_sct_counts_control
+# Calculate mean and standard deviation for each gene in the control dataset
+means <- colMeans(sct_counts_control)
+sds <- apply(sct_counts_control, 2, sd)
+# Extract SCT counts for C-minus genes from the main dataset
+sct_counts_SPN <- FetchData(SPN_cah_transformed, vars = significant_genes)
+sct_counts_SPN
+# Calculate z-scores for the main dataset using control statistics
+z_scores <- sweep(sct_counts_SPN, 2, means, "-")
+z_scores <- sweep(z_scores, 2, sds, "/")
+# Sum z-scores across genes for each cell
+sum_z_scores <- rowSums(z_scores)
+sum_z_scores
+Idents(SPN_cah_transformed) = "sub_class"
+# Create a dataframe with summed z-scores and sample identities
+SPN_df <- data.frame(Sample = Idents(SPN_cah_transformed), ZScoreSum = sum_z_scores)
+SPN_df$rowname <- rownames(SPN_df)
+SPN_df
+metadata <- SPN_cah_transformed@meta.data
+metadata$rowname <- rownames(metadata)
+metadata
+metadata_subset = metadata[, c("donor_id", "Condition", "rowname")]
+metadata_subset
+SPN_df_new = merge(SPN_df, metadata_subset, by.x = "rowname", by.y = "rowname")
+SPN_df_new
+sct_counts_nonSPN <- FetchData(non_SPN_cah_transformed, vars = significant_genes)
+sct_counts_nonSPN
+# Calculate z-scores for the main dataset using control statistics
+z_scores <- sweep(sct_counts_nonSPN, 2, means, "-")
+z_scores <- sweep(z_scores, 2, sds, "/")
+# Sum z-scores across genes for each cell
+sum_z_scores <- rowSums(z_scores)
+sum_z_scores
+Idents(non_SPN_cah_transformed) = "sub_class"
+# Create a dataframe with summed z-scores and sample identities
+nonSPNdf <- data.frame(Sample = Idents(non_SPN_cah_transformed), ZScoreSum = sum_z_scores)
+nonSPNdf$rowname <- rownames(nonSPNdf)
+nonSPNdf
+metadata <- non_SPN_cah_transformed@meta.data
+metadata$rowname <- rownames(metadata)
+metadata
+metadata_subset = metadata[, c("donor_id", "Condition", "rowname")]
+metadata_subset
+nonSPN_df_new = merge(nonSPNdf, metadata_subset, by.x = "rowname", by.y = "rowname")
+nonSPN_df_new
+nonSPN_df_new$Sample = "non-SPN"
+nonSPN_df_new
+final_df = rbind(SPN_df_new, nonSPN_df_new)
+final_df
+final_df$cell_type = final_df$Sample
+final_df$Sample = NULL
+final_df
+plot_overlapping_density_histogram(df = XDP,
+hist_col = "ZScoreSum",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("CaH SPNs vs non-SPNs: XDP Combined"),
+xlab = "CaH SPN Z-Score",
+fig_filename = NULL)
+Control = final_df[final_df$Condition == "Control",]
+plot_overlapping_density_histogram(df = Control,
+hist_col = "ZScoreSum",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("CaH SPNs vs non-SPNs: Control Combined"),
+xlab = "CaH SPN Z-Score",
+fig_filename = NULL)
+XDP = final_df[final_df$Condition == "XDP",]
+plot_overlapping_density_histogram(df = XDP,
+hist_col = "ZScoreSum",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("CaH SPNs vs non-SPNs: XDP Combined"),
+xlab = "CaH SPN Z-Score",
+fig_filename = NULL)
+Control = final_df[final_df$Condition == "Control",]
+plot_overlapping_density_histogram(df = Control,
+hist_col = "ZScoreSum",
+fill_col = "cell_type",
+colors = c("red", "blue"),
+#alpha=0.5,
+breaks=seq(-60,60,2),
+title= paste("CaH SPNs vs non-SPNs: Control Combined"),
+xlab = "CaH SPN Z-Score",
+fig_filename = NULL)
+final =subset(CaH_SPN_markers_from_SPN1, subset = pct.1 > 0.5)
+CaH_SPN_markers_from_SPN = subset(caudate_controls_markers, subset= cluster =="SPN")
+Idents(caudate_controls) = caudate_controls$sub_class
+
+```
+
+
+
+#attempt to merge caudate and putamen but doesn;t look right
+```{r}
+caudate_neurons <- AddMetaData(caudate_neurons, metadata = "Caudate", col.name = "Region")
+putamen_neurons <- AddMetaData(putamen_neurons, metadata = "Putamen", col.name = "Region")
+caudate_neurons@meta.data
+putamen_neurons@meta.data
+```
+
+```{r}
+list = c(caudate_neurons, putamen_neurons)
+Combined_CaH_Put_neurons = mergeSeuratListWithMetadata(list)
+
+Combined_CaH_Put_neurons
+Combined_CaH_Put_neurons@meta.data
+
+```
+
+```{r}
+# Counts of super lowly expressed genes are essentially random
+# Also, we don't really care about housekeeping genes that have almost the same expression in every cell
+# Before clustering, we want to find "highly variable genes" (hvgs) that tend to be both highly expressed and vary a lot from cell to cell.
+# we do this by finding hvgs in each participant individually, and collating the genes
+# that are highly variable in at least half of donors.
+
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(Combined_CaH_Put_neurons, subset_col="donor_id", original_nfeatures=2500)
+
+
+n_dims_use=20
+
+
+# now cluster
+# the "%>%" lines are a little piece of syntax from the dyplr library,
+# short for "apply the following transformation to the object"
+# doing this line-by-line allows us to apply a sequence of transformations
+Combined_CaH_Put_neurons = (Combined_CaH_Put_neurons
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="donor_id") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via BICAN_3P_V8_CaH$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: BICAN_3P_V8_CaH$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+
+# Now we can plot the data and just see what it looks like
+
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+```
+
+```{r}
+DimPlot(Combined_CaH_Put_neurons, group.by = "library", label=T) # are there library batch effects?
+DimPlot(Combined_CaH_Put_neurons, group.by = "donor_id", label=T) # are there donor batch effects?
+DimPlot(Combined_CaH_Put_neurons, group.by = "cell_class") # change col name to whatever your case control metadata column is
+DimPlot(Combined_CaH_Put_neurons, group.by = "RNA_snn_res.0.5", label=T) # make a few of these for different resolutions
+DimPlot(Combined_CaH_Put_neurons, group.by = "sub_class", label=T) # make a few of these for different resolutions
+
+
+#qsave(filtered_merged_caudate, "somewhere/cozy")
+
+```
+
+```{r}
+library(harmony)
+Combined_CaH_Put_neurons = (Combined_CaH_Put_neurons
+    %>% RunHarmony(
+        group.by = "donor_id")
+    %>% FindNeighbors(reduction='harmony', dims=1:20)
+    %>% FindClusters(res=0.2)
+    %>% FindClusters(res=0.3)
+    %>% FindClusters(res=0.4)
+    %>% FindClusters(res=0.5)
+    %>% RunUMAP(reduction="harmony", dims=1:20)
+)
+
+DimPlot(Combined_CaH_Put_neurons, group.by = "library", label=T) # are there library batch effects?
+DimPlot(Combined_CaH_Put_neurons, group.by = "donor_id", label=T) # are there donor batch effects?
+DimPlot(Combined_CaH_Put_neurons, group.by = "cell_class") # change col name to whatever your case control metadata column is
+DimPlot(Combined_CaH_Put_neurons, group.by = "RNA_snn_res.0.5", label=T) # make a few of these for different resolutions
+DimPlot(Combined_CaH_Put_neurons, group.by = "sub_class", label=T) # make a few of these for different resolutions
+DimPlot(Combined_CaH_Put_neurons, group.by = "Condition", label=T) # make a few of these for different resolutions
+```

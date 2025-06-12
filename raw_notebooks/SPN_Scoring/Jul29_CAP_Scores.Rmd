@@ -1,0 +1,616 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+caudate = qread("Cellbender_seurat/Bennet_caudate_clean.qs")
+putamen= qread("Cellbender_seurat/Bennet_putamen_clean.qs")
+
+caudate
+putamen
+
+caudate@meta.data
+putamen@meta.data
+```
+```{r}
+table(caudate$cell_class)
+table(putamen$cell_class)
+```
+
+
+
+```{r}
+caudate@assays$RNA@counts
+```
+
+```{r}
+caudate_neurons_transformed= qread("SPN_Scores/caudate_neurons_transformed.qs")
+putamen_neurons_transformed= qread("SPN_Scores/putamen_neurons_transformed.qs")
+caudate_neurons_transformed
+putamen_neurons_transformed
+caudate_neurons_transformed@meta.data
+putamen_neurons_transformed@meta.data
+```
+```{r}
+caudate_neuron_labels = caudate_neurons_transformed@meta.data %>% select(cell_class, sub_class, subcluster)
+caudate_neuron_labels$neuron_cell_class = caudate_neuron_labels$cell_class
+caudate_neuron_labels$cell_class = NULL
+caudate_neuron_labels
+```
+
+
+```{r}
+caudate = AddMetaData(caudate, caudate_neuron_labels)
+caudate@meta.data 
+```
+```{r}
+table(caudate@meta.data$neuron_cell_class)
+DimPlot(caudate, group.by = "neuron_cell_class")
+```
+
+
+```{r}
+caudate@meta.data$neuron_cell_class[caudate@meta.data$cell_class == "astro"] = "astro"
+caudate@meta.data$neuron_cell_class[caudate@meta.data$cell_class == "oligo"] = "oligo"
+caudate@meta.data$neuron_cell_class[caudate@meta.data$cell_class == "opc"] = "opc"
+caudate@meta.data$neuron_cell_class[caudate@meta.data$cell_class == "mg"] = "mg"
+caudate@meta.data$neuron_cell_class[caudate@meta.data$cell_class == "ependymal"] = "ependymal"
+caudate@meta.data$neuron_cell_class[caudate@meta.data$cell_class == "endo"] = "endo"
+caudate@meta.data$neuron_cell_class[caudate@meta.data$cell_class == "immune"] = "immune"
+caudate@meta.data$neuron_cell_class[is.na(caudate@meta.data$neuron_cell_class)] = "neuron"
+
+caudate@meta.data$sub_class[caudate@meta.data$cell_class == "astro"] = "astro"
+caudate@meta.data$sub_class[caudate@meta.data$cell_class == "oligo"] = "oligo"
+caudate@meta.data$sub_class[caudate@meta.data$cell_class == "opc"] = "opc"
+caudate@meta.data$sub_class[caudate@meta.data$cell_class == "mg"] = "mg"
+caudate@meta.data$sub_class[caudate@meta.data$cell_class == "ependymal"] = "ependymal"
+caudate@meta.data$sub_class[caudate@meta.data$cell_class == "endo"] = "endo"
+caudate@meta.data$sub_class[caudate@meta.data$cell_class == "immune"] = "immune"
+caudate@meta.data$sub_class[is.na(caudate@meta.data$neuron_cell_class)] = "neuron"
+
+caudate@meta.data$subcluster[caudate@meta.data$cell_class == "astro"] = "astro"
+caudate@meta.data$subcluster[caudate@meta.data$cell_class == "oligo"] = "oligo"
+caudate@meta.data$subcluster[caudate@meta.data$cell_class == "opc"] = "opc"
+caudate@meta.data$subcluster[caudate@meta.data$cell_class == "mg"] = "mg"
+caudate@meta.data$subcluster[caudate@meta.data$cell_class == "ependymal"] = "ependymal"
+caudate@meta.data$subcluster[caudate@meta.data$cell_class == "endo"] = "endo"
+caudate@meta.data$subcluster[caudate@meta.data$cell_class == "immune"] = "immune"
+caudate@meta.data$subcluster[is.na(caudate@meta.data$neuron_cell_class)] = "neuron"
+caudate@meta.data
+```
+
+```{r}
+table(caudate_sobj@meta.data$subcluster)
+table(caudate@meta.data$subcluster)
+```
+
+
+```{r}
+original_metadata = caudate@meta.data
+
+merged_metadata <- original_metadata %>%
+  left_join(caudate_neuron_labels, by.x = rownames(caudate@meta.data), by.y = rownames(caudate_neuron_labels))
+merged_metadata
+```
+
+
+```{r}
+# 3. Update the original Seurat object's metadata
+caudate@meta.data <- merged_metadata
+```
+
+
+```{r}
+caudate@meta.data$new_cell_class = caudate@meta.data$cell_class
+
+```
+
+
+
+
+```{r}
+caudate_sobj=qread("FINAL_caudate_sobj.qs")
+putamen_sobj=qread("FINAL_putamen_sobj.qs")
+caudate_sobj
+putamen_sobj
+
+caudate_sobj@meta.data
+putamen_sobj@meta.data
+```
+
+```{r}
+table(caudate_sobj@meta.data$subcluster)
+```
+
+
+```{r}
+Idents(caudate_sobj) = "cell_class"
+DimPlot(caudate_sobj)
+```
+
+
+```{r}
+DimPlot(caudate_sobj, group.by = "cell_class")
+DimPlot(caudate_sobj, group.by = "new_cell_class")
+DimPlot(caudate_sobj, group.by = "subcluster")
+
+DimPlot(putamen_sobj, group.by = "cell_class")
+DimPlot(putamen_sobj, group.by = "new_cell_class")
+DimPlot(putamen_sobj, group.by = "subcluster")
+```
+
+```{r}
+merged_xdp = qread("SPN_Scores/merged_xdp_use_this.qs")
+merged_xdp@meta.data
+```
+
+```{r}
+DimPlot(merged_xdp, group.by = "RNA_snn_res.0.2")
+DimPlot(merged_xdp, group.by = "RNA_snn_res.0.3")
+
+DimPlot(merged_xdp, group.by = "region")
+```
+
+
+```{r}
+FeaturePlot(merged_xdp, features =c("CASZ1","CHAT"))
+FeaturePlot(merged_xdp, features =c("DRD1", "DRD2"))
+FeaturePlot(merged_xdp, features =c("PPP1R1B", "pct_mito"))
+FeaturePlot(merged_xdp, features =c("SST", "VIP"))
+FeaturePlot(merged_xdp, features =c("GAD1", "GAD2"))
+FeaturePlot(merged_xdp, features = c("EPHA4", "SEMA3E"))
+FeaturePlot(merged_xdp, features =c("PVALB", "CALB2"))
+FeaturePlot(merged_xdp, features =c("SLC17A7", "SLC17A6"))
+```
+
+
+```{r}
+caudate_neurons = qread("Current_subclusters/caudate_neuron.qs")
+putamen_neurons= qread("Current_subclusters/putamen_neuron.qs")
+
+caudate_neurons
+putamen_neurons
+
+caudate_neurons@meta.data
+putamen_neurons@meta.data
+
+DimPlot(caudate_neurons, label = T)
+DimPlot(putamen_neurons, label = T)
+```
+```{r}
+neuron_class = rbind(caudate_neurons@meta.data, putamen_neurons@meta.data)
+neuron_class
+```
+
+```{r}
+neuron_class <- neuron_class %>% select(cell_class)
+neuron_class$KK_class = neuron_class$cell_class
+neuron_class$cell_class = NULL
+neuron_class
+```
+
+```{r}
+merged_xdp = AddMetaData(merged_xdp, neuron_class)
+merged_xdp@meta.data
+```
+
+```{r}
+unique(merged_xdp$KK_class)
+```
+```{r}
+merged_xdp@meta.data$KK_new_class =merged_xdp@meta.data$KK_class
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D2_SPN_matrix"] = "D2_SPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "interneuron_2"] = "interneuron"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "interneuron_4"] = "interneuron"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D1_SPN_matrix_1"] = "D1_SPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "glutamatergic"] = "other"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "interneuron_5"] = "interneuron"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D1_SPN_1"] ="D1_SPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D1_SPN_patch"] ="D1_SPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D2_SPN_1"] ="D2_SPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "eSPN"] = "eSPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "interneuron_3"] = "interneuron"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "interneuron_1"] = "interneuron"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D2_SPN_2"] ="D2_SPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "cholinergic"] = "other"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "interneuron_7"] = "interneuron"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "interneuron_6"] = "interneuron"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D2_SPN_matrix_1"] = "D2_SPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D1_SPN_2"] ="D1_SPN"
+merged_xdp$KK_new_class[merged_xdp$KK_new_class == "D1_SPN_matrix_2"] ="D1_SPN"
+#merged_xdp$KK_new_class[merged_xdp$KK_new_class == "SPN"] 
+merged_xdp@meta.data
+unique(merged_xdp@meta.data$KK_new_class)      
+```
+```{r}
+DimPlot(merged_xdp, group.by = "KK_new_class")
+```
+```{r}
+table(merged_xdp@meta.data$KK_new_class)     
+```
+
+```{r}
+qsave(merged_xdp, "SPN_Scores/merged_xdp_use_this.qs")
+```
+
+
+
+
+```{r}
+DimPlot(merged_xdp, group.by = "neuron_type_joint_cluster")
+DimPlot(merged_xdp, group.by = "KK_class")
+```
+
+
+
+
+
+#Now finally CAP stuff
+```{r}
+caudate_sobj
+putamen_sobj
+
+caudate_sobj@meta.data
+putamen_sobj@meta.data
+```
+
+
+```{r}
+repeats = read.csv("repeat_lengths.csv")
+repeats
+
+updated_metadata = merge(caudate_sobj@meta.data, repeats, by = "donor_id")
+updated_metadata
+
+caudate_sobj@meta.data = updated_metadata
+caudate_sobj@meta.data 
+
+updated_metadata = merge(putamen_sobj@meta.data, repeats, by = "donor_id")
+updated_metadata
+
+putamen_sobj@meta.data = updated_metadata
+putamen_sobj@meta.data 
+```
+```{r}
+caudate_sobj@meta.data$CAP_Score =  caudate_sobj@meta.data$Repeat_Length * caudate_sobj@meta.data$Age.of.Death
+putamen_sobj@meta.data$CAP_Score =  putamen_sobj@meta.data$Repeat_Length * putamen_sobj@meta.data$Age.of.Death
+```
+
+```{r}
+qsave(caudate_sobj,"FINAL_caudate_sobj.qs")
+qsave(putamen_sobj,"FINAL_putamen_sobj.qs")
+```
+
+```{r}
+caudate_sobj@meta.data
+rownames(caudate_sobj@meta.data) <- paste(caudate_sobj@meta.data$library, "__", caudate_sobj@meta.data$cell)
+caudate_sobj@meta.data
+```
+
+
+
+
+
+```{r}
+donor_metadata = merge(donor_metadata, repeats, by.x = "Donor.ID", by.y = "donor_id")
+donor_metadata
+```
+
+```{r}
+donor_metadata$CAP_Score =  donor_metadata$Repeat_Length * donor_metadata$Age.of.Death
+donor_metadata
+```
+
+
+```{r}
+hist(donor_metadata$Repeat_Length, main = "Repeat Lengths", breaks =15, xlab = "Repeat Lengths")
+hist(donor_metadata$Age.of.Death, main = "Age of Death", breaks =15, xlab = "Age of Death")
+hist(donor_metadata$Age.of.Onset, main = "Age of Onset", breaks =15, xlab = "Age of Onset")
+hist(donor_metadata$Disease_duration, main = "Disease Duration", breaks =15, xlab = "Disease Duration")
+hist(donor_metadata$CAP_Score, main = "CAP Score", breaks =15, xlab = "CAP Score")
+```
+
+
+```{r}
+caudate_sobj@meta.data
+putamen_sobj@meta.data
+```
+
+```{r}
+caudate_fraction = as.data.frame(table(caudate_sobj$subcluster,caudate_sobj$donor_id))
+caudate_fraction$cell_class = caudate_fraction$Var1 
+caudate_fraction$donor_id = caudate_fraction$Var2
+caudate_fraction$cells = caudate_fraction$Freq 
+caudate_fraction$Var1 =NULL 
+caudate_fraction$Var2 =NULL 
+caudate_fraction$Freq =NULL 
+caudate_fraction
+```
+```{r}
+caudate_total = as.data.frame(table(caudate_sobj$donor_id))
+caudate_total
+```
+
+
+```{r}
+caudate_fraction = merge(caudate_fraction, caudate_total, by.x = "donor_id", by.y= "Var1")
+caudate_fraction$total_cells = caudate_fraction$Freq
+caudate_fraction$Freq = NULL
+caudate_fraction
+```
+```{r}
+caudate_fraction$fraction = caudate_fraction$cells/caudate_fraction$total_cells
+caudate_fraction
+```
+
+```{r}
+metadata = caudate_sobj@meta.data
+metadata = metadata %>% select(donor_id, Repeat_Length, CAP_Score) 
+metadata = metadata %>% distinct()
+metadata
+```
+
+```{r}
+caudate_fraction = merge(caudate_fraction,metadata, by = "donor_id")
+caudate_fraction
+```
+
+```{r}
+caudate_SPN_fraction = subset(caudate_fraction, subset = caudate_fraction$cell_class == "SPN")
+caudate_SPN_fraction
+caudate_SPN_fraction[is.na(caudate_SPN_fraction)] <- 0
+caudate_SPN_fraction
+```
+
+```{r}
+x_order <- caudate_SPN_fraction %>% arrange(CAP_Score)
+x_order
+```
+
+```{r}
+ggplot(x_order, aes(x = CAP_Score, y = fraction, color =donor_id)) +
+  geom_point(size = 2) +
+  ggtitle("Caudate: CAP Score vs SPN abundance")+
+  xlab("Donors from Caudate Village") +
+  ylab("SPN abundance (fraction of all caudate nuclei)") +
+  labs(color = "Donors") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+```
+```{r}
+CAP_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", 
+  "PCMC-16-012", "SCF-18-003", "SCF-18-006", "SCF-19-018", "SCF-20-023", 
+  "PCMC-16-011", "SCF-21-030", "SCF-20-025", "SCF-19-009", "SCF_20-024", 
+  "SCF-18-004", "SCF_22-043")
+CAP_order
+
+caudate_fraction$donor_id = factor(caudate_fraction$donor_id, levels = CAP_order)
+caudate_fraction
+```
+
+
+```{r}
+ggplot(caudate_fraction, aes(x = donor_id, y = fraction, fill = cell_class)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+#trying repeat length 
+
+
+
+```{r}
+x_order <- caudate_SPN_fraction %>% arrange(Repeat_Length)
+x_order
+
+ggplot(x_order, aes(x = Repeat_Length, y = fraction, color =donor_id)) +
+  geom_point(size = 2) +
+  ggtitle("Caudate: Repeat Length vs SPN abundance")+
+  xlab("Donors from Caudate Village") +
+  ylab("SPN abundance (fraction of all caudate nuclei)") +
+  labs(color = "Donors") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+repeat_order =  c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+repeat_order
+
+caudate_fraction$donor_id = factor(caudate_fraction$donor_id, levels = repeat_order)
+caudate_fraction
+
+ggplot(caudate_fraction, aes(x = donor_id, y = fraction, fill = cell_class)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+
+#now putamen
+
+```{r}
+putamen_fraction = as.data.frame(table(putamen_sobj$subcluster,putamen_sobj$donor_id))
+putamen_fraction$cell_class = putamen_fraction$Var1 
+putamen_fraction$donor_id = putamen_fraction$Var2
+putamen_fraction$cells = putamen_fraction$Freq 
+putamen_fraction$Var1 =NULL 
+putamen_fraction$Var2 =NULL 
+putamen_fraction$Freq =NULL 
+putamen_fraction
+
+putamen_total = as.data.frame(table(putamen_sobj$donor_id))
+putamen_total
+```
+
+
+```{r}
+putamen_fraction = merge(putamen_fraction, putamen_total, by.x = "donor_id", by.y= "Var1")
+putamen_fraction$total_cells = putamen_fraction$Freq
+putamen_fraction$Freq = NULL
+putamen_fraction
+
+putamen_fraction$fraction = putamen_fraction$cells/putamen_fraction$total_cells
+putamen_fraction
+```
+
+```{r}
+metadata = putamen_sobj@meta.data
+metadata = metadata %>% select(donor_id, Repeat_Length, CAP_Score) 
+metadata = metadata %>% distinct()
+metadata
+
+putamen_fraction = merge(putamen_fraction,metadata, by = "donor_id")
+putamen_fraction
+
+putamen_SPN_fraction = subset(putamen_fraction, subset = putamen_fraction$cell_class == "SPN")
+putamen_SPN_fraction
+putamen_SPN_fraction[is.na(putamen_SPN_fraction)] <- 0
+putamen_SPN_fraction
+```
+
+```{r}
+x_order <- putamen_SPN_fraction %>% arrange(CAP_Score)
+x_order
+```
+
+```{r}
+ggplot(x_order, aes(x = CAP_Score, y = fraction, color =donor_id)) +
+  geom_point(size = 2) +
+  ggtitle("Putamen: CAP Score vs SPN abundance")+
+  xlab("Donors from Putamen Village") +
+  ylab("SPN abundance (fraction of all putamen nuclei)") +
+  labs(color = "Donors") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+CAP_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", 
+  "PCMC-16-012", "SCF-18-003", "SCF-18-006", "SCF-19-018", "SCF-20-023", 
+  "PCMC-16-011", "SCF-21-030", "SCF-20-025", "SCF-19-009", "SCF_20-024", 
+  "SCF-18-004", "SCF_22-043")
+CAP_order
+
+putamen_fraction$donor_id = factor(putamen_fraction$donor_id, levels = CAP_order)
+putamen_fraction
+```
+
+
+```{r}
+ggplot(putamen_fraction, aes(x = donor_id, y = fraction, fill = cell_class)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+
+
+
+```{r}
+x_order <- putamen_SPN_fraction %>% arrange(Repeat_Length)
+x_order
+
+ggplot(x_order, aes(x = Repeat_Length, y = fraction, color =donor_id)) +
+  geom_point(size = 2) +
+  ggtitle("Putamen: Repeat Length vs SPN abundance")+
+  xlab("Donors from Putamen Village") +
+  ylab("SPN abundance (fraction of all putamen nuclei)") +
+  labs(color = "Donors") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+repeat_order =  c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+repeat_order
+
+putamen_fraction$donor_id = factor(putamen_fraction$donor_id, levels = repeat_order)
+putamen_fraction
+
+ggplot(putamen_fraction, aes(x = donor_id, y = fraction, fill = cell_class)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+```{r}
+caudate_fraction$region = "CaH"
+putamen_fraction$region = "Put"
+```
+
+
+```{r}
+merged_fraction = rbind(caudate_fraction, putamen_fraction) 
+merged_fraction <- merged_fraction %>%
+  group_by(donor_id, cell_class, Repeat_Length, CAP_Score) %>%
+  summarise(
+    merged_cells = sum(cells),
+    merged_total_cells = sum(total_cells)
+  )
+merged_fraction
+```
+```{r}
+merged_fraction= read.csv("merged_fraction.csv")
+merged_fraction
+```
+
+```{r}
+merged_fraction$fraction = merged_fraction$merged_cells/merged_fraction$merged_total_cells
+merged_fraction[is.na(merged_fraction)] <- 0
+merged_fraction
+```
+
+```{r}
+merged_SPN_fraction = subset(merged_fraction, subset =cell_class == "SPN")
+merged_SPN_fraction
+```
+
+```{r}
+x_order <- merged_SPN_fraction %>% arrange(CAP_Score)
+x_order
+```
+
+```{r}
+ggplot(x_order, aes(x = CAP_Score, y = fraction, color =donor_id)) +
+  geom_point(size = 2) +
+  ggtitle("CaH + Put: CAP Score vs SPN abundance")+
+  xlab("Donors from CaH + Put Villages") +
+  ylab("SPN abundance (fraction of all CaH + Put nuclei)") +
+  labs(color = "Donors") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+CAP_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", 
+  "PCMC-16-012", "SCF-18-003", "SCF-18-006", "SCF-19-018", "SCF-20-023", 
+  "PCMC-16-011", "SCF-21-030", "SCF-20-025", "SCF-19-009", "SCF_20-024", 
+  "SCF-18-004", "SCF_22-043")
+CAP_order
+
+merged_fraction$donor_id = factor(merged_fraction$donor_id, levels = CAP_order)
+merged_fraction
+
+ggplot(merged_fraction, aes(x = donor_id, y = fraction, fill = cell_class)) +
+  geom_bar(stat = "identity") + xlab("Donors from CaH + Put Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+
+
+
+```{r}
+x_order <- merged_SPN_fraction %>% arrange(Repeat_Length)
+x_order
+
+ggplot(x_order, aes(x = Repeat_Length, y = fraction, color =donor_id)) +
+  geom_point(size = 2) +
+  ggtitle("CaH + Put: Repeat Length vs SPN abundance")+
+  xlab("Donors from CaH + Put Villages") +
+  ylab("SPN abundance (fraction of all CaH + Put nuclei)") +
+  labs(color = "Donors") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "black")
+
+repeat_order =  c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+repeat_order
+
+merged_fraction$donor_id = factor(merged_fraction$donor_id, levels = repeat_order)
+merged_fraction
+
+ggplot(merged_fraction, aes(x = donor_id, y = fraction, fill = cell_class)) +
+  geom_bar(stat = "identity") + xlab("Donors from CaH + Put Villages") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

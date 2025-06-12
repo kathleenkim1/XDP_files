@@ -1,0 +1,190 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(rhdf5)
+library(dplyr)
+library(qs)
+library(ggplot2)
+```
+
+```{r}
+filtered_merged_caudate = qread("Cellbender_seurat/filtered_merged_caudate_clustered.qs")
+filtered_merged_putamen = qread("Cellbender_seurat/filtered_merged_putamen_clustered.qs")
+
+filtered_merged_caudate
+filtered_merged_putamen
+```
+
+```{r}
+assignCellClasses = function(
+   obj,
+   classes,
+   cluster_col="seurat_clusters",
+   class_col="cell_class") {
+   obj@meta.data[[class_col]] = NA  # Assign NA to the entire column in meta.data
+
+
+   for (i in 1:length(classes)) {
+       # Find cells that match the current cluster number
+       cells = which(as.numeric(obj@meta.data[[cluster_col]]) == i)
+     
+       # Assign the class label to the cells in the cluster
+       obj@meta.data[cells, class_col] = classes[[i]]
+   }
+  
+   # Return the modified object
+   return(obj)
+}
+```
+
+
+```{r}
+classes = c("oligo", "oligo", "astrocyte", "oligo", "microglia", "oligo", "astrocyte", "neuron", "neuron", "astrocyte", "opc", "neuron", "oligo", "endo", "oligo", "ependymal", "oligo", "neuron", "neuron", "immune")
+
+
+filtered_merged_caudate = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.2", class_col = "cell_class")
+
+Idents(filtered_merged_caudate) <- "cell_class"
+DimPlot(filtered_merged_caudate, label = TRUE)
+```
+```{r}
+cells_per_donor = as.data.frame(table(filtered_merged_caudate@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(filtered_merged_caudate@meta.data$cell_class, filtered_merged_caudate@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+```
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+cell_class_df
+```
+
+
+```{r}
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+```
+
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = Freq, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#+
+ # geom_text(data = cell_class_df, aes(x = Var1, y = cell_class_df, label = cell_class_df), 
+#            vjust = -0.3, color = "black", size = 3, inherit.aes = FALSE) +
+ 
+```
+
+
+
+
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-23-068CM","SCF-22-054CM", "SCF-22-058CF", "SCF-20-025", "SCF-18-003",  "SCF_22-043", "SCF_20-024", "SCF-18-004", "SCF-18-006", "SCF-20-023", "SCF-21-030", "PCMC-16-012", "SCF-19-009", "SCF-19-014", "PCMC-16-011", "SCF-19-018")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r}
+cells_per_donor = as.data.frame(table(filtered_merged_putamen@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(filtered_merged_putamen@meta.data$cell_class, filtered_merged_putamen@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+```
+
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-23-068CM","SCF-22-054CM", "SCF-22-058CF",  "SCF-20-025","SCF_22-043","SCF-20-023","SCF-18-003",   "SCF_20-024", "SCF-18-006", "SCF-19-009","SCF-21-030","SCF-19-014", "SCF-18-004", "SCF-19-018","PCMC-16-011","PCMC-16-012")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Putamen Village") + ylab("Number of cells by cell type") + labs(fill = "Cell type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+
+
+```{r}
+head(filtered_merged_caudate@meta.data)
+```
+
+```{r}
+table_for_correlation = as.data.frame(table(filtered_merged_caudate$donor_id))
+table_for_correlation$total_cells = table_for_correlation$Freq
+table_for_correlation$Freq = NULL
+table_for_correlation
+
+```
+
+```{r}
+table_for_correlation = merge(table_for_correlation, median_umis_per_donor$mUMI)
+```
+
+```{r}
+table_for_correlation
+```
+
+
+
+```{r}
+median_umis_per_donor <-filtered_merged_caudate@meta.data %>%
+  group_by(donor_id, cell_class) %>%
+  summarize(mUMI = median(nUmi, na.rm = TRUE))
+
+median_umis_per_donor
+```
+
+
+
+
+
+
+
+
+

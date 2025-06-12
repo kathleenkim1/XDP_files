@@ -1,0 +1,506 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+caudate_sobj = qread("Cellbender_seurat/Bennet_caudate_clean.qs")
+putamen_sobj = qread("Cellbender_seurat/Bennet_putamen_clean.qs")
+
+caudate_sobj
+putamen_sobj
+
+caudate_neurons = qread("Current_subclusters/caudate_neuron.qs")
+putamen_neurons= qread("Current_subclusters/putamen_neuron.qs")
+caudate_neurons
+putamen_neurons
+```
+
+```{r}
+head(caudate_sobj)
+head(caudate_neurons)
+```
+
+```{r}
+caudate_sobj@meta.data$new_cell_class <- caudate_sobj@meta.data$cell_class
+```
+
+```{r}
+caudate_sobj@meta.data
+```
+
+```{r}
+caudate_neurons@meta.data
+caudate_neurons_labels = caudate_neurons@meta.data[, c("cell_class", rownames(caudate_neurons@meta.data))]
+caudate_neurons_labels
+```
+
+
+
+```{r}
+# Example dataframes (replace with your actual dataframes)
+df_original <- data.frame(
+  cell_id = c(1, 2, 3, 4),
+  cell_class = c('A', 'B', 'C', 'D')
+)
+
+df_original
+df_updated <- data.frame(
+  cell_id = c(2, 4),
+  cell_class = c('E', 'F')
+)
+df_updated
+# Update df_original with cell_class from df_updated
+df_original$cell_class[df_original$cell_id %in% df_updated$cell_id] <- 
+  df_updated$cell_class[match(df_original$cell_id, df_updated$cell_id)]
+
+# View the updated dataframe
+print(df_original)
+```
+
+
+```{r}
+# Assume original_seurat and neuron_seurat are your Seurat objects
+# original_seurat: the original Seurat object with all cell types
+# neuron_seurat: the subsetted Seurat object with only neurons and subtypes identified
+
+# Extract the subtype labels from the neuron Seurat object
+neuron_subtypes <- caudate_neurons@meta.data$cell_class  # Adjust 'subtype_label' to the actual column name in your meta data
+
+# Ensure the cell names are the same in both objects
+names(neuron_subtypes) <- colnames(caudate_neurons)
+
+# Create a new column in the original Seurat object meta data for the new cell types
+caudate_sobj@meta.data$new_cell_class <- caudate_sobj@meta.data$cell_class
+
+# Replace the 'neuron' entries with the specific subtypes
+neuron_cells <- names(neuron_subtypes)  # Cells in the neuron Seurat object
+caudate_sobj@meta.data$new_cell_class[neuron_cells] <- neuron_subtypes
+
+# Check the updated meta data
+head(caudate_sobj@meta.data)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+repeats = read.csv("repeat_lengths.csv")
+repeats
+```
+
+```{r}
+updated_metadata = merge(caudate_sobj@meta.data, repeats, by = "donor_id")
+updated_metadata
+```
+
+```{r}
+caudate_sobj@meta.data = updated_metadata
+caudate_sobj@meta.data 
+```
+
+```{r}
+donor_metadata = read.csv("Cellbender_seurat/Donor_metadata_updated.csv")
+donor_metadata
+donor_metadata = merge(donor_metadata, repeats, by.x = "Donor.ID", by.y = "donor_id")
+donor_metadata
+```
+```{r}
+hist(donor_metadata$Repeat_Length, main = "Repeat Lengths", breaks =15, xlab = "Repeat Lengths")
+```
+
+```{r}
+ggplot(donor_metadata, aes(factor(donor_metadata$Repeat_Length), fill = factor(donor_metadata$Condition))) + geom_bar() + xlab("Repeat Length") +
+  ylab("Number of Donors") +
+  labs(fill = "Condition")
+
+ggplot(donor_metadata, aes(factor(donor_metadata$Repeat_Length), fill = factor(donor_metadata$Donor.ID))) + geom_bar() + xlab("Repeat Length") +
+  ylab("Number of Donors") +
+  labs(fill = "Donors")
+```
+
+
+```{r}
+# Fit a linear model
+lm_fit <- lm(Age.of.Onset ~ Repeat_Length, data = donor_metadata)
+
+# Extract the slope (coefficient) and R-squared value
+slope <- coef(lm_fit)[2]
+r_squared <- summary(lm_fit)$r.squared
+p_value <- summary(lm_fit)$coefficients[2, 4] 
+
+ggplot(donor_metadata, aes(x = Repeat_Length, y = Age.of.Onset))+#, color = Donor.ID)) +
+  geom_point(size = 3) +    
+  geom_smooth(method = "lm", se = TRUE,       
+              color = "red", fill = "lightpink", linetype = "dashed") +
+  labs(
+    title = "Repeat Lengths vs Age of Onset",
+    x = "Repeat Lengths)",
+    y = "Age of Onset"
+  ) +
+  theme_minimal() + annotate("text", x = Inf, y = Inf, label = sprintf("Slope: %.2f", slope), 
+           hjust = 1.1, vjust = 2, size = 5, color = "black") +
+  annotate("text", x = Inf, y = Inf, label = sprintf("R^2: %.2f", r_squared), 
+           hjust = 1.1, vjust = 4, size = 5, color = "black") +   
+  annotate("text", x = Inf, y = Inf, label = sprintf("P-value: %0.3f", p_value), 
+           hjust = 1.1, vjust = 6, size = 5, color = "black")
+```
+
+
+```{r}
+cor.test(donor_metadata$Repeat_Length, donor_metadata$Age.of.Onset, method = "spearman")
+cor.test(donor_metadata$Repeat_Length, donor_metadata$Age.of.Death, method = "spearman")
+cor.test(donor_metadata$Repeat_Length, donor_metadata$Disease_duration, method = "spearman")
+```
+
+```{r}
+cells_per_donor = as.data.frame(table(caudate_sobj@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(caudate_sobj@meta.data$cell_class, caudate_sobj@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+#Repeat lengths
+x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+```
+
+```{r}
+cell_class_df = write.csv(cell_class_df, "cell_classes.csv")
+```
+
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportions") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#+facet_wrap(~ Var1)
+```
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+```
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Var1)
+```
+
+#trying other 
+
+```{r}
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+#Repeat lengths
+#x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+#Age of onset
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-21-030", "SCF-19-014", "SCF-18-003", "SCF-19-018", "PCMC-16-012", "SCF-20-023", "SCF_20-024", "SCF-18-004", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011")
+
+#Age of death
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "SCF-19-018", "SCF-18-003", "PCMC-16-012", "SCF-20-023", "SCF-21-030", "SCF_20-024", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011", "SCF-18-004")
+
+#Disease Duration
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "PCMC-16-011", "SCF-20-023", "SCF-20-025", "SCF-18-006", "SCF-19-009", "SCF_22-043", "SCF-19-018", "PCMC-16-012", "SCF_20-024", "SCF-18-003", "SCF-21-030", "SCF-18-004")
+            
+#CAP 
+x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-18-003", "SCF-21-030", "PCMC-16-012", "SCF-19-018", "SCF-19-014", "SCF-18-006", "SCF-18-004", "SCF-20-023", "SCF_20-024", "PCMC-16-011",
+"SCF-19-009", "SCF-20-025", "SCF_22-043")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportions") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+#+facet_wrap(~ Var1)
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Var1)
+```
+
+
+
+#for tmr: do this
+#make plot of repeat length + proprtions
+```{r}
+caudate_neuron = qread("UPDATED_caudate_neuron_subclustered.qs")
+putamen_neuron= qread("UPDATED_caudate_neuron_subclustered.qs")
+```
+
+```{r}
+unique(caudate_neuron$cell_class)
+```
+
+```{r}
+caudate_neuron@meta.data$general_class = caudate_neuron@meta.data$cell_class
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_1"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_2"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_matrix_1"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "D2_SPN_matrix_1"] = "D2_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "SPN"] = "SPN (unlabeled)"
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_2"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "D2_SPN_1"] = "D2_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_3"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_matrix_2"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_patch"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_1"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "eSPN"] = "eSPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_5"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "cholinergic"] = "cholinergic"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_4"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_6"] = "interneuron"
+
+caudate_neuron@meta.data
+```
+
+```{r}
+cells_per_donor = as.data.frame(table(caudate_neuron@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(caudate_neuron@meta.data$general_class, caudate_neuron@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportion") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+```
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+     geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Var1)
+```
+
+
+```{r}
+caudate_neuron@meta.data$sub_class = caudate_neuron@meta.data$cell_class
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_1"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_2"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_matrix_1"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D2_SPN_matrix_1"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "SPN"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_2"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D2_SPN_1"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_3"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_matrix_2"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_patch"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_1"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "eSPN"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_5"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "cholinergic"] = "cholinergic"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_4"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_6"] = "interneuron"
+
+caudate_neuron@meta.data
+```
+
+
+```{r}
+cells_per_donor = as.data.frame(table(caudate_neuron@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(caudate_neuron@meta.data$sub_class, caudate_neuron@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+```
+
+
+```{r}
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+#Repeat Length
+#x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+#Age of onset
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-21-030", "SCF-19-014", "SCF-18-003", "SCF-19-018", "PCMC-16-012", "SCF-20-023", "SCF_20-024", "SCF-18-004", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011")
+
+#Age of death
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "SCF-19-018", "SCF-18-003", "PCMC-16-012", "SCF-20-023", "SCF-21-030", "SCF_20-024", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011", "SCF-18-004")
+
+#Disease Duration
+x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "PCMC-16-011", "SCF-20-023", "SCF-20-025", "SCF-18-006", "SCF-19-009", "SCF_22-043", "SCF-19-018", "PCMC-16-012", "SCF_20-024", "SCF-18-003", "SCF-21-030", "SCF-18-004")
+            
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportion") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+     geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Var1)
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  + facet_wrap(~ Var1)
+```
+
+
+
+#new 
+```{r}
+cell_class_df = read.csv("cell_classes_df.csv")
+cell_class_df
+```
+
+
+```{r}
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+#x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+#Disease Duration
+x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "PCMC-16-011", "SCF-20-023", "SCF-20-025", "SCF-18-006", "SCF-19-009", "SCF_22-043", "SCF-19-018", "PCMC-16-012", "SCF_20-024", "SCF-18-003", "SCF-21-030", "SCF-18-004")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportion") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Var1)
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  + facet_wrap(~ Var1)
+```
+

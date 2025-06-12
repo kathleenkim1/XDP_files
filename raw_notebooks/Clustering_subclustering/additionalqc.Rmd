@@ -1,0 +1,659 @@
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+head(filtered_merged_caudate@meta.data)
+```
+
+
+```{r}
+table(filtered_merged_caudate$donor_id, filtered_merged_caudate$cell_class)
+```
+
+
+```{r}
+caudate_cell_types = as.data.frame(table(filtered_merged_caudate$donor_id, filtered_merged_caudate$cell_class))
+caudate_cell_types
+```
+
+```{r}
+cell_types = c("astrocyte", "endothelial", "ependymal" , "immune", "interneuron", "microglia", "oligo", "opc", "SPN")
+caudate_cells_df= caudate_cell_types %>% filter(caudate_cell_types$Var2 == "astrocyte")
+caudate_cells_df[["temp"]] = caudate_cells_df$Freq
+caudate_cells_df$Var2 =NULL
+caudate_cells_df$Freq = NULL
+caudate_cells_df$temp = NULL
+
+for(cells in cell_types){
+  temp_df= caudate_cell_types %>% filter(caudate_cell_types$Var2 == cells)
+  temp_df[[paste(cells, "cells", sep = "_")]] = temp_df$Freq
+  temp_df$Var2 =NULL
+  temp_df$Freq = NULL
+  caudate_cells_df = merge(caudate_cells_df, temp_df, by.x = "Var1", by.y = "Var1")
+}
+
+
+#caudate_cells_df$neuron_cells = rowSums(caudate_cells_df[, c("interneuron_cells", "SPN_cells")]) 
+caudate_cells_df$total_cells = rowSums(caudate_cells_df[, c("astrocyte_cells", "endothelial_cells", "ependymal_cells", "immune_cells", "interneuron_cells", "microglia_cells", "oligo_cells", "opc_cells", "SPN_cells")]) 
+caudate_cells_df
+```
+
+```{r}
+names(caudate_cells_df)[names(caudate_cells_df) == "Var1"] ="Donor"
+caudate_cells_df
+
+table_grob = tableGrob(caudate_cells_df)
+ggsave("outputs/caudate_cells.png", table_grob, width = 18, height = 6, dpi = 300)
+```
+
+#Nafiseh wanted controls together and age of death, cause of death, symptoms at death, max 3 as green, min 3 as yellow
+
+
+```{r}
+donor_metadata = read.csv("Cellbender_seurat/Donor_metadata_updated.csv")
+donor_metadata
+```
+
+```{r}
+caudate_cells_df
+```
+
+
+```{r}
+caudate_cells_df_new = merge(caudate_cells_df, donor_metadata[, c("Donor.ID", "Age.of.Onset", "Age.of.Death", "Disease_duration", "Immediate.Cause.of.Death", "Antecedent.Cause.of.Death")], by.x= "Donor", by.y = "Donor.ID")
+ 
+caudate_cells_df_new
+```
+```{r}
+caudate_cells_df_new$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", caudate_cells_df_new$Donor), "control", "XDP")
+caudate_cells_df_new
+
+caudate_cells_df_new<- caudate_cells_df_new %>% arrange(desc(condition))
+caudate_cells_df_new
+
+write.csv(caudate_cells_df_new, "caudate_cells_df_new.csv")
+```
+
+```{r}
+#cant save as color soooo
+#library(gridExtra)
+#table_grob = tableGrob(caudate_cells_df_new)
+#ggsave("outputs/caudate_cells_new.png", table_grob, width = 40, height = 6, dpi = 300)
+```
+
+
+
+
+
+
+
+```{r}
+ggplot(caudate_cells_df, aes(x=Donor, y = cells,fill=Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = astrocyte_cells), vjust = -0.3, color = "black", size = 3) + xlab("Donors from Caudate Village") + ylab("Number of Astrocyte Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+```{r}
+cell_type_barplot = function(data, x, y, label, xlab, ylab,title){
+
+median_cells = median(y)
+
+ggplot(data, aes(x=x, y = y,fill=caudate_cells_df$Donor)) + geom_bar(stat = "identity")+ geom_text(aes(label = label), vjust = -0.3, color = "black", size = 3) + xlab(xlab) + ylab(ylab) + theme(axis.text.x = element_text(angle = 45, hjust = 1))+ labs(fill = "Donor") + geom_hline(yintercept = median_cells, linetype = "dashed", color = "black") + ggtitle(label = title, subtitle = paste("Median: ", sprintf("%0.2f",median_cells))) +geom_vline(xintercept =  4.5, linetype = "solid", color = "black")
+
+#added sprintf("%0.2f" for propotions
+}
+```
+
+
+```{r}
+caudate_cells_df$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", caudate_cells_df$Donor), "control", "XDP")
+caudate_cells_df
+
+caudate_cells_df<- caudate_cells_df %>% arrange(desc(condition))
+```
+```{r}
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+caudate_cells_df$Donor = factor(caudate_cells_df$Donor, levels = x_order)
+```
+
+
+```{r}
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor, caudate_cells_df$astrocyte_cells, caudate_cells_df$astrocyte_cells, "Donors from Caudate Village", "Number of Astrocytes Cells","Astrocytes")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$endothelial_cells, caudate_cells_df$endothelial_cells, "Donors from Caudate Village", "Number of Endothelial Cells", "Endothelial")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$ependymal_cells, caudate_cells_df$ependymal_cells, "Donors from Caudate Village", "Number of Ependymal Cells", "Ependymal")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$immune_cells, caudate_cells_df$immune_cells, "Donors from Caudate Village", "Number of Immune Cells", "Immune")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$interneuron_cells, caudate_cells_df$interneuron_cells, "Donors from Caudate Village", "Number of Interneuron Cells", "Interneuron")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$microglia_cells, caudate_cells_df$microglia_cells, "Donors from Caudate Village", "Number of Microglia Cells", "Microglia")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$oligo_cells, caudate_cells_df$oligo_cells, "Donors from Caudate Village", "Number of Oligo Cells", "Oligo")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$opc_cells, caudate_cells_df$opc_cells, "Donors from Caudate Village", "Number of OPC Cells", "OPC")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,caudate_cells_df$SPN_cells, caudate_cells_df$SPN_cells, "Donors from Caudate Village", "Number of SPN Cells", "SPN")
+```
+
+```{r}
+putamen_cells_df
+```
+
+```{r}
+putamen_cells_df$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", putamen_cells_df$Donor), "control", "XDP")
+putamen_cells_df
+
+putamen_cells_df<- putamen_cells_df %>% arrange(desc(condition))
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+putamen_cells_df$Donor = factor(putamen_cells_df$Donor, levels = x_order)
+```
+
+
+```{r}
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor, putamen_cells_df$astrocyte_cells, putamen_cells_df$astrocyte_cells, "Donors from Putamen Village", "Number of Astrocytes Cells","Astrocytes")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$endo_cells, putamen_cells_df$endo_cells, "Donors from Putamen Village", "Number of Endothelial Cells", "Endothelial")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$glutamatergic_cells, putamen_cells_df$glutamatergic_cells, "Donors from Putamen Village", "Number of Glutamatergic Cells", "Glutamatergic")
+
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$interneuron_cells, putamen_cells_df$interneuron_cells, "Donors from Putamen Village", "Number of Interneuron Cells", "Interneuron")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$microglia_cells, putamen_cells_df$microglia_cells, "Donors from Putamen Village", "Number of Microglia Cells", "Microglia")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$oligo_cells, putamen_cells_df$oligo_cells, "Donors from Putamen Village", "Number of Oligo Cells", "Oligo")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$opc_cells, putamen_cells_df$opc_cells, "Donors from Putamen Village", "Number of OPC Cells", "OPC")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,putamen_cells_df$SPN_cells, putamen_cells_df$SPN_cells, "Donors from Putamen Village", "Number of SPN Cells", "SPN")
+```
+#graphs by proportions
+```{r}
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor, (caudate_cells_df$astrocyte_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$astrocyte_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "Astrocytes Cells Proportions","Astrocytes")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,(caudate_cells_df$endothelial_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$endothelial_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "Endothelial Cells Proportions", "Endothelial")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor, (caudate_cells_df$ependymal_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$ependymal_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "Ependymal Cells Proportions", "Ependymal")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor, (caudate_cells_df$immune_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$immune_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "Immune Cells Proportions", "Immune")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor, (caudate_cells_df$interneuron_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$interneuron_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "Interneuron Cells Proportions", "Interneuron")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor, (caudate_cells_df$microglia_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$microglia_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "Microglia Cells Proportions", "Microglia")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor, (caudate_cells_df$oligo_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$oligo_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "Oligo Cells Proportions", "Oligo")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,(caudate_cells_df$opc_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$opc_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "OPC Cells Proportions", "OPC")
+
+cell_type_barplot(caudate_cells_df,caudate_cells_df$Donor,(caudate_cells_df$SPN_cells/caudate_cells_df$total_cells), sprintf("%0.2f", (caudate_cells_df$SPN_cells/caudate_cells_df$total_cells)), "Donors from Caudate Village", "SPN Cells Proportions", "SPN")
+
+
+
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor, (putamen_cells_df$astrocyte_cells/putamen_cells_df$total_cells), sprintf("%0.2f", (putamen_cells_df$astrocyte_cells/putamen_cells_df$total_cells)), "Donors from Putamen Village", "Astrocytes Cells Proportions","Astrocytes")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor, (putamen_cells_df$endo_cells/putamen_cells_df$total_cells), sprintf("%0.2f", (putamen_cells_df$endo_cells/putamen_cells_df$total_cells)), "Donors from Putamen Village", "Endothelial Cells Proportions", "Endothelial")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,(putamen_cells_df$glutamatergic_cells/putamen_cells_df$total_cells), sprintf("%0.2f", (putamen_cells_df$glutamatergic_cells/putamen_cells_df$total_cells)), "Donors from Putamen Village", "Glutamatergic Cells Proportions", "Glutamatergic")
+
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,(putamen_cells_df$interneuron_cells/putamen_cells_df$total_cells), sprintf("%0.2f", (putamen_cells_df$interneuron_cells/putamen_cells_df$total_cells)), "Donors from Putamen Village", "Interneuron Cells Proportions", "Interneuron")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,(putamen_cells_df$microglia_cells/putamen_cells_df$total_cells), sprintf("%0.2f", (putamen_cells_df$microglia_cells/putamen_cells_df$total_cells)), "Donors from Putamen Village", "Microglia Cells Proportions", "Microglia")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,(putamen_cells_df$oligo_cells/putamen_cells_df$total_cells), sprintf("%0.2f", (putamen_cells_df$oligo_cells/putamen_cells_df$total_cells)), "Donors from Putamen Village", "Oligo Cells Proportions", "Oligo")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,(putamen_cells_df$opc_cells/putamen_cells_df$total_cells), sprintf("%0.2f", (putamen_cells_df$opc_cells/putamen_cells_df$total_cells)), "Donors from Putamen Village", "OPC Cells Proportions", "OPC")
+
+cell_type_barplot(putamen_cells_df,putamen_cells_df$Donor,(putamen_cells_df$SPN_cells/putamen_cells_df$total_cells), sprintf("%0.2f", (putamen_cells_df$SPN_cells/putamen_cells_df$total_cells)),"Donors from Putamen Village", "SPN Cells Proportions", "SPN")
+```
+
+
+
+
+
+
+
+```{r}
+
+#total_donors_cells_caudate$Var1 <- factor(total_donors_cells_caudate$Var1, levels = #total_donors_cells_caudate$Var1[order(total_donors_cells_caudate$Freq, decreasing = TRUE)])
+
+#ggplot(caudate_cells_df, aes(x=caudate_cells_df$Donor, y = caudate_cells_df$astrocyte_cells, fill=caudate_cells_df$Donor)) + geom_point(shape = 21, size = 3)+ xlab("Donors") + ylab("Number of Cells") + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + ylim(0, 2500)
+```
+
+
+
+#putamen
+```{r}
+table(filtered_merged_putamen$donor_id, filtered_merged_putamen$cell_class)
+```
+
+```{r}
+putamen_cell_types = as.data.frame(table(filtered_merged_putamen$donor_id, filtered_merged_putamen$cell_class))
+putamen_cell_types
+
+cell_types = c("astrocyte", "endo", "glutamatergic" , "interneuron", "microglia", "oligo", "opc", "SPN")
+putamen_cells_df= putamen_cell_types %>% filter(putamen_cell_types$Var2 == "astrocyte")
+putamen_cells_df[["temp"]] = putamen_cells_df$Freq
+putamen_cells_df$Var2 =NULL
+putamen_cells_df$Freq = NULL
+putamen_cells_df$temp = NULL
+
+for(cells in cell_types){
+  temp_df= putamen_cell_types %>% filter(putamen_cell_types$Var2 == cells)
+  temp_df[[paste(cells, "cells", sep = "_")]] = temp_df$Freq
+  temp_df$Var2 =NULL
+  temp_df$Freq = NULL
+  putamen_cells_df = merge(putamen_cells_df, temp_df, by.x = "Var1", by.y = "Var1")
+}
+
+
+#putamen_cells_df$neuron_cells = rowSums(putamen_cells_df[, c("interneuron_cells", "SPN_cells")]) 
+putamen_cells_df$total_cells = rowSums(putamen_cells_df[, c("astrocyte_cells", "endo_cells", "glutamatergic_cells", "interneuron_cells", "microglia_cells", "oligo_cells", "opc_cells", "SPN_cells")]) 
+putamen_cells_df
+
+names(putamen_cells_df)[names(putamen_cells_df) == "Var1"] ="Donor"
+putamen_cells_df
+
+table_grob = tableGrob(putamen_cells_df)
+ggsave("outputs/putamen_cells.png", table_grob, width = 18, height = 6, dpi = 300)
+```
+
+#Nafiseh wanted controls together and age of death, cause of death, symptoms at death, max 3 as green, min 3 as yellow
+
+```{r}
+putamen_cells_df_new = merge(putamen_cells_df, donor_metadata[, c("Donor.ID", "Age.of.Onset", "Age.of.Death", "Disease_duration", "Immediate.Cause.of.Death", "Antecedent.Cause.of.Death")], by.x= "Donor", by.y = "Donor.ID")
+ 
+putamen_cells_df_new
+
+putamen_cells_df_new$condition = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", putamen_cells_df_new$Donor), "control", "XDP")
+putamen_cells_df_new
+
+putamen_cells_df_new<- putamen_cells_df_new %>% arrange(desc(condition))
+putamen_cells_df_new
+
+write.csv(putamen_cells_df_new, "putamen_cells_df_new.csv")
+table_grob = tableGrob(putamen_cells_df_new)
+ggsave("outputs/putamen_cells_new.png", table_grob, width = 40, height = 6, dpi = 300)
+```
+
+
+
+
+
+```{r}
+head(filtered_merged_caudate@meta.data)
+```
+
+
+```{r}
+#totalcells
+cells_per_library = as.data.frame(table(filtered_merged_caudate@meta.data$library))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+mean_nUmi = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_UMI = mean(nUmi, na.rm = TRUE))
+mean_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+mean_nGenes = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_nGenes = mean(nFeature_RNA, na.rm = TRUE))
+mean_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+mean_reads_per_umi = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_reads_per_umi = mean((nRead/nUmi), na.rm = TRUE))
+mean_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+mean_pct_intronic = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_pct_intronic = mean(pct_intronic, na.rm = TRUE))
+mean_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+mean_pct_mito = filtered_merged_caudate@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_pct_mito = mean(pct_mito, na.rm = TRUE))
+mean_pct_mito
+```
+
+
+```{r}
+#library(purrr)
+caudate_library_qc_df_list = list(cells_per_library, median_nUmi, mean_nUmi, median_nGenes, mean_nGenes, median_reads_per_umi, mean_reads_per_umi,median_pct_intronic, mean_pct_intronic, median_pct_mito, mean_pct_mito)
+caudate_library_qc_df = reduce(caudate_library_qc_df_list, left_join, by = "library")
+caudate_library_qc_df
+```
+
+```{r}
+table_grob = tableGrob(caudate_library_qc_df)
+ggsave("outputs/caudate_library_qc_df.png", table_grob, width = 20, height = 4, dpi = 300)
+```
+
+
+#putamen
+```{r}
+head(filtered_merged_putamen@meta.data)
+#totalcells
+cells_per_library = as.data.frame(table(filtered_merged_putamen@meta.data$library))
+names(cells_per_library)[names(cells_per_library) == "Var1"] ="library"
+names(cells_per_library)[names(cells_per_library) == "Freq"] ="total_cells"
+cells_per_library  
+
+#median/mean nUMI
+median_nUmi = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_UMI = median(nUmi, na.rm = TRUE))
+median_nUmi
+
+mean_nUmi = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_UMI = mean(nUmi, na.rm = TRUE))
+mean_nUmi
+
+#median/mean nGenes
+median_nGenes = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_nGenes = median(nFeature_RNA, na.rm = TRUE))
+median_nGenes
+
+mean_nGenes = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_nGenes = mean(nFeature_RNA, na.rm = TRUE))
+mean_nGenes
+
+#median/mean reads/numi
+median_reads_per_umi = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_reads_per_umi = median((nRead/nUmi), na.rm = TRUE))
+median_reads_per_umi
+
+mean_reads_per_umi = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_reads_per_umi = mean((nRead/nUmi), na.rm = TRUE))
+mean_reads_per_umi
+
+#median/mean pctintronic
+median_pct_intronic = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_intronic = median(pct_intronic, na.rm = TRUE))
+median_pct_intronic
+
+mean_pct_intronic = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_pct_intronic = mean(pct_intronic, na.rm = TRUE))
+mean_pct_intronic
+
+#median/mean pctmito
+median_pct_mito = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(median_pct_mito = median(pct_mito, na.rm = TRUE))
+median_pct_mito
+
+mean_pct_mito = filtered_merged_putamen@meta.data %>%
+  group_by(library) %>%
+  summarize(mean_pct_mito = mean(pct_mito, na.rm = TRUE))
+mean_pct_mito
+
+putamen_library_qc_df_list = list(cells_per_library, median_nUmi, mean_nUmi, median_nGenes, mean_nGenes, median_reads_per_umi, mean_reads_per_umi,median_pct_intronic, mean_pct_intronic, median_pct_mito, mean_pct_mito)
+putamen_library_qc_df = reduce(putamen_library_qc_df_list, left_join, by = "library")
+putamen_library_qc_df
+
+table_grob = tableGrob(putamen_library_qc_df)
+ggsave("outputs/putamen_library_qc_df.png", table_grob, width = 20, height = 4, dpi = 300)
+```
+
+```{r}
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = data, aes(x =x, y = y,  color = id)) + 
+  geom_point() +  labs(x=xlabel , y= ylabel) + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle(title, subtitle = subtitle) + scale_color_discrete(name = legendname)
+```
+
+
+```{r}
+histogram_library = function(data, metric, title, xlab, ylab, binwidth){
+
+ggplot(data, aes(x = metric)) +
+  geom_histogram(binwidth = binwidth, fill = "blue", alpha = 0.7) +
+  facet_wrap(~library) +
+  labs(title = title,
+       x = xlab,
+       y = ylab) + 
+  theme_minimal()
+}
+```
+
+
+```{r}
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$nUmi, "Histogram of nUMIs per Library", "Number of UMIs", "Frequency", 500)
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$nFeature_RNA, "Histogram of nGenes per Library", "Number of Genes", "Frequency",100)
+histogram_library(filtered_merged_caudate@meta.data, (filtered_merged_caudate@meta.data$nRead/filtered_merged_caudate@meta.data$nUmi), "Histogram of reads/UMI per Library", "Reads/UMI", "Frequency",0.05)
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$pct_intronic, "Histogram of pct intronic per Library", "pct intronic", "Frequency",0.05)
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$pct_mito, "Histogram of pct mito per Library", "pct mitochondrial", "Frequency",0.5)
+
+
+```
+```{r}
+histogram_library(filtered_merged_putamen@meta.data, filtered_merged_putamen@meta.data$nUmi, "Histogram of nUMIs per Library", "Number of UMIs", "Frequency", 500)
+histogram_library(filtered_merged_putamen@meta.data, filtered_merged_putamen@meta.data$nFeature_RNA, "Histogram of nGenes per Library", "Number of Genes", "Frequency",100)
+histogram_library(filtered_merged_putamen@meta.data, (filtered_merged_putamen@meta.data$nRead/filtered_merged_putamen@meta.data$nUmi), "Histogram of reads/UMI per Library", "Reads/UMI", "Frequency",0.05)
+histogram_library(filtered_merged_putamen@meta.data, filtered_merged_putamen@meta.data$pct_intronic, "Histogram of pct intronic per Library", "pct intronic", "Frequency",0.05)
+histogram_library(filtered_merged_putamen@meta.data, filtered_merged_putamen@meta.data$pct_mito, "Histogram of pct mito per Library", "pct mitochondrial", "Frequency",0.5)
+
+```
+
+```{r}
+histogram_library(filtered_merged_caudate@meta.data, filtered_merged_caudate@meta.data$nUmi, "Histogram of nUMIs per Library", "Number of UMIs", "Frequency", 500)
+```
+
+```{r}
+head(filtered_merged_caudate@meta.data)
+```
+
+#plot donor histograms
+
+```{r}
+histogram_donors = function(data, metric, title, xlab, ylab, binwidth){
+
+ggplot(data, aes(x = metric)) +
+  geom_histogram(binwidth = binwidth, fill = "blue", alpha = 0.7) +
+  facet_wrap(~donor_id) +
+  labs(title = title,
+       x = xlab,
+       y = ylab) + 
+  theme_minimal()
+}
+```
+
+
+```{r}
+histogram_donors(filtered_merged_caudate@meta.data, log10(filtered_merged_caudate@meta.data$nUmi), "Histogram of log10(nUMIs) per Donor", "Log10(UMIs)", "Frequency", 0.1)
+
+histogram_donors(filtered_merged_caudate@meta.data, log10(filtered_merged_caudate@meta.data$pct_intronic), "Histogram of log10(pct intronic) per Donor", "Log10(pct_intronic)", "Frequency", 0.03)
+
+histogram_donors(filtered_merged_caudate@meta.data, log10(filtered_merged_caudate@meta.data$pct_mito), "Histogram of log10(pct mitochondrial) per Donor", "Log10(pct_mito)", "Frequency", 0.3)
+
+```
+
+```{r}
+histogram_donors(filtered_merged_putamen@meta.data, log10(filtered_merged_putamen@meta.data$nUmi), "Histogram of log10(nUMIs) per Donor", "Log10(UMIs)", "Frequency", 0.1)
+
+histogram_donors(filtered_merged_putamen@meta.data, log10(filtered_merged_putamen@meta.data$pct_intronic), "Histogram of log10(pct intronic) per Donor", "Log10(pct_intronic)", "Frequency", 0.03)
+
+histogram_donors(filtered_merged_putamen@meta.data, log10(filtered_merged_putamen@meta.data$pct_mito), "Histogram of log10(pct mitochondrial) per Donor", "Log10(pct_mito)", "Frequency", 0.3)
+```
+
+
+
+#pct intronic vs log10 numis
+```{r}
+ggplot(filtered_merged_caudate@meta.data, aes(x = filtered_merged_caudate@meta.data$pct_intronic, y = log10(filtered_merged_caudate@meta.data$nUmi), color = donor_id)) +
+  facet_wrap(~library)+
+  geom_point(alpha = 0.2) + 
+  labs(title = "CaH: Pct intronic vs log10(nUMIs)",
+       x = "Pct intronic",
+       y = "log10(nUMIs)") +
+  theme_minimal()
+
+ggplot(filtered_merged_putamen@meta.data, aes(x = filtered_merged_putamen@meta.data$pct_intronic, y = log10(filtered_merged_putamen@meta.data$nUmi), color = donor_id)) +
+  facet_wrap(~library)+
+  geom_point(alpha = 0.2) + 
+  labs(title = "Put: Pct intronic vs log10(nUMIs)",
+       x = "Pct intronic",
+       y = "log10(nUMIs)") +
+  theme_minimal()
+```
+
+```{r}
+table(filtered_merged_caudate$Condition, filtered_merged_caudate$cell_class)
+```
+
+
+```{r}
+caudate_cells_df 
+```
+
+```{r}
+caudate_cells_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", caudate_cells_df$Donor), "control", "XDP")
+caudate_cells_df
+```
+
+```{r}
+caudate_cells_df$SPN_proportion = caudate_cells_df$SPN_cells/caudate_cells_df$total_cells
+caudate_cells_df
+```
+
+
+```{r}
+FeaturePlot(filtered_merged_caudate, features = c("DRD1", "DRD2"))
+FeaturePlot(filtered_merged_caudate, features = c("EPHA4", "SEMA3E"))
+```
+
+
+
+```{r}
+classes = c("oligo", "oligo", "oligo", "microglia", "oligo", "oligo", "astrocyte", "astrocyte", "astrocyte", "astrocyte", "SPN-D2", "opc", "oligo", "SPN-D1", "SPN-D2", "interneuron", "oligo", "oligo", "endothelial", "ependymal", "oligo", "interneuron", "interneuron", "astrocyte", "immune", "oligo")
+
+#neuron6-interneuorn?
+#neuorn1-3- SPN?
+#4-5- interneuorn?
+
+filtered_merged_caudate_sub = assignCellClasses(filtered_merged_caudate, classes=classes, cluster_col="RNA_snn_res.0.5", class_col = "cell_class")
+
+Idents(filtered_merged_caudate_sub) <- "cell_class"
+DimPlot(filtered_merged_caudate_sub, label = TRUE)
+```
+#subset just neurons by creating separate seurat object, redo finding variable genes and scaling 
+# remove doublets -- look for clusters with high Oligo / MG / Astro genes
+# feature plots of genes evan mentioned, as well as drd1 and 2, and of pct mito, log10_nUMI, GAPDH, UBB, TUBB2A
+#plot umaps of every donor using for loop
+#MASC analysis?
+#after subclustering - what are the marker genes for these subclusters? run Findallmarkers, look for genes that are highly enriched (high log) and low pct2 (expressing outside the cluster)
+# Stretch goal: make pseudocells, run differential expression, GSEA (gene set enrichment analysis)
+
+
+# Bennett will attempt to perform label transfer on non-neuronal cells to labels from Sten Lennarson dataset
+# Bennett will remove doublets from caudate and putamen and share objects on GS
+# Bennett will share MASC code 
+# Bennett will share pseudocell code (if necessary)
+# Bennett will share DE code (if necessary)
+# Bennett will share GSEA code (if necessary)
+
+
+```{r}
+table(Idents(filtered_merged_caudate_sub), filtered_merged_caudate_sub@meta.data$donor_id)
+```
+
+
+```{r}
+table(filtered_merged_caudate_sub@meta.data$cell_class, filtered_merged_caudate_sub@meta.data$donor_id)
+```
+
+
+
+
+
+
+```{r}
+spearman_plot_donors = function(data,x,y,xlabel, ylabel, title){
+  
+
+cortest <- cor.test(x, y, method = "spearman", exact = FALSE )
+cortest
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = data, aes(x =x, y = y)) +  facet_wrap(~donor_id)+
+  geom_point(alpha = 0.4) +  labs(x=xlabel , y= ylabel) + geom_smooth(method = "lm", se = FALSE, color = "red") + ggtitle(label= title, subtitle = subtitle)
+
+}
+```
+
+
+
+```{r}
+cor.test(log10(filtered_merged_caudate@meta.data$nUmi), filtered_merged_caudate@meta.data$pct_intronic, method = "spearman", exact = FALSE)
+spearman_plot_donors(filtered_merged_caudate@meta.data, log10(filtered_merged_caudate@meta.data$nUmi), filtered_merged_caudate@meta.data$pct_intronic, "log10(nUMI)", "pct intronic", "Caudate: log10(nUMI) vs pct intronic")
+
+
+
+cor.test(log10(filtered_merged_putamen@meta.data$nUmi), filtered_merged_putamen@meta.data$pct_intronic, method = "spearman", exact = FALSE)
+spearman_plot_donors(filtered_merged_putamen@meta.data, log10(filtered_merged_putamen@meta.data$nUmi), filtered_merged_putamen@meta.data$pct_intronic, "log10(nUMI)", "pct intronic", "Putamen: log10(nUMI) vs pct intronic")
+
+```
+```{r}
+cor.test(log10(filtered_merged_caudate@meta.data$nUmi), filtered_merged_caudate@meta.data$pct_mito, method = "spearman", exact = FALSE)
+spearman_plot_donors(filtered_merged_caudate@meta.data, log10(filtered_merged_caudate@meta.data$nUmi), filtered_merged_caudate@meta.data$pct_mito, "log10(nUMI)", "pct mitochondrial", "Caudate: log10(nUMI) vs pct mitochondrial")
+
+
+
+cor.test(log10(filtered_merged_putamen@meta.data$nUmi), filtered_merged_putamen@meta.data$pct_mito, method = "spearman", exact = FALSE)
+spearman_plot_donors(filtered_merged_putamen@meta.data, log10(filtered_merged_putamen@meta.data$nUmi), filtered_merged_putamen@meta.data$pct_mito, "log10(nUMI)", "pct mitochondrial", "Putamen: log10(nUMI) vs pct mitochondrial")
+
+```
+
+```{r}
+
+```
+
+
+

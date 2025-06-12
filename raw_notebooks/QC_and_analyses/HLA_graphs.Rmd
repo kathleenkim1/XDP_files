@@ -1,0 +1,1050 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+caudate_sobj = qread("Cellbender_seurat/Bennet_caudate_clean.qs")
+putamen_sobj = qread("Cellbender_seurat/Bennet_putamen_clean.qs")
+
+caudate_sobj
+putamen_sobj
+```
+
+#	Plot cause of death and hla
+```{r}
+donor_metadata = read.csv("Cellbender_seurat/Donor_metadata_updated.csv")
+donor_metadata
+
+donor_metadata$death_category = c("Other", "Other", "Infection", "Infection", "Other","Infection", "Other", "Other", "Other", "Other", "Infection", "Infection","Other", "Other", "Infection", "Other","Other")
+donor_metadata
+```
+#GET counts for all HLA and add up
+```{r}
+seurat_obj = caudate_sobj
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("HLA-A", "HLA-B", "HLA-C", "HLA-F", "B2M")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+#sum up the 5 genes
+expr_data
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data
+
+
+summarized_expr_data_per_donor <- summarized_expr_data %>%
+  group_by(donor_id) %>%
+  summarize(total_expression = sum(total_expression, na.rm = TRUE))
+
+# View the result
+summarized_expr_data_per_donor
+
+caudate_total_HLA = summarized_expr_data_per_donor
+
+```
+
+
+```{r}
+caudate_total_HLA <- caudate_total_HLA %>%
+  left_join(donor_metadata %>% select(Donor.ID, death_category), by = c("donor_id" = "Donor.ID"))
+
+# View the result
+print(caudate_total_HLA)
+
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+            
+caudate_total_HLA$donor_id = factor(caudate_total_HLA$donor_id, levels = x_order)
+
+ggplot(caudate_total_HLA, aes(x = donor_id, y = total_expression, fill = death_category)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("HLA total counts") + labs(fill = "Cause of Death")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+```
+#putamen
+```{r}
+seurat_obj = putamen_sobj
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("HLA-A", "HLA-B", "HLA-C", "HLA-F", "B2M")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+#sum up the 5 genes
+expr_data
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data
+
+
+summarized_expr_data_per_donor <- summarized_expr_data %>%
+  group_by(donor_id) %>%
+  summarize(total_expression = sum(total_expression, na.rm = TRUE))
+
+# View the result
+summarized_expr_data_per_donor
+
+putamen_total_HLA = summarized_expr_data_per_donor
+
+```
+
+
+```{r}
+putamen_total_HLA <- putamen_total_HLA %>%
+  left_join(donor_metadata %>% select(Donor.ID, death_category), by = c("donor_id" = "Donor.ID"))
+
+# View the result
+print(putamen_total_HLA)
+
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+            
+putamen_total_HLA$donor_id = factor(putamen_total_HLA$donor_id, levels = x_order)
+
+ggplot(putamen_total_HLA, aes(x = donor_id, y = total_expression, fill = death_category)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("HLA total counts") + labs(fill = "Cause of Death")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+```
+
+```{r}
+HLA_merge_counts = merge(caudate_total_HLA, putamen_total_HLA, by = "donor_id")
+HLA_merge_counts
+```
+
+```{r}
+spearman_plot_donors = function(data,x,y, color, xlabel, ylabel, title){
+  
+
+cortest <- cor.test(x, y, method = "spearman", exact = FALSE )
+cortest
+cor <- cortest$estimate
+pvalue <- cortest$p.value
+subtitle <- paste("Spearman correlation: ", sprintf("%0.3f", cor), " R^2: ", sprintf("%0.3f", cor^2), " p-value: ", sprintf("%0.4f", pvalue))
+
+ggplot(data = data, aes(x =x, y = y, color = color)) + geom_point()  +labs(x=xlabel , y= ylabel) + geom_smooth(method = "lm", se = FALSE, color = "black") + ggtitle(label= title, subtitle = subtitle)
+
+}
+```
+
+
+```{r}
+spearman_plot_donors(HLA_merge_counts, HLA_merge_counts$total_expression.x, HLA_merge_counts$total_expression.y, "Caudate HLA Counts", "Putamen HLA counts", "CaH vs Put HLA Counts")
+                     
+```
+
+#try to make a function
+#GET counts for all HLA and add up
+```{r}
+HLA_counts = function(seurat_obj){
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("HLA-A", "HLA-B", "HLA-C", "HLA-F", "B2M")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+#sum up the 5 genes
+expr_data
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+# Assuming your data frame is named expr_data_long
+expr_data_long
+# Count the number of occurrences for each gene per donor
+
+summarized_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(total_expression = sum(expression), .groups = 'drop')
+summarized_expr_data
+
+
+summarized_expr_data_per_donor <- summarized_expr_data %>%
+  group_by(donor_id) %>%
+  summarize(total_expression = sum(total_expression, na.rm = TRUE))
+
+# View the result
+summarized_expr_data_per_donor
+
+caudate_total_HLA = summarized_expr_data_per_donor
+
+caudate_total_HLA <- caudate_total_HLA %>%
+  left_join(donor_metadata %>% select(Donor.ID, death_category), by = c("donor_id" = "Donor.ID"))
+
+# View the result
+print(caudate_total_HLA)
+}
+```
+
+
+```{r}
+HLA_BY_CELLTYPE = function(caudate_sobj, putamen_sobj, cell_type){
+
+caudate_total_HLA = HLA_counts(caudate_sobj)
+caudate_total_HLA
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+            
+caudate_total_HLA$donor_id = factor(caudate_total_HLA$donor_id, levels = x_order)
+
+print(ggplot(caudate_total_HLA, aes(x = donor_id, y = total_expression, fill = death_category)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("HLA total counts") + labs(fill = "Cause of Death")+ggtitle(cell_type) + geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+
+
+putamen_total_HLA = HLA_counts(putamen_sobj)
+putamen_total_HLA
+
+putamen_total_HLA$donor_id = factor(putamen_total_HLA$donor_id, levels = x_order)
+
+print(ggplot(putamen_total_HLA, aes(x = donor_id, y = total_expression, fill = death_category)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("HLA total counts") + labs(fill = "Cause of Death")+ ggtitle(cell_type) +  geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1)))
+
+HLA_merge_counts = merge(caudate_total_HLA, putamen_total_HLA, by = "donor_id")
+HLA_merge_counts
+
+print(spearman_plot_donors(HLA_merge_counts, HLA_merge_counts$total_expression.x, HLA_merge_counts$total_expression.y,HLA_merge_counts$donor_id, "Caudate HLA Counts", "Putamen HLA counts", paste(cell_type, "CaH vs Put HLA Counts")))
+
+print(spearman_plot_donors(HLA_merge_counts, HLA_merge_counts$total_expression.x, HLA_merge_counts$total_expression.y, HLA_merge_counts$death_category.x,"Caudate HLA Counts", "Putamen HLA counts", paste(cell_type, "CaH vs Put HLA Counts")))
+}
+```
+
+```{r}
+HLA_BY_CELLTYPE(caudate_neuron, putamen_neuron, "Neurons")
+```
+
+```{r}
+astrocyte_cah = subset(caudate_sobj, subset = cell_class == "astro")
+oligo_cah = subset(caudate_sobj, subset = cell_class == "oligo")
+opc_cah = subset(caudate_sobj, subset = cell_class == "opc")
+microglia_cah = subset(caudate_sobj, subset = cell_class == "mg")
+endo_cah = subset(caudate_sobj, subset = cell_class == "endo")
+
+astrocyte_put = subset(putamen_sobj, subset = cell_class == "astro")
+oligo_put = subset(putamen_sobj, subset = cell_class == "oligo")
+opc_put = subset(putamen_sobj, subset = cell_class == "opc")
+microglia_put = subset(putamen_sobj, subset = cell_class == "mg")
+endo_put = subset(putamen_sobj, subset = cell_class == "endo")
+```
+
+
+```{r}
+HLA_BY_CELLTYPE(astrocyte_cah, astrocyte_put, "Astrocytes")
+HLA_BY_CELLTYPE(oligo_cah, oligo_put, "Oligo")
+HLA_BY_CELLTYPE(opc_cah, opc_put, "OPC")
+HLA_BY_CELLTYPE(microglia_cah, microglia_put, "Microglia")
+HLA_BY_CELLTYPE(endo_cah, endo_put, "Endothelial")
+```
+
+
+
+
+#Is hla within a person different in cah vs put or spn vs non-spn/espn
+
+#HLA-C counts/100 D1, D2 SPN vs. that for eSPNs
+	#Consider adding up A, B, C and F  + B2M
+#Each point is a person (color by case control)
+#Nice to have: Error Bars for each direction 
+
+#Controls in one color, cases in another  
+#Plot per-cell analysis in a person
+
+
+#SPN proportions
+```{r}
+library(qs)
+caudate_neurons = qread("Current_subclusters/caudate_neuron.qs")
+putamen_neurons= qread("Current_subclusters/putamen_neuron.qs")
+
+caudate_neurons
+putamen_neurons
+```
+
+```{r}
+unique(caudate_neurons$cell_class)
+```
+
+
+```{r}
+caudate_neurons@meta.data$sub_class = caudate_neurons@meta.data$cell_class
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_1"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_2"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_1"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_matrix_1"] = "D2_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "SPN"] = "SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_2"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D2_SPN_1"] = "D2_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_3"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_matrix_2"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "D1_SPN_patch"] = "D1_SPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_1"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "eSPN"] = "eSPN"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_5"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "cholinergic"] = "cholinergic"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_4"] = "interneuron"
+caudate_neurons$sub_class[caudate_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+caudate_neurons@meta.data
+```
+
+#putamen
+```{r}
+unique(putamen_neurons$cell_class)
+```
+```{r}
+putamen_neurons@meta.data$sub_class = putamen_neurons@meta.data$cell_class
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_matrix"] = "D2_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_2"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_4"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_matrix_1"] = "D1_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "glutamatergic"] = "glutamatergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_5"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_1"] = "D1_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D1_SPN_patch"] = "D1_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_1"] = "D2_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "eSPN"] = "eSPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_3"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_1"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "D2_SPN_2"] = "D2_SPN"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "cholinergic"] = "cholinergic"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_7"] = "interneuron"
+putamen_neurons$sub_class[putamen_neurons$sub_class == "interneuron_6"] = "interneuron"
+
+putamen_neurons@meta.data
+```
+
+
+```{r}
+D1_SPN_cah= subset(caudate_neurons, subset = sub_class == "D1_SPN")
+D2_SPN_cah= subset(caudate_neurons, subset = sub_class == "D2_SPN")
+eSPN_cah= subset(caudate_neurons, subset = sub_class == "eSPN")
+interneuron_cah= subset(caudate_neurons, subset = sub_class == "interneuron")
+cholinergic_cah = subset(caudate_neurons, subset = sub_class == "cholinergic")
+
+D1_SPN_put= subset(putamen_neurons, subset = sub_class == "D1_SPN")
+D2_SPN_put= subset(putamen_neurons, subset = sub_class == "D2_SPN")
+eSPN_put= subset(putamen_neurons, subset = sub_class == "eSPN")
+interneuron_put= subset(putamen_neurons, subset = sub_class == "interneuron")
+cholinergic_put = subset(putamen_neurons, subset = sub_class == "cholinergic")
+```
+
+
+```{r}
+HLA_BY_CELLTYPE(D1_SPN_cah, D1_SPN_put, "D1 SPN")
+HLA_BY_CELLTYPE(D1_SPN_cah, eSPN_cah, "CaH: D1 SPN vs eSPN HLA Counts")
+HLA_BY_CELLTYPE(D1_SPN_put, eSPN_put, "Put: D1 SPN vs eSPN HLA Counts")
+
+HLA_BY_CELLTYPE(D2_SPN_cah, D2_SPN_put, "D2 SPN")
+HLA_BY_CELLTYPE(D2_SPN_cah, eSPN_cah, "CaH: D2 SPN vs eSPN HLA Counts")
+HLA_BY_CELLTYPE(D2_SPN_put, eSPN_put, "Put: D2 SPN vs eSPN HLA Counts")
+```
+
+
+
+
+
+
+
+
+
+
+
+#caudate orignal (the gene expression here does all caudate neuorns not just SPN)
+```{r}
+# Load necessary libraries
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+seurat_obj = caudate_neurons
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("TAF1", "HLA-A", "HLA-B", "GLI3", "TESPA1", "PTPN7", "SEZ6L", "ATP2B4", "VSNL1")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+
+# Aggregate the expression data by donor to get mean expression values
+agg_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(mean_expression = mean(expression, na.rm = TRUE), .groups = 'drop')
+agg_expr_data$gene <- factor(agg_expr_data$gene, levels = genes_of_interest)
+
+# Check the first few rows of the aggregated data frame
+head(agg_expr_data)
+
+# Define the function for the scatter plot
+ScatterPlotGenesOfInterest <- function(data, genes_of_interest, title) {
+  # Subset the data for the genes of interest
+  subset_data <- data %>%
+    filter(gene %in% genes_of_interest)
+  
+#x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+  
+#Repeat Length
+#x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+#Age of onset
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-21-030", "SCF-19-014", "SCF-18-003", "SCF-19-018", "PCMC-16-012", "SCF-20-023", "SCF_20-024", "SCF-18-004", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011")
+
+#Age of death
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "SCF-19-018", "SCF-18-003", "PCMC-16-012", "SCF-20-023", "SCF-21-030", "SCF_20-024", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011", "SCF-18-004")
+
+#Disease Duration
+x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "PCMC-16-011", "SCF-20-023", "SCF-20-025", "SCF-18-006", "SCF-19-009", "SCF_22-043", "SCF-19-018", "PCMC-16-012", "SCF_20-024", "SCF-18-003", "SCF-21-030", "SCF-18-004")
+            
+subset_data$donor_id = factor(subset_data$donor_id, levels = x_order)
+  
+  # Create the scatter plot
+  scatter_plot <- ggplot(subset_data, aes(x = donor_id, y = mean_expression, color = gene)) +
+    geom_point(alpha = 0.6) + geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+
+    geom_jitter(width = 0.2, height = 0, alpha = 0.6) + # Jitter points to avoid overlap
+    facet_wrap(~gene, scales = "free_y") +  # Create separate plots for each gene
+    labs(
+      title = title,
+      x = "Donor",
+      y = "Mean Expression"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)  # Rotate x-axis labels for better readability
+    )
+  
+  # Display the plot
+  print(scatter_plot)
+}
+
+# Call the function with the aggregated data and genes of interest
+ScatterPlotGenesOfInterest(agg_expr_data, genes_of_interest, "Putamen: Genes of Interest Across Donors")
+
+
+```
+
+#putamen
+```{r}
+# Load necessary libraries
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+seurat_obj = putamen_neurons
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("TAF1", "HLA-A", "HLA-B", "GLI3", "TESPA1", "PTPN7", "SEZ6L", "ATP2B4", "VSNL1")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+
+# Aggregate the expression data by donor to get mean expression values
+agg_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(mean_expression = mean(expression, na.rm = TRUE), .groups = 'drop')
+agg_expr_data$gene <- factor(agg_expr_data$gene, levels = genes_of_interest)
+
+# Check the first few rows of the aggregated data frame
+head(agg_expr_data)
+
+# Call the function with the aggregated data and genes of interest
+ScatterPlotGenesOfInterest(agg_expr_data, genes_of_interest, "Putamen: Genes of Interest Across Donors")
+
+```
+
+
+#for tmr: do this
+#make plot of repeat length + proprtions
+```{r}
+caudate_neuron = qread("UPDATED_caudate_neuron_subclustered.qs")
+putamen_neuron= qread("UPDATED_caudate_neuron_subclustered.qs")
+```
+
+```{r}
+unique(caudate_neuron$cell_class)
+```
+
+```{r}
+caudate_neuron@meta.data$general_class = caudate_neuron@meta.data$cell_class
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_1"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_2"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_matrix_1"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "D2_SPN_matrix_1"] = "D2_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "SPN"] = "SPN (unlabeled)"
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_2"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "D2_SPN_1"] = "D2_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_3"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_matrix_2"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "D1_SPN_patch"] = "D1_SPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_1"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "eSPN"] = "eSPN"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_5"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "cholinergic"] = "cholinergic"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_4"] = "interneuron"
+caudate_neuron$general_class[caudate_neuron$general_class == "interneuron_6"] = "interneuron"
+
+caudate_neuron@meta.data
+```
+
+```{r}
+cells_per_donor = as.data.frame(table(caudate_neuron@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(caudate_neuron@meta.data$general_class, caudate_neuron@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportion") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+```
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+     geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Var1)
+```
+
+
+```{r}
+caudate_neuron@meta.data$sub_class = caudate_neuron@meta.data$cell_class
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_1"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_2"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_matrix_1"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D2_SPN_matrix_1"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "SPN"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_2"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D2_SPN_1"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_3"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_matrix_2"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "D1_SPN_patch"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_1"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "eSPN"] = "SPN"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_5"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "cholinergic"] = "cholinergic"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_4"] = "interneuron"
+caudate_neuron$sub_class[caudate_neuron$sub_class == "interneuron_6"] = "interneuron"
+
+caudate_neuron@meta.data
+```
+
+
+
+```{r}
+cells_per_donor = as.data.frame(table(caudate_neuron@meta.data$donor_id))
+cells_per_donor
+
+cell_class_df = as.data.frame(table(caudate_neuron@meta.data$sub_class, caudate_neuron@meta.data$donor_id))
+
+
+cell_class_df = merge(cell_class_df, cells_per_donor, by.x="Var2", by.y = "Var1")
+cell_class_df
+
+cell_class_df$cell_proportions = cell_class_df$Freq.x/cell_class_df$Freq.y
+cell_class_df
+```
+
+
+```{r}
+cell_class_df$condtion = ifelse(grepl("SCF_21-037CM2|SCF-23-068CM|SCF-22-058CF|SCF-22-054CM", cell_class_df$Var2), "control", "XDP")
+cell_class_df
+
+#Repeat Length
+#x_order = c("SCF_21-037CM2","SCF-22-054CM","SCF-22-058CF","SCF-23-068CM","PCMC-16-011","SCF-18-006","SCF-20-025","SCF-19-009", "PCMC-16-012","SCF-18-004", "SCF-18-003", "SCF-19-018",  "SCF_20-024", "SCF-20-023", "SCF-21-030", "SCF-19-014", "SCF_22-043")
+
+#Age of onset
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-21-030", "SCF-19-014", "SCF-18-003", "SCF-19-018", "PCMC-16-012", "SCF-20-023", "SCF_20-024", "SCF-18-004", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011")
+
+#Age of death
+#x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "SCF-19-018", "SCF-18-003", "PCMC-16-012", "SCF-20-023", "SCF-21-030", "SCF_20-024", "SCF-18-006", "SCF_22-043", "SCF-19-009", "SCF-20-025", "PCMC-16-011", "SCF-18-004")
+
+#Disease Duration
+x_order = c("SCF_21-037CM2", "SCF-22-054CM", "SCF-22-058CF", "SCF-23-068CM", "SCF-19-014", "PCMC-16-011", "SCF-20-023", "SCF-20-025", "SCF-18-006", "SCF-19-009", "SCF_22-043", "SCF-19-018", "PCMC-16-012", "SCF_20-024", "SCF-18-003", "SCF-21-030", "SCF-18-004")
+            
+cell_class_df$Var2 = factor(cell_class_df$Var2, levels = x_order)
+
+ggplot(cell_class_df, aes(x = Var2, y = Freq.x, fill = Var1)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("Number of cells by cell type") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+#+ facet_wrap(~ Var1)
+```
+
+
+
+
+```{r}
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportion") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+   geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, color = Var1, group = Var1)) +
+  geom_line(linetype = "solid") +
+  geom_point() +
+  xlab("Donors from Caudate Village") +
+  ylab("Cell Type Proportions") +
+  labs(color = "Cell Type") +
+  geom_vline(xintercept = 4.5, linetype = "dashed", color = "black") +
+     geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  facet_wrap(~ Var1)
+
+ggplot(cell_class_df, aes(x = Var2, y = cell_proportions, fill = Var1)) +
+  geom_bar(stat = "identity", postion= "stack") + xlab("Donors from Caudate Village") + ylab("Cell Type Proportion") + labs(fill = "Cell Type")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+  geom_vline(xintercept = 16.5, linetype = "dashed", color = "black") + theme(axis.text.x = element_text(angle = 45, hjust = 1))  + facet_wrap(~ Var1)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#This was finding mean expression of HLA genes rather than counts
+```{r}
+# Load necessary libraries
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+seurat_obj = caudate_sobj
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("HLA-A", "HLA-B", "HLA-C", "HLA-F", "B2M")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+#sum up the 5 genes
+expr_data
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+
+expr_data_long
+
+# Aggregate the expression data by donor to get mean expression values
+agg_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(mean_expression = mean(expression, na.rm = TRUE), .groups = 'drop')
+agg_expr_data$gene <- factor(agg_expr_data$gene, levels = genes_of_interest)
+
+agg_expr_data
+
+sum_mean_expression_per_donor <- agg_expr_data %>%
+  group_by(donor_id) %>%
+  summarize(sum_mean_expression = sum(mean_expression, na.rm = TRUE))
+
+# View the result
+sum_mean_expression_per_donor
+```
+
+```{r}
+# Assuming the correct column names are 'Donor.ID' and 'death_category'
+sum_mean_expression_per_donor <- sum_mean_expression_per_donor %>%
+  left_join(donor_metadata %>% select(Donor.ID, death_category), by = c("donor_id" = "Donor.ID"))
+
+# View the result
+print(sum_mean_expression_per_donor)
+
+```
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+            
+sum_mean_expression_per_donor$donor_id = factor(sum_mean_expression_per_donor$donor_id, levels = x_order)
+
+ggplot(sum_mean_expression_per_donor, aes(x = donor_id, y = sum_mean_expression, fill = death_category)) +
+  geom_bar(stat = "identity") + xlab("Donors from Caudate Village") + ylab("HLA combined mean expression") + labs(fill = "Cause of Death")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+```
+
+```{r}
+# Check the first few rows of the aggregated data frame
+agg_expr_data
+
+# Define the function for the scatter plot
+ScatterPlotGenesOfInterest <- function(data, genes_of_interest, title) {
+  # Subset the data for the genes of interest
+  subset_data <- data %>%
+    filter(gene %in% genes_of_interest)
+  
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+            
+subset_data$donor_id = factor(subset_data$donor_id, levels = x_order)
+  
+  # Create the scatter plot
+  scatter_plot <- ggplot(subset_data, aes(x = donor_id, y = mean_expression, color = gene)) +
+    geom_point(alpha = 0.6) + geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+
+    geom_jitter(width = 0.2, height = 0, alpha = 0.6) + # Jitter points to avoid overlap
+    facet_wrap(~gene, scales = "free_y") +  # Create separate plots for each gene
+    labs(
+      title = title,
+      x = "Donor",
+      y = "Mean Expression"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)  # Rotate x-axis labels for better readability
+    ) 
+  
+  # Display the plot
+  print(scatter_plot)
+}
+
+# Call the function with the aggregated data and genes of interest
+ScatterPlotGenesOfInterest(agg_expr_data, genes_of_interest, "Caudate: HLA Expression Across Donors")
+
+```
+
+#putamen
+
+```{r}
+# Load necessary libraries
+seurat_obj = putamen_sobj
+
+# Assuming seurat_obj is your Seurat object
+# Define genes of interest
+genes_of_interest <- c("HLA-A", "HLA-B", "HLA-C", "HLA-F", "B2M")
+
+# Extract normalized expression data for genes of interest
+expr_data <- FetchData(seurat_obj, vars = genes_of_interest)
+#sum up the 5 genes
+expr_data
+
+# Extract metadata to get donor information
+metadata <- seurat_obj@meta.data
+
+# Assume that metadata has a column 'donor' that contains donor information
+# If not, modify this part according to your metadata structure
+if(!"donor_id" %in% colnames(metadata)) {
+  stop("Metadata does not contain 'donor' information. Please check your metadata structure.")
+}
+
+# Create unique identifiers for cell column to avoid conflicts
+expr_data <- expr_data %>%
+  rownames_to_column(var = "cell_id")
+
+metadata <- metadata %>%
+  rownames_to_column(var = "cell_id")
+
+# Combine expression data with donor information
+expr_data_long <- expr_data %>%
+  pivot_longer(cols = -cell_id, names_to = "gene", values_to = "expression") %>%
+  left_join(metadata %>% select(cell_id, donor_id), by = "cell_id")
+
+expr_data_long
+
+# Aggregate the expression data by donor to get mean expression values
+agg_expr_data <- expr_data_long %>%
+  group_by(donor_id, gene) %>%
+  summarize(mean_expression = mean(expression, na.rm = TRUE), .groups = 'drop')
+agg_expr_data$gene <- factor(agg_expr_data$gene, levels = genes_of_interest)
+
+agg_expr_data
+
+sum_mean_expression_per_donor <- agg_expr_data %>%
+  group_by(donor_id) %>%
+  summarize(sum_mean_expression = sum(mean_expression, na.rm = TRUE))
+
+# View the result
+sum_mean_expression_per_donor
+```
+
+```{r}
+# Assuming the correct column names are 'Donor.ID' and 'death_category'
+sum_mean_expression_per_donor <- sum_mean_expression_per_donor %>%
+  left_join(donor_metadata %>% select(Donor.ID, death_category), by = c("donor_id" = "Donor.ID"))
+
+# View the result
+print(sum_mean_expression_per_donor)
+
+```
+
+```{r}
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+            
+sum_mean_expression_per_donor$donor_id = factor(sum_mean_expression_per_donor$donor_id, levels = x_order)
+
+ggplot(sum_mean_expression_per_donor, aes(x = donor_id, y = sum_mean_expression, fill = death_category)) +
+  geom_bar(stat = "identity") + xlab("Donors from Putamen Village") + ylab("HLA combined mean expression") + labs(fill = "Cause of Death")+ geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+```
+
+```{r}
+# Check the first few rows of the aggregated data frame
+agg_expr_data
+
+# Define the function for the scatter plot
+ScatterPlotGenesOfInterest <- function(data, genes_of_interest, title) {
+  # Subset the data for the genes of interest
+  subset_data <- data %>%
+    filter(gene %in% genes_of_interest)
+  
+x_order = c("SCF_21-037CM2","SCF-22-054CM", "SCF-22-058CF","SCF-23-068CM","PCMC-16-011","PCMC-16-012", "SCF-18-003", "SCF-18-004", "SCF-18-006", "SCF-19-009", "SCF-19-014",  "SCF-19-018", "SCF-20-023", "SCF_20-024", "SCF-20-025", "SCF-21-030", "SCF_22-043")
+
+            
+subset_data$donor_id = factor(subset_data$donor_id, levels = x_order)
+  
+  # Create the scatter plot
+  scatter_plot <- ggplot(subset_data, aes(x = donor_id, y = mean_expression, color = gene)) +
+    geom_point(alpha = 0.6) + geom_vline(xintercept =  4.5, linetype = "dashed", color = "black")+
+    geom_jitter(width = 0.2, height = 0, alpha = 0.6) + # Jitter points to avoid overlap
+    facet_wrap(~gene, scales = "free_y") +  # Create separate plots for each gene
+    labs(
+      title = title,
+      x = "Donor",
+      y = "Mean Expression"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)  # Rotate x-axis labels for better readability
+    ) 
+  
+  # Display the plot
+  print(scatter_plot)
+}
+
+# Call the function with the aggregated data and genes of interest
+ScatterPlotGenesOfInterest(agg_expr_data, genes_of_interest, "Putamen: HLA Expression Across Donors")
+
+```
+
+```{r}
+#putamen_hla_mean = sum_mean_expression_per_donor
+putamen_hla_mean$putamen_HLA = putamen_hla_mean$sum_mean_expression
+putamen_hla_mean$sum_mean_expression = NULL
+putamen_hla_mean
+#caudate_hla_mean = sum_mean_expression_per_donor
+caudate_hla_mean$caudate_HLA = caudate_hla_mean$sum_mean_expression
+caudate_hla_mean$sum_mean_expression = NULL
+caudate_hla_mean
+```
+
+```{r}
+HLA_merge = merge(caudate_hla_mean, putamen_hla_mean, by = "donor_id")
+HLA_merge
+```
+
+```{r}
+cor.test(HLA_merge$caudate_HLA, HLA_merge$putamen_HLA, method = "spearman")
+```
+
+```{r}
+ggplot(data = a, aes(x =a$bad_cell_percent, y =  a$mUMIs, color =a$Donors)) + 
+  geom_point() +
+  labs(x="'Bad' Cell Percentage" , y= "mUMIs") + geom_smooth(method = "lm", se = FALSE, color = "black") + geom_abline(intercept = 0, slope = spear, color = "red", linetype = "dashed", size = 1) + ggtitle("'Bad' Cell Percentage vs. Median UMIs", subtitle = "Spearman coefficent: -0.45   R2: 0.203   p-val: 0.082")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

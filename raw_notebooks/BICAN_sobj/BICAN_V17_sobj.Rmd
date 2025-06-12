@@ -1,0 +1,330 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+summary = qread("~/BICAN/BICAN_V17_summary.qs")
+dge.list = qread("~/BICAN/BICAN_V17_dge_list.qs")
+names(dge.list)
+dge.list
+```
+
+```{r}
+# specify input paths -------------------------------------------------------------------------
+
+
+library.names <- c("2024-06-14_v17_10X-GEX-3P_CaH_rxn1",
+                   "2024-06-14_v17_10X-GEX-3P_CaH_rxn2",
+                   "2024-06-14_v17_10X-GEX-3P_CaH_rxn3",
+                   "2024-06-14_v17_10X-GEX-3P_CaH_rxn4",
+                   "2024-06-14_v17_10X-GEX-3P_CaH_rxn5",
+                   "2024-06-14_v17_10X-GEX-3P_CaH_rxn6",
+                   "2024-06-14_v17_10X-GEX-3P_CaH_rxn7",
+                   "2024-06-14_v17_10X-GEX-3P_CaH_rxn8")
+
+library.names.sans.date <- substr(library.names, 12, nchar(library.names))
+
+# Update the base directory to the new library path
+base.dir <- "/Volumes/bican_um1_mccarroll/RNAseq/data/libraries"
+reference.use <- "GRCh38-2020-A.isa.exonic+intronic"
+std.analysis.use <- "umi_500-Inf_intronic_0.550-1.000_10X_wgs-vcf"
+
+# specify high-level parameters ---------------------------------------------------------------
+
+n.features <- "all"  # specify "all" to use all genes
+n.pcs <- 100
+
+# load data -----------------------------------------------------------------------------------
+
+cell.features.paths <- paste0(base.dir, "/", library.names , "/", reference.use, "/", "cell_selection/", "umi_500-Inf_intronic_0.550-1.000_10X", "/", library.names.sans.date, ".", "umi_500-Inf_intronic_0.550-1.000_10X", ".cell_features.RDS")
+
+dge.paths <- paste0(base.dir, "/",library.names , "/" , reference.use, "/", "std_analysis/", std.analysis.use, "/", library.names.sans.date, ".", "umi_500-Inf_intronic_0.550-1.000_10X", ".donors.digital_expression.txt.gz")
+
+summary.paths <- paste0(base.dir, "/",library.names , "/", reference.use, "/", "std_analysis/", std.analysis.use, "/scPred/summary.txt")
+
+```
+
+```{r}
+# prepare dge ---------------------------------------------------------------------------------
+library(qs)
+Caudate_V17_list = list()
+
+dges = names(dge.list)
+for (names in dges){
+# here I've manually selected a single library to use
+
+
+# if using a caudate data set
+scpred.class.levels <- c("SPN", "interneuron", "astrocyte", "oligodendrocyte", "polydendrocyte", "microglia", "endothelia")
+# if using a cortex data set
+# scpred.class.levels <- c("gabaergic", "glutamatergic", "astrocyte", "oligodendrocyte", "polydendrocyte", "microglia", "endothelia")
+
+dge <- dge.list[[names]]
+
+# create seurat object ------------------------------------------------------------------------
+
+sobj <- CreateSeuratObject(counts = dge, meta.data = summary)
+
+Caudate_V17_list[[names]] = sobj
+qsfilepath <- paste0("~/BICAN/", names, ".qs") #output folder
+qsave(sobj, file = qsfilepath) 
+}
+
+qsave(Caudate_V17_list, "BICAN/V17_Caudate_list.qs")
+
+```
+
+
+
+
+```{r}
+Caudate_V17_list= qread("~/BICAN/V17_Caudate_list.qs")
+Caudate_V17_list
+```
+
+
+```{r}
+mergeSeuratListWithMetadata = function(seurat_obj_list, cell_ids=NULL, project=NULL){
+
+    # Harmonize metadata columns
+    all_colnames = unique(unlist(lapply(seurat_obj_list, function(x) colnames(x@meta.data))))
+    seurat_obj_list = lapply(seurat_obj_list, function(x) {
+        missing_cols = setdiff(all_colnames, colnames(x@meta.data))
+        if(length(missing_cols) > 0){
+            x@meta.data[missing_cols] = NA
+        }
+        return(x)
+    })
+
+    if (is.null(project)){
+        project = "merged"
+    }
+    
+    if (is.null(cell_ids)){
+        seurat_merged = Reduce(function(x, y) merge(x, y, project=project), 
+            seurat_obj_list)
+    } else {
+        seurat_merged = Reduce(function(x, y) merge(x, y, project=project, add.cell.ids=cell_ids), 
+            seurat_obj_list)
+    }
+    
+    md = lapply(seurat_obj_list, function(x){
+        x@meta.data$orig.row.names = rownames(x@meta.data)
+        x@meta.data
+    })
+    
+    md = do.call(rbind, md)
+    rownames(md) = md$orig.row.names
+    md$orig.row.names = NULL
+    seurat_merged@meta.data = md
+    return(seurat_merged)
+}
+```
+
+
+#merge caudate libraries 
+```{r}
+CaH_list = list(CaH_1 = Caudate_V17_list[["2024-06-14_v17_10X-GEX-3P_CaH_rxn1"]], 
+                   CaH_2 = Caudate_V17_list[["2024-06-14_v17_10X-GEX-3P_CaH_rxn2"]], 
+                   CaH_3 = Caudate_V17_list[["2024-06-14_v17_10X-GEX-3P_CaH_rxn3"]], 
+                   CaH_4 = Caudate_V17_list[["2024-06-14_v17_10X-GEX-3P_CaH_rxn4"]], 
+                   CaH_5 = Caudate_V17_list[["2024-06-14_v17_10X-GEX-3P_CaH_rxn5"]], 
+                   CaH_6 = Caudate_V17_list[["2024-06-14_v17_10X-GEX-3P_CaH_rxn6"]], 
+                   CaH_7 = Caudate_V17_list[["2024-06-14_v17_10X-GEX-3P_CaH_rxn7"]], 
+                   CaH_8 = Caudate_V17_list[["2024-06-14_v17_10X-GEX-3P_CaH_rxn8"]])
+
+
+ for(name in names(CaH_list)){
+      sobj =CaH_list[[name]]
+      sobj$library = name
+      sobj = RenameCells(sobj, new.name = paste(sobj$library, colnames(sobj), sep="__"))
+      CaH_list[[name]] = sobj
+      #sobj@assays$RNA@counts <- NULL
+      
+ }
+
+Caudate_V17 = mergeSeuratListWithMetadata(CaH_list)
+Caudate_V17
+head(Caudate_V17)
+```
+
+```{r}
+qsave(Caudate_V17, "~/BICAN/Caudate_V17.qs")
+```
+
+```{r}
+Caudate_V17 = qread("~/BICAN/Caudate_V17.qs")
+```
+
+```{r}
+Caudate_V17@meta.data
+```
+
+```{r}
+Caudate_V17@meta.data$doublet = as.character(Caudate_V17@meta.data$doublet)
+Caudate_V17
+Caudate_V17 = subset(Caudate_V17, subset = doublet == "FALSE")
+Caudate_V17
+```
+
+```{r}
+Caudate_V17 <- subset(Caudate_V17, subset = pct_mt < 10 & pct_intronic >= 0.25)
+Caudate_V17
+
+qsave(Caudate_V17, "~/BICAN/Caudate_V17.qs")
+```
+
+
+
+#HVG calculation helper function
+```{r}
+getSeuratVarFeatureIntersectByCol = function(
+   seurat_obj,
+   subset_col,
+   original_nfeatures,
+   n_subsets_to_cover=NULL
+){
+  
+   hvgs = list()
+
+
+   unique_ids = unique(seurat_obj@meta.data[[subset_col]])
+
+
+   if (is.null(n_subsets_to_cover)){
+       n_subsets_to_cover = floor(length(unique_ids)/2)
+   }
+
+
+   i=1
+   for (id in unique_ids) {
+       print(paste("Subset", id, "--", i, "of", length(unique_ids)))
+       i = i + 1
+      
+       seurat_subset = seurat_obj[, seurat_obj[[subset_col]] == id]
+      
+       if (ncol(seurat_subset) < 2){next}
+      
+       suppressWarnings({
+           seurat_subset = FindVariableFeatures(
+               seurat_subset, nfeatures=original_nfeatures, verbose = FALSE)
+       })
+      
+       hvgs[[id]] = getSeuratVarFeatures(seurat_subset)
+      
+   }
+
+
+   common_hvgs = getCommonStrings(hvgs, n_subsets_to_cover)
+   print(paste("Number of HVGs in common across", n_subsets_to_cover, "--", length(common_hvgs)))
+
+
+   return(common_hvgs)
+}
+
+```
+
+
+```{r}
+getSeuratVarFeatures = function(sobj){
+    # the magical incantation that returns the slot of the attribute of the slot that actually holds the list of variable feature -_-
+    return(sobj@assays$RNA@var.features)
+}
+```
+
+```{r}
+getCommonStrings <- function(list_of_lists, n) {
+  # Create an empty list to store string occurrences
+  string_occurrences <- list()
+
+  # Iterate over each sublist
+  for (sublist in list_of_lists) {
+    # For each string in the sublist, increment its count in string_occurrences
+    for (string in unique(sublist)) {
+      if (!is.null(string_occurrences[[string]])) {
+        string_occurrences[[string]] <- string_occurrences[[string]] + 1
+      } else {
+        string_occurrences[[string]] <- 1
+      }
+    }
+  }
+
+  # Filter the strings that occur at least n times
+  common_strings <- names(string_occurrences)[string_occurrences >= n]
+
+  return(common_strings)
+}
+```
+
+
+
+#Actual Clustering Code- caudate
+```{r}
+# Counts of super lowly expressed genes are essentially random
+# Also, we don't really care about housekeeping genes that have almost the same expression in every cell
+# Before clustering, we want to find "highly variable genes" (hvgs) that tend to be both highly expressed and vary a lot from cell to cell.
+# we do this by finding hvgs in each participant individually, and collating the genes
+# that are highly variable in at least half of donors.
+
+
+# this code should take 3-10 minutes
+hvgs = getSeuratVarFeatureIntersectByCol(Caudate_V17, subset_col="DONOR", original_nfeatures=2500)
+
+
+n_dims_use=20
+
+
+# now cluster
+# the "%>%" lines are a little piece of syntax from the dyplr library,
+# short for "apply the following transformation to the object"
+# doing this line-by-line allows us to apply a sequence of transformations
+Caudate_V17 = (Caudate_V17
+   %>% NormalizeData() # log normalizes raw counts
+   %>% ScaleData(features=hvgs, split.by="DONOR") # within each cell, for each gene scale the data (i.e. subtract the donor's mean and divide by the donor's standard deviation of that gene)
+   %>% RunPCA(features=hvgs, npcs=n_dims_use) # Reduce the dimensions to the n_dims_use dimensions that best explain the data https://en.wikipedia.org/wiki/Principal_component_analysis
+   %>% FindNeighbors(dims = 1:n_dims_use) # Finds every cells closest neighbors in the PCA space
+   %>% FindClusters(resolution = 0.2) # finds clusters at a variety of resolutions
+   %>% FindClusters(resolution = 0.3) # after clustering, the cluster labels are accessible via Caudate_V17$RNA_snn_res.{resolution}
+   %>% FindClusters(resolution = 0.4) # e.g.: Caudate_V17$RNA_snn_res.0.4 here
+   %>% FindClusters(resolution = 0.5)
+   %>% FindClusters(resolution = 0.6)
+   %>% FindClusters(resolution = 0.7)
+   %>% FindClusters(resolution = 0.8)
+   %>% FindClusters(resolution = 0.9)
+   %>% FindClusters(resolution = 1)
+   %>% RunUMAP(dims = 1:n_dims_use) # projects the PCA onto 2 dimensions, such that both "global structure" and "local structure" are optimally preserved
+)
+
+
+# Now we can plot the data and just see what it looks like
+
+
+setwh = function(w, h){
+   # set the width of the ensuing figures to w, height to h
+   options(repr.plot.width = w, repr.plot.height = h)
+}
+```
+
+
+```{r}
+DimPlot(Caudate_V17, group.by = "library", label=T) # are there library batch effects?
+DimPlot(Caudate_V17, group.by = "DONOR", label=T) # are there donor batch effects?
+DimPlot(Caudate_V17, group.by = "predClass") # change col name to whatever your case control metadata column is
+DimPlot(Caudate_V17, group.by = "RNA_snn_res.0.5", label=T) # make a few of these for different resolutions
+```
+
+
+```{r}
+#qsave(filtered_merged_caudate, "somewhere/cozy")
+
+```
+
+```{r}
+Idents(Caudate_V17) = Caudate_V17@meta.data$predClass
+DimPlot(Caudate_V17, label = TRUE)
+```
+
+```{r}
+qsave(Caudate_V17, "~/SOBJ_USE_THESE/Caudate_V17.qs")
+```
