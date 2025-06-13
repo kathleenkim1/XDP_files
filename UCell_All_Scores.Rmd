@@ -1,0 +1,192 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+#Below are all UCell gene lists I've used in the past to generate scores
+
+#I like to run UCell on SCT assay, especially when comparing with other datasets. (But running with RNA assay shouldn't be too big of a deal, especially for exploratory analyses. I've compared UCell scores generated using RNA vs SCT assay and it's a strong correlation (although not 1:1 correlation)).   
+
+#Also when comparing datasets together, I would intersect the gene list you are using with the genes present in each dataset, that way the score that is not biased to a dataset that contains more of those genes.
+
+#Majority of scores are from findallmarker results. Other scores like NFKB, are pulled from genesets that are prominent in GSEA results
+
+```{r}
+#Running sctransform
+library(sctransform)
+options(future.globals.maxSize = 400 * 1024^3) #when dataset is big, sctransform seems to crash but running this helps. If it keeps crashing, run as script/job   
+sobj = SCTransform(sobj, vars.to.regress = "pct_mito", verbose = FALSE)
+DefaultAssay(sobj) = "SCT"
+```
+
+```{r}
+#Running UCell
+sobj <- AddModuleScore_UCell(sobj, 
+                             features = list(Score = gene_list),
+                             name = '_UCell'
+)
+```
+
+
+```{r}
+#These are findallmarker genes from BICAN V8 Caudate Village 
+matrix_markers = read.csv("matrix_markers083024.csv")
+patch_markers = read.csv("patch_markers083024.csv")
+eSPN_markers = read.csv("eSPN_markers083024.csv")
+nonSPN_markers = read.csv("non_SPN_markers083024.csv")
+
+matrix_markers = matrix_markers$gene
+patch_markers = patch_markers$gene
+eSPN_markers= eSPN_markers$gene
+nonSPN_markers = nonSPN_markers$gene
+```
+
+```{r}
+#These are findallmarker genes from BICAN V17 Caudate Village 
+
+BICAN_V17_matrix = read.csv("BICAN_V17_matrix.csv")
+
+BICAN_V17_patch= read.csv("BICAN_V17_patch.csv")
+
+BICAN_V17_exotic= read.csv("BICAN_V17_exotic.csv")
+
+BICAN_V17_eSPN= read.csv("BICAN_V17_eSPN.csv")
+
+BICAN_V17_nonSPN= read.csv("BICAN_V17_nonSPN.csv")
+
+BICAN_V17_matrix = BICAN_V17_matrix$gene
+BICAN_V17_patch = BICAN_V17_patch$gene
+BICAN_V17_exotic = BICAN_V17_exotic$gene
+BICAN_V17_eSPN = BICAN_V17_eSPN$gene
+BICAN_V17_nonSPN = BICAN_V17_nonSPN$gene
+```
+
+```{r}
+c_minus_genes = readRDS("~/ferris_handsaker_genes_phase_c_minus.rds")
+c_plus_genes = readRDS("~/ferris_handsaker_genes_phase_c_plus.rds")
+d_genes = readRDS("~/ferris_handsaker_genes_phase_d.rds")
+```
+
+
+```{r}
+MMR_genes =c("MSH2", "MSH3", "PMS2", "POLD3", "LIG1","RFC3", "RFC4", "POLD2",  "MLH3", "MSH6", "FAN1", "POLE", "POLD4", "POLD1", "MLH1", "RFC2", "PMS1", "PCNA")
+#Warning: The following genes were not found and will be imputed to exp=0: * RCF5,RCF1
+
+BER_genes = c("PARP1", "TDG", "LIG3", "OGG1", "TDP1", "UNG", "APEX1", "XRCC1", "NEIL1", "TOP1", "POLB", "HMGB1")
+
+```
+
+```{r}
+WM_astro_markers = c("TNC", "DCLK1", "ADAMTSL3", "SLC24A4", "GRIK4", "DLGAP1") #"ENSG00000287704", 
+GM_astro_markers = c("WIF1", "SLIT1",  "TMEM132C", "PTCH1") #"MIAT", "ENSG00000287544",LINC00499
+```
+
+
+```{r}
+antigen_processing_genes = c("CTSB", "CD74", "HSP90AA1", "KLRC3", "HSPA6", "HSPA5", "HSPA1L", "KLRC4", "HSPA8", "HSPA2", "TAP2", "HSPA4", "TAP1", "TAPBP", "CD4", "RFX5", "IFNG", "HSPA1A", "HLA-DRA", "HLA-DQB1", "KLRD1", "CALR", "HSPA1B", "TNF", "KIR2DL1", "KIR2DL2", "KIR2DL3", "KIR2DL4", "CTSS", "CTSL", "B2M", "HLA-DOB", "KIR2DL5A", "CIITA", "HLA-DQA2", "HLA-DOA", "HLA-DQA1", "PDIA3", "HLA-DRB5", 
+"KIR2DS1", "NFYB", "KIR2DS2", "NFYC", "KIR2DS3", "KIR2DS4", "KIR2DS5", "HLA-C", "RFXANK", 
+"KIR3DL1", "CD8B2", "KIR3DL2", "HLA-A", "HLA-B", "KIR3DL3", "HLA-G", "HLA-E", "HLA-F", "CREB1", "CD8B", "RFXAP", "CD8A", "CANX", "LGMN", "PSME2", "PSME3", "HLA-DPB1", "PSME1", "HLA-DRB4", 
+"HLA-DRB3", "HLA-DRB1", "HSP90AB1", "IFI30", "HLA-DMB", "HLA-DPA1", "KLRC1", "KLRC2", "NFYA","HLA-DMA")
+
+antigen_MHC1_genes =  c("TAP2", "TAP1", "LNPEP", "TAPBP", "PSMB9", "PSMC6", "PSMC4", "PSMC5", "PSMC2", "PSMC3", "CLEC4A", "CD207", "PSMC1", "NCF1", "CALR", "PSMD11", "PSMD10", "PSMD13", "PSMD12", 
+           "PSMD14", "SNAP23", "PSMB11", "PSMB10", "PSMD9", "PSMD7", "PSMD8", "PSMD5", "MFSD6", 
+           "PSMD6", "PSMD3", "PSMD4", "PSMD1", "PSMD2", "FCER1G", "B2M", "CD36", "PDIA3", "CHUK", 
+           "HLA-C", "CYBB", "HLA-A", "CYBA", "HLA-B", "HLA-G", "HLA-E", "HLA-F", "PSMA6", "PSMA7", 
+           "PSMA4", "VAMP8", "PSMA5", "PSMA2", "PSMA3", "PSME4", "PSMA1", "PSME2", "PSME3", "PSME1", 
+           "SEC22B", "VAMP3", "NCF2", "ITGB5", "NCF4", "IFI30", "PSMA8", "PSMB7", "IKBKB", "PSMB8", 
+           "PSMB5", "PSMB6", "FCGR1A", "PSMB3", "PSMB4", "PSMB1", "PSMB2", "PSMF1", "ITGAV", "IKBKG")
+
+antigen_MHC2_genes = c("SEC24A", "SEC24C", "CD74", "SEC24B", "LAG3", "AP1S1", "AP1B1", "DYNC1LI1", "DYNC1LI2", "CAPZA2", "KIF4B", "CAPZA3", "KIF4A", "CAPZA1", "SEC24D", "KIF5A", "RACGAP1", "AP2S1", 
+           "RILP", "HLA-DOB", "HLA-DOA", "HLA-DRB5", "KIF22", "KIF23", "KIF18A", "KIF2B", "KIF2A", 
+           "LGMN", "KIF2C", "HLA-DRB4", "HLA-DRB3", "OSBPL1A", "HLA-DRB1", "IFI30", "KIF3C", "KIF3B", 
+           "KIF3A", "AP1S3", "AP1S2", "KIFAP3", "SEC31A", "SH3GL2", "AP2M1", "SEC13", "DNM2", "CENPE", 
+           "FCGR2B", "PIKFYVE", "HLA-DRA", "HLA-DQB1", "ACTR10", "RAB7A", "HLA-DQB2", "SAR1B", "KIF11",     "ARF1", "KIF15", "CLTC", "CLTA", "KLC2", "CTSV", "KLC1", "ACTR1A", "CTSS", "ACTR1B", "CTSL", 
+           "CAPZB", "AP1M1", "FCER1G", "CTSF", "CTSE", "DYNC1I2", "CTSD", "SPTBN2", "HLA-DQA2", 
+           "AP1M2", "DYNC1I1", "HLA-DQA1", "DYNLL1", "AP2B1", "DYNLL2", "KIF26A", "CANX", "HLA-DPB1", 
+           "DYNC1H1", "DCTN6", "SEC23A", "DCTN3", "DCTN2", "DCTN5", "DCTN4", "DCTN1", "AP2A2", "AP2A1", "AP1G1", "HLA-DMB", "HLA-DPA1", "HLA-DMA")
+
+inflammatory_response_genes = c("IL1R1", "EREG", "MARCO", "TNFSF9", "VIP", "SLAMF1", "SGMS2", "IFITM1", "SERPINE1", "AQP9", "C3AR1", "NOD2", "MYC", "PROK2", "MSR1", "ABCA1", "TNFSF15", "FZD5", "SLC11A2", 
+           "RNF144B", "GPR183", "CHST2", "MEP1A", "NPFFR2", "HPN", "ICAM4", "HIF1A", "ICAM1", 
+           "LPAR1", "KCNMB2", "IL12B", "SCARF1", "TNFSF10", "FFAR2", "CD14", "CMKLR1", "SCN1B", 
+           "LYN", "EDN1", "CCL24", "IL10", "GABBR1", "IL15", "CCL22", "CCL20", "IL10RA", "SPHK1", 
+           "NMI", "TACR3", "LIF", "TACR1", "EMP3", "RHOG", "IL18", "OSMR", "DCBLD2", "PTPRE", 
+           "IL1A", "TLR2", "IL1B", "TLR1", "BST2", "MMP14", "IL18R1", "TLR3", "CD40", "BTG2", 
+           "MEFV", "EBI3", "ADM", "FPR1", "SLC7A1", "SLC7A2", "CX3CL1", "RIPK2", "TIMP1", "KIF1B", 
+           "CCR7", "GCH1", "IFNGR2", "GP1BA", "F3", "CD48", "HBEGF", "CDKN1A", "PTGER2", "PTAFR", 
+           "KCNA3", "PTGER4", "CXCR6", "GNAI3", "GPR132", "NAMPT", "STAB1", "OLR1", "CCL17", 
+           "CD55", "ICOSLG", "IL4R", "SLC31A2", "CD70", "SEMA4D", "OSM", "SLC31A1", "CXCL10", 
+           "CXCL11", "AXL", "SELENOS", "ABI1", "LY6E", "APLNR", "CD69", "SLC28A2", "RAF1", "RELA", 
+           "CSF3R", "CSF3", "CD82", "CSF1", "RGS16", "SLC1A2", "PVR", "AHR", "ATP2C1", "BEST1", 
+           "PDPN", "HAS2", "LAMP3", "CCRL2", "NLRP3", "GPC3", "LDLR", "INHBA", "CYBB", "SELE", 
+           "NFKB1", "MXD1", "SELL", "NMUR1", "IFNAR1", "IL7R", "CALCRL", "C5AR1", "PSEN1", 
+           "IL18RAP", "RASGRP1", "RGS1", "CLEC5A", "NDP", "TNFRSF9", "ROS1", "ITGA5", "EIF2AK2", 
+           "TAPBP", "TNFRSF1B", "ACVR2A", "IRF1", "NFKBIA", "IL6", "ADORA2B", "IRF7", "LCP2", 
+           "CXCL8", "CXCL9", "TNFAIP6", "PIK3R5", "CXCL6", "HRH1", "ADGRE1", "IRAK2", "BDKRB1", 
+           "P2RY2", "PDE4B", "IL15RA", "PTGIR", "ADRM1", "TPBG", "OPRK1", "PLAUR", "ATP2B1", 
+           "P2RX7", "LCK", "KLF6", "P2RX4", "IL2RB", "LTA", "MET", "RTP4", "ITGB3", "SRI", 
+           "ATP2A2", "SLC4A4", "ACVR1B", "GNA15", "CCL7", "CCL5", "PCDH7", "CCL2", "ITGB8", "KCNJ2")
+
+NFKB_genes =  c("MARCKS", "IL23A", "NINJ1", "TNFSF9", "SIK1", "ATF3", "SERPINE1", "MYC", "HES1", "CCNL1", "CCN1", "EGR1", "EGR2", "JAG1", "EGR3", "ABCA1", "GADD45B", "GADD45A", "PLK2", "KLF10", 
+           "EIF1", "EHD1", "FOSL2", "FOSL1", "GPR183", "PLPP3", "IFIT2", "ICAM1", "ZC3H12A", "IER2", 
+           "IL12B", "JUNB", "IER5", "IER3", "STAT5A", "DUSP5", "EDN1", "JUN", "DUSP4", "DUSP1", 
+           "DUSP2", "TSC22D1", "CCL20", "SPHK1", "LIF", "IL18", "TUBB2A", "RHOB", "VEGFA", "PTPRE", 
+           "IL1A", "TLR2", "IL1B", "BHLHE40", "ID2", "CLCF1", "REL", "FJX1", "SGK1", "BTG3", "BTG2", 
+           "BTG1", "SDC4", "LITAF", "AREG", "SOCS3", "PANX1", "RIPK2", "NFIL3", "SERPINB2", "GCH1", 
+           "IFNGR2", "G0S2", "FOS", "SERPINB8", "F3", "SPSB1", "FOSB", "PER1", "F2RL1", "HBEGF", 
+           "CD44", "TRIP10", "CDKN1A", "PTGER4", "PTGS2", "IFIH1", "NAMPT", "OLR1", "ICOSLG", 
+           "PHLDA1", "ZBTB10", "TAP1", "PNRC1", "CXCL10", "CXCL11", "IL6ST", "CD69", "SQSTM1", 
+           "RELA", "CSF2", "CD83", "CSF1", "PPP1R15A", "CD80", "TNC", "TNF", "TANK", "RELB", "ZFP36", 
+           "CCND1", "RNF19B", "CCRL2", "DENND5A", "PHLDA2", "MAP3K8", "LDLR", "SLC16A6", "SMAD3", 
+           "TGIF1", "MAP2K3", "DDX58", "TRAF1", "INHBA", "NFKB1", "NFKB2", "GEM", "NR4A3", "MAFF", 
+           "RCAN1", "NR4A2", "EFNA1", "MXD1", "BIRC2", "YRDC", "BIRC3", "IL7R", "PFKFB3", "IRS2", 
+           "SLC2A3", "PLAU", "SLC2A6", "SAT1", "ETS2", "NR4A1", "SNN", "PMEPA1", "TNFRSF9", "MSC", 
+           "TIPARP", "LAMB3", "GFPT2", "CFLAR", "TNIP1", "IRF1", "NFKBIA", "BMP2", "IL6", "TNIP2", 
+           "BCL6", "BCL3", "NFKBIE", "NFE2L2", "B4GALT1", "NFAT5", "TNFAIP8", "BCL2A1", "TNFAIP6", 
+           "TNFAIP3", "CXCL2", "CXCL1", "TNFAIP2", "CXCL3", "CXCL6", "FUT4", "DRAM1", "DNAJB4", 
+           "PDE4B", "PDLIM5", "MCL1", "KDM6B", "IL15RA", "PLAUR", "ATP2B1", "KLF4", "KLF2", "SOD2", 
+           "KLF9", "KLF6", "ACKR3", "PTX3", "B4GALT5", "TRIB1", "CEBPB", "CEBPD", "PLEK", "KYNU", 
+           "CCL5", "CCL4", "CCL2")
+
+interferon_alpha = c("IL4R", "CD74", "SP110", "MX1", "RSAD2", "TAP1", "PSMB9", "CXCL10", "CXCL11", "IFI44L", "LAP3", "LPAR6", "IFI27", "TRAFD1", "TRIM14", "LY6E", "IFITM2", "IFITM3", "SAMD9", "CSF1", 
+           "IFITM1", "UBE2L6", "SAMD9L", "RNF31", "HERC6", "LAMP3", "CCRL2", "MVB12A", "B2M", "CMTR1", 
+           "GBP2", "GBP4", "EPSTI1", "BATF2", "HLA-C", "TENT5A", "TDRD7", "ISG15", "IFI44", "PARP14", 
+           "MOV10", "ISG20", "PARP12", "PLSCR1", "PROCR", "SELL", "PSME2", "PSME1", "CNP", "LGALS3BP", 
+           "IFI35", "IFIT2", "IFI30", "DDX60", "IFIT3", "NUB1", "HELZ2", "PNPT1", "IL15", "NCOA7", 
+           "EIF2AK2", "NMI", "OAS1", "BST2", "IRF1", "ELF1", "IL7", "IRF2", "IRF9", "IRF7", "UBA7", 
+           "GMPR", "ADAR", "CASP8", "TRIM5", "RIPK2", "CASP1", "STAT2", "WARS1", "PARP9", "PSMA3", 
+           "TXNIP", "CMPK2", "CD47", "RTP4", "C1S", "OGFR", "TMEM140", "USP18", "OASL", "SLC25A28", 
+           "IFIH1", "PSMB8", "DHX58", "TRIM25", "TRIM26", "TRIM21")
+
+interferon_gamma = c("GBP6", "SP110", "MX1", "RSAD2", "MX2", "PSMB9", "PML", "NUP93", "LAP3", "MTHFD2",     "IFI27", "TRIM14", "RBCK1", "IDO1", "IFITM2", "IFITM3", "FGL2", "NOD1", "UBE2L6", 
+           "PSMB10", "PNP", "APOL6", "HERC6", "ST3GAL5", "SLAMF7", "B2M", "GBP4", "EPSTI1", 
+           "BATF2", "ST8SIA4", "PLA2G4A", "HLA-A", "HLA-B", "HLA-G", "IFI44", "PARP14", 
+           "LATS2", "PARP12", "VAMP8", "PLSCR1", "BANK1", "SERPING1", "PSME2", "SSPN", 
+           "PSME1", "VAMP5", "CFB", "HLA-DRB1", "CFH", "IFI35", "HIF1A", "IFIT2", "IFI30", 
+           "IFIT1", "ICAM1", "IFIT3", "RNF213", "MT2A", "HELZ2", "KLRK1", "TNFSF10", 
+           "CMKLR1", "NCOA3", "GPR18", "PNPT1", "IL15", "IL10RA", "NMI", "BST2", "RAPGEF6", 
+           "IL18BP", "CD40", "BTG1", "SECTM1", "FPR1", "SOCS3", "SOCS1", "RIPK2", "CD38", 
+           "RIPK1", "HLA-DQA1", "P2RY14", "STAT1", "STAT2", "GCH1", "STAT3", "STAT4", 
+           "PSMA2", "PSMA3", "CMPK2", "PELI1", "MARCHF1", "CDKN1A", "OGFR", "PTGS2", 
+           "IFIH1", "PSMB8", "NAMPT", "PSMB2", "METTL7B", "HLA-DMA", "JAK2", "PTPN1", 
+           "ZBP1", "PTPN2", "IL4R", "CD74", "TOR1B", "TAP1", "VCAM1", "CXCL10", "CXCL11", 
+           "IFI44L", "ZNFX1", "TRAFD1", "FAS", "LY6E", "CD69", "PTPN6", "CD86", "SAMD9L", 
+           "RNF31", "CMTR1", "DDX58", "AUTS2", "ARID5B", "TDRD7", "ISG15", "NFKB1", 
+           "ISG20", "MYD88", "SELP", "XAF1", "IFNAR2", "CD274", "LGALS3BP", "SPPL2A", 
+           "CSF2RB", "DDX60", "PIM1", "XCL1", "EIF2AK2", "TAPBP", "IRF1", "NFKBIA", 
+           "IL7", "IL6", "OAS2", "IRF4", "IRF5", "OAS3", "IRF2", "IRF8", "IRF9", "IRF7", 
+           "LCP2", "EIF4E3", "ARL4A", "CXCL9", "TNFAIP6", "TNFAIP3", "NLRC5", "TNFAIP2", 
+           "ADAR", "CASP8", "CASP7", "CASP4", "PDE4B", "CASP3", "ISOC1", "CASP1", 
+           "CIITA", "IL15RA", "GZMA", "LYSMD2", "BPGM", "WARS1", "SOD2", "IL2RB", "TXNIP", 
+           "PFKP", "C1R", "RTP4", "C1S", "MVP", "SRI", "USP18", "OASL", "SAMHD1", 
+           "SLC25A28", "FCGR1A", "CCL7", "DHX58", "CCL5", "TRIM25", "TRIM26", "CCL2", 
+           "ITGB7", "TRIM21", "UPP1")
+
+base_excision_genes = c("MBD4", "PARP4", "PARP2", "LIG1", "PARP3", "PARP1", "XRCC1", "LIG3", "SMUG1", 
+           "NEIL3", "POLE2", "POLE3", "APEX2", "POLE4", "APEX1", "NEIL2", "NEIL1", "PCNA", 
+           "FEN1", "MPG", "OGG1", "HMGB1", "UNG", "POLD4", "POLB", "POLE", "NTHL1", 
+           "POLD1", "POLD2", "POLD3", "TDG", "POLL", "MUTYH")
+
+mismatch_repair_genes = c("PCNA", "RFC4", "RFC5", "MLH1", "RFC2", "LIG1", "RFC3", "RFC1", "RPA2", 
+           "RPA3", "RPA1", "MSH2", "MLH3", "POLD4", "EXO1", "MSH3", "POLD1", "POLD2", 
+           "RPA4", "POLD3", "MSH6", "SSBP1", "PMS2")
+```
+
